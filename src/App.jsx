@@ -25,7 +25,6 @@ const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) =
   const location = useLocation();
   const isActive = location.pathname === path;
 
-  // Стиль "Strict": компактный, четкий
   const baseClasses = `
     group w-full flex items-center gap-2.5 px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium
     ${isChild ? 'pl-8' : ''} 
@@ -150,10 +149,11 @@ function App() {
             <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
             
-            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
-            
+            {/* ✅ СКРЫВАЕМ ВЕСЬ БЛОК "ЛЮДИ", ВКЛЮЧАЯ ЗАГОЛОВОК */}
             {isAdminAccess && (
               <>
+                <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
+                
                 <button 
                   onClick={() => setIsEmployeesOpen(!isEmployeesOpen)}
                   className={`
@@ -176,12 +176,12 @@ function App() {
                   <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
                   <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
                 </div>
+
+                <SidebarItem icon={Users} label="Эффективность" path="/managers" />
+                <SidebarItem icon={Globe} label="География" path="/geo" />
+                <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />
               </>
             )}
-            
-            <SidebarItem icon={Users} label="Эффективность" path="/managers" />
-            <SidebarItem icon={Globe} label="География" path="/geo" />
-            <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />
           </nav>
 
           {/* FOOTER */}
@@ -210,14 +210,16 @@ function App() {
 
           <div className="p-6">
             <Routes>
-              {/* ✅ ИСПРАВЛЕНО: Передаем currentUser в DashboardPage */}
+              {/* ✅ Передаем currentUser */}
               <Route path="/" element={<DashboardPage stats={stats} payments={payments} loading={loading} currentUser={user} />} />
+              <Route path="/stats" element={<StatsPage payments={payments} currentUser={user} />} />
+              <Route path="/list" element={<PaymentsPage payments={payments} currentUser={user} />} />            
               
-              <Route path="/stats" element={<StatsPage payments={payments} />} />
-              <Route path="/list" element={<PaymentsPage payments={payments} />} />            
-              <Route path="/kpi" element={<KPIPage />} />
-              <Route path="/geo" element={<GeoPage payments={payments} />} />
-              <Route path="/managers" element={<ManagersPage payments={payments} />} />
+              {/* ✅ Защищаем админские роуты */}
+              <Route path="/kpi" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><KPIPage /></ProtectedRoute>} />
+              <Route path="/geo" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><GeoPage payments={payments} /></ProtectedRoute>} />
+              <Route path="/managers" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><ManagersPage payments={payments} /></ProtectedRoute>} />
+              
               <Route path="/sales-team" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
               <Route path="/consultants" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
               <Route path="/all-employees" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Все сотрудники" excludeRole="C-level" currentUser={user} showAddButton={true} /></ProtectedRoute>} />

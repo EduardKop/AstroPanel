@@ -8,12 +8,12 @@ import "react-datepicker/dist/react-datepicker.css";
 
 // --- ПАЛИТРА ---
 const THEME_COLORS = [
-  { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] }, // Indigo
-  { main: '#EC4899', gradient: ['#EC4899', '#F472B6'] }, // Pink
-  { main: '#10B981', gradient: ['#10B981', '#34D399'] }, // Emerald
-  { main: '#F59E0B', gradient: ['#F59E0B', '#FBBF24'] }, // Amber
-  { main: '#8B5CF6', gradient: ['#8B5CF6', '#A78BFA'] }, // Violet
-  { main: '#06B6D4', gradient: ['#06B6D4', '#22D3EE'] }, // Cyan
+  { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] }, 
+  { main: '#EC4899', gradient: ['#EC4899', '#F472B6'] }, 
+  { main: '#10B981', gradient: ['#10B981', '#34D399'] }, 
+  { main: '#F59E0B', gradient: ['#F59E0B', '#FBBF24'] }, 
+  { main: '#8B5CF6', gradient: ['#8B5CF6', '#A78BFA'] }, 
+  { main: '#06B6D4', gradient: ['#06B6D4', '#22D3EE'] }, 
 ];
 
 // --- ХЕЛПЕРЫ ДАТ ---
@@ -32,25 +32,34 @@ const getCurrentMonthRange = () => {
 };
 
 // --- ОСНОВНОЙ КОМПОНЕНТ ---
-const StatsPage = ({ payments = [] }) => {
-  // Состояние для главного экрана (последние 7 дней)
+const StatsPage = ({ payments = [], currentUser }) => {
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
+  const [expandedChart, setExpandedChart] = useState(null);
 
-  // Состояние для модального окна (какой график открыт)
-  const [expandedChart, setExpandedChart] = useState(null); // 'geo', 'manager', 'product', 'type'
+  // ✅ 1. ПРОВЕРКА РОЛИ
+  const isRestrictedUser = useMemo(() => {
+    if (!currentUser) return false;
+    return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
+  }, [currentUser]);
 
-  // --- ЛОГИКА ГЛАВНОГО ЭКРАНА ---
+  // ✅ 2. ФИЛЬТРАЦИЯ
   const filteredData = useMemo(() => {
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
       const d = new Date(item.transactionDate.split(' ')[0]);
       if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return false;
       if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return false;
+
+      // 🔒 ПРИВАТНОСТЬ: Если пользователь ограничен, показываем только его данные
+      if (isRestrictedUser) {
+        if (item.manager !== currentUser.name) return false;
+      }
+
       return true;
     });
     return data.sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
-  }, [payments, startDate, endDate]);
+  }, [payments, startDate, endDate, isRestrictedUser, currentUser]);
 
   const prepareData = (dataKey, sourceData) => {
     const grouped = {};
@@ -86,17 +95,12 @@ const StatsPage = ({ payments = [] }) => {
             <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">Визуализация данных продаж</p>
         </div>
         
-        {/* ✅ ИСПРАВЛЕНО: Увеличили ширину контейнера календаря */}
         <div className="flex items-center bg-white dark:bg-[#111] border border-gray-300 dark:border-[#333] rounded-[6px] px-3 py-1.5 shadow-sm min-w-[240px]">
              <div className="text-gray-400 pointer-events-none mr-2"><Calendar size={14} /></div>
              <div className="relative flex-1">
                 <DatePicker
-                    selectsRange={true}
-                    startDate={startDate}
-                    endDate={endDate}
-                    onChange={(update) => setDateRange(update)}
-                    dateFormat="dd.MM.yyyy"
-                    placeholderText="Период"
+                    selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
+                    dateFormat="dd.MM.yyyy" placeholderText="Период"
                     className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center"
                 />
              </div>
@@ -116,12 +120,12 @@ const StatsPage = ({ payments = [] }) => {
           type="area"
           data={geoData.chartData} 
           keys={geoData.keys}
-          onExpand={() => setExpandedChart('country')} // Передаем ключ данных
+          onExpand={() => setExpandedChart('country')}
         />
 
         <ChartWidget 
           id="manager"
-          title="Вклад Менеджеров" 
+          title={isRestrictedUser ? "Моя эффективность" : "Вклад Менеджеров"} 
           subtitle="Результативность команды"
           type="area"
           data={managerData.chartData} 
@@ -155,7 +159,7 @@ const StatsPage = ({ payments = [] }) => {
       {expandedChart && (
         <ExpandedChartModal 
           chartKey={expandedChart} 
-          rawPayments={payments} 
+          rawPayments={filteredData} // Передаем УЖЕ отфильтрованные данные
           onClose={() => setExpandedChart(null)} 
         />
       )}
@@ -166,11 +170,9 @@ const StatsPage = ({ payments = [] }) => {
 
 // --- КОМПОНЕНТ МОДАЛЬНОГО ОКНА ---
 const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
-  // При открытии ставим "Текущий месяц"
   const [dateRange, setDateRange] = useState(getCurrentMonthRange());
   const [startDate, endDate] = dateRange;
 
-  // Локальная фильтрация для модалки
   const filteredData = useMemo(() => {
     let data = rawPayments.filter(item => {
       if (!item.transactionDate) return false;
@@ -199,7 +201,6 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
     };
   }, [filteredData, chartKey]);
 
-  // Заголовки в зависимости от ключа
   const titles = {
     country: "Детальная аналитика по ГЕО",
     manager: "Детальная аналитика по Менеджерам",
@@ -216,28 +217,15 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
         {/* HEADER MODAL */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-[#222]">
           <div>
-            <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
-              {titles[chartKey]}
-            </h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Данные за период: {startDate?.toLocaleDateString()} - {endDate?.toLocaleDateString()}
-            </p>
+            <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">{titles[chartKey]}</h2>
+            <p className="text-sm text-gray-500 mt-1">Данные за период: {startDate?.toLocaleDateString()} - {endDate?.toLocaleDateString()}</p>
           </div>
-
           <div className="flex items-center gap-4">
-            {/* Календарь внутри модалки */}
             <div className="flex items-center bg-gray-50 dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2">
                 <Calendar size={16} className="text-gray-400 mr-2"/>
-                <DatePicker
-                    selectsRange={true} startDate={startDate} endDate={endDate} onChange={(u) => setDateRange(u)}
-                    dateFormat="dd.MM.yyyy" placeholderText="Период"
-                    className="bg-transparent text-sm font-medium dark:text-white outline-none w-48 cursor-pointer text-center"
-                />
+                <DatePicker selectsRange={true} startDate={startDate} endDate={endDate} onChange={(u) => setDateRange(u)} dateFormat="dd.MM.yyyy" placeholderText="Период" className="bg-transparent text-sm font-medium dark:text-white outline-none w-48 cursor-pointer text-center"/>
             </div>
-            
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#222] rounded-full text-gray-500 transition-colors">
-              <X size={24} />
-            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#222] rounded-full text-gray-500 transition-colors"><X size={24} /></button>
           </div>
         </div>
 
@@ -251,36 +239,21 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} />
                    <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                   {prepared.keys.map((key, index) => (
-                      <Bar key={key} dataKey={key} fill={THEME_COLORS[index % THEME_COLORS.length].main} radius={[4, 4, 0, 0]} stackId="a" />
-                   ))}
+                   {prepared.keys.map((key, index) => <Bar key={key} dataKey={key} fill={THEME_COLORS[index % THEME_COLORS.length].main} radius={[4, 4, 0, 0]} stackId="a" />)}
                 </BarChart>
               ) : (
                 <AreaChart data={prepared.chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                   <defs>
-                      {prepared.keys.map((key, index) => {
-                        const color = THEME_COLORS[index % THEME_COLORS.length];
-                        return (
-                          <linearGradient key={key} id={`grad-modal-${key}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={color.main} stopOpacity={0.4}/>
-                            <stop offset="100%" stopColor={color.main} stopOpacity={0}/>
-                          </linearGradient>
-                        );
-                      })}
-                   </defs>
+                   <defs>{prepared.keys.map((key, index) => { const color = THEME_COLORS[index % THEME_COLORS.length]; return (<linearGradient key={key} id={`grad-modal-${key}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color.main} stopOpacity={0.4}/><stop offset="100%" stopColor={color.main} stopOpacity={0}/></linearGradient>); })}</defs>
                    <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} vertical={false} />
                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, {day:'2-digit', month:'2-digit'})} />
                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} />
                    <Tooltip content={<CustomTooltip />} />
                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                   {prepared.keys.map((key, index) => (
-                      <Area key={key} type="monotone" dataKey={key} stroke={THEME_COLORS[index % THEME_COLORS.length].main} fill={`url(#grad-modal-${key})`} strokeWidth={3} activeDot={{ r: 6 }} />
-                   ))}
+                   {prepared.keys.map((key, index) => <Area key={key} type="monotone" dataKey={key} stroke={THEME_COLORS[index % THEME_COLORS.length].main} fill={`url(#grad-modal-${key})`} strokeWidth={3} activeDot={{ r: 6 }} />)}
                 </AreaChart>
               )}
            </ResponsiveContainer>
         </div>
-
       </div>
     </div>
   );
@@ -289,14 +262,9 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
 // --- ВИДЖЕТ ГРАФИКА (MINI) ---
 const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
   const hasData = data && data.length > 0;
-
   return (
     <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-5 shadow-sm relative overflow-hidden group">
-      <div 
-        className="mb-6 z-10 relative flex justify-between items-start cursor-pointer"
-        onClick={onExpand}
-        title="Нажмите, чтобы развернуть детальную статистику"
-      >
+      <div className="mb-6 z-10 relative flex justify-between items-start cursor-pointer" onClick={onExpand} title="Нажмите, чтобы развернуть детальную статистику">
         <div>
           <h3 className="text-sm font-bold dark:text-white flex items-center gap-2 group-hover:text-blue-500 transition-colors">
             {type === 'area' ? <BarChart2 size={14} className="text-blue-500"/> : <PieChart size={14} className="text-pink-500"/>}
@@ -304,36 +272,19 @@ const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
           </h3>
           <p className="text-[10px] text-gray-500 mt-0.5">{subtitle}</p>
         </div>
-        <div className="p-1.5 rounded-lg bg-gray-50 dark:bg-[#1A1A1A] text-gray-400 group-hover:text-blue-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-all">
-           <Maximize2 size={14} />
-        </div>
+        <div className="p-1.5 rounded-lg bg-gray-50 dark:bg-[#1A1A1A] text-gray-400 group-hover:text-blue-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-all"><Maximize2 size={14} /></div>
       </div>
-      
       <div className="h-[300px] w-full text-[10px] relative z-10">
-        {!hasData ? (
-           <div className="h-full flex items-center justify-center text-gray-400 text-xs">Нет данных</div>
-        ) : (
+        {!hasData ? (<div className="h-full flex items-center justify-center text-gray-400 text-xs">Нет данных</div>) : (
           <ResponsiveContainer width="100%" height="100%">
             {type === 'area' ? (
               <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  {keys.map((key, index) => {
-                    const color = THEME_COLORS[index % THEME_COLORS.length];
-                    return (
-                      <linearGradient key={key} id={`grad-${key}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={color.main} stopOpacity={0.4}/>
-                        <stop offset="100%" stopColor={color.main} stopOpacity={0}/>
-                      </linearGradient>
-                    );
-                  })}
-                </defs>
+                <defs>{keys.map((key, index) => { const color = THEME_COLORS[index % THEME_COLORS.length]; return (<linearGradient key={key} id={`grad-${key}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color.main} stopOpacity={0.4}/><stop offset="100%" stopColor={color.main} stopOpacity={0}/></linearGradient>); })}</defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} vertical={false} />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, {day:'2-digit', month:'2-digit'})} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#555', strokeWidth: 1, strokeDasharray: '3 3' }} />
-                {keys.map((key, index) => (
-                  <Area key={key} type="monotone" dataKey={key} stroke={THEME_COLORS[index % THEME_COLORS.length].main} fill={`url(#grad-${key})`} strokeWidth={2} isAnimationActive={false} />
-                ))}
+                {keys.map((key, index) => <Area key={key} type="monotone" dataKey={key} stroke={THEME_COLORS[index % THEME_COLORS.length].main} fill={`url(#grad-${key})`} strokeWidth={2} isAnimationActive={false} />)}
               </AreaChart>
             ) : (
               <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -341,9 +292,7 @@ const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, {day:'2-digit', month:'2-digit'})} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
-                {keys.map((key, index) => (
-                  <Bar key={key} dataKey={key} fill={THEME_COLORS[index % THEME_COLORS.length].main} radius={[4, 4, 0, 0]} stackId="a" barSize={20} isAnimationActive={false} />
-                ))}
+                {keys.map((key, index) => <Bar key={key} dataKey={key} fill={THEME_COLORS[index % THEME_COLORS.length].main} radius={[4, 4, 0, 0]} stackId="a" barSize={20} isAnimationActive={false} />)}
               </BarChart>
             )}
           </ResponsiveContainer>
@@ -353,7 +302,6 @@ const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
   );
 };
 
-// --- СТИЛЬНЫЙ ТУЛТИП ---
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (

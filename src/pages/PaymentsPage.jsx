@@ -15,7 +15,6 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
-// ✅ ОБНОВЛЕННЫЙ КОМПОНЕНТ ФИЛЬТРА (Строгий стиль)
 const SelectFilter = ({ label, value, options, onChange }) => (
   <div className="relative">
     <select
@@ -32,7 +31,7 @@ const SelectFilter = ({ label, value, options, onChange }) => (
   </div>
 );
 
-const PaymentsPage = ({ payments = [] }) => {
+const PaymentsPage = ({ payments = [], currentUser }) => {
   // --- STATE ---
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
@@ -47,6 +46,12 @@ const PaymentsPage = ({ payments = [] }) => {
   const [sortOrder, setSortOrder] = useState('desc'); 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
+
+  // ✅ 1. ПРОВЕРКА РОЛИ
+  const isRestrictedUser = useMemo(() => {
+    if (!currentUser) return false;
+    return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
+  }, [currentUser]);
 
   // --- HELPERS ---
   const uniqueValues = useMemo(() => {
@@ -65,6 +70,14 @@ const PaymentsPage = ({ payments = [] }) => {
   // --- ГЛАВНАЯ ЛОГИКА ---
   const processedData = useMemo(() => {
     let data = payments.filter(item => {
+      // ✅ 2. ФИЛЬТРАЦИЯ ПО РОЛИ
+      if (isRestrictedUser) {
+        if (item.manager !== currentUser.name) return false;
+      } else {
+        // Если админ - проверяем выбранный фильтр
+        if (filters.manager && item.manager !== filters.manager) return false;
+      }
+
       if (!item.transactionDate) return false;
       
       const itemDate = new Date(item.transactionDate.replace(' ', 'T'));
@@ -83,7 +96,6 @@ const PaymentsPage = ({ payments = [] }) => {
         if (itemDay > endDay) return false;
       }
 
-      if (filters.manager && item.manager !== filters.manager) return false;
       if (filters.country && item.country !== filters.country) return false;
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
@@ -98,7 +110,7 @@ const PaymentsPage = ({ payments = [] }) => {
     });
 
     return data;
-  }, [payments, startDate, endDate, filters, sortOrder]);
+  }, [payments, startDate, endDate, filters, sortOrder, isRestrictedUser, currentUser]);
 
   // --- ПАГИНАЦИЯ ---
   const totalPages = Math.ceil(processedData.length / itemsPerPage);
@@ -144,21 +156,16 @@ const PaymentsPage = ({ payments = [] }) => {
         </div>
       </div>
 
-      {/* Панель фильтров (Обновленный дизайн) */}
+      {/* Панель фильтров */}
       <div className="bg-white dark:bg-[#111] p-4 rounded-lg border border-gray-200 dark:border-[#333] shadow-sm mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
           
-          {/* Календарь (2 ячейки) */}
           <div className="lg:col-span-2 flex items-center bg-white dark:bg-[#111] border border-gray-300 dark:border-[#333] rounded-[6px] px-2 py-1">
              <div className="px-2 text-gray-400 pointer-events-none"><Calendar size={14} /></div>
              <div className="relative flex-1">
                 <DatePicker
-                    selectsRange={true}
-                    startDate={startDate}
-                    endDate={endDate}
-                    onChange={(update) => setDateRange(update)}
-                    dateFormat="dd.MM.yyyy"
-                    placeholderText="Выберите период"
+                    selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
+                    dateFormat="dd.MM.yyyy" placeholderText="Выберите период"
                     className="bg-transparent text-xs font-medium text-gray-900 dark:text-white outline-none w-full py-1 cursor-pointer text-center"
                     onKeyDown={(e) => e.preventDefault()}
                 />
@@ -168,7 +175,11 @@ const PaymentsPage = ({ payments = [] }) => {
              </button>
           </div>
 
-          <SelectFilter label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => { setFilters(prev => ({ ...prev, manager: val })); setCurrentPage(1); }} />
+          {/* ✅ 3. СКРЫВАЕМ СЕЛЕКТ МЕНЕДЖЕРА, ЕСЛИ НЕ АДМИН */}
+          {!isRestrictedUser && (
+            <SelectFilter label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => { setFilters(prev => ({ ...prev, manager: val })); setCurrentPage(1); }} />
+          )}
+
           <SelectFilter label="ГЕО" value={filters.country} options={uniqueValues.countries} onChange={(val) => { setFilters(prev => ({ ...prev, country: val })); setCurrentPage(1); }} />
           <SelectFilter label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => { setFilters(prev => ({ ...prev, product: val })); setCurrentPage(1); }} />
           <SelectFilter label="Тип" value={filters.type} options={uniqueValues.types} onChange={(val) => { setFilters(prev => ({ ...prev, type: val })); setCurrentPage(1); }} />
