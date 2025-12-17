@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard, 
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase, 
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield // ✅ Новые иконки для базы знаний
+  BookOpen, Shield // Иконки базы знаний
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient'; 
@@ -22,8 +22,8 @@ import AddEmployeePage from './pages/AddEmployeePage';
 import EditEmployeePage from './pages/EditEmployeePage';
 import BirthdaysPage from './pages/BirthdaysPage';
 import GeoMatrixPage from './pages/GeoMatrixPage';
-import ProductsPage from './pages/knowledge/ProductsPage'; // ✅ Новая страница
-import RulesPage from './pages/knowledge/RulesPage';       // ✅ Новая страница
+import ProductsPage from './pages/knowledge/ProductsPage';
+import RulesPage from './pages/knowledge/RulesPage';
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
@@ -94,9 +94,14 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen flex bg-[#F5F5F5] dark:bg-[#0A0A0A] font-sans transition-colors duration-300 text-[13px]">
         <aside className="w-[220px] fixed h-full bg-white dark:bg-[#111111] border-r border-gray-200 dark:border-[#222] flex flex-col z-20">
+          
+          {/* HEADER: LOGO + BETA */}
           <div className="h-12 flex items-center px-4 border-b border-gray-100 dark:border-[#222]">
             <div className="w-5 h-5 bg-black dark:bg-white rounded flex items-center justify-center text-white dark:text-black font-bold text-[10px] mr-2">AP</div>
             <span className="font-bold text-gray-900 dark:text-white tracking-tight">AstroPanel</span>
+            <span className="ml-2 px-1.5 py-0.5 rounded-[4px] bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-500 text-[9px] font-bold uppercase tracking-wider">
+              Beta
+            </span>
           </div>
 
           <div className="p-3">
@@ -114,17 +119,26 @@ function App() {
           </div>
 
           <nav className="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-0.5">
+            {/* --- ДАШБОРДЫ --- */}
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider">Дашборды</div>
             <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
             <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />
+            
+            {/* География теперь тут (только для админов) */}
+            {isAdminAccess && <SidebarItem icon={Globe} label="География" path="/geo" />}
+            
             {isAdminAccess && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
             
-            {/* ✅ НОВЫЙ РАЗДЕЛ: БАЗА ЗНАНИЙ (Доступна всем авторизованным) */}
+            {/* --- БАЗА ЗНАНИЙ --- */}
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">База знаний</div>
             <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
             <SidebarItem icon={Shield} label="Правила" path="/rules" />
+            
+            {/* KPI теперь тут (только для админов) */}
+            {isAdminAccess && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
 
+            {/* --- ЛЮДИ (Только Админ) --- */}
             {isAdminAccess && (
               <>
                 <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
@@ -139,8 +153,6 @@ function App() {
                   <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
                 </div>
                 <SidebarItem icon={Users} label="Эффективность" path="/managers" />
-                <SidebarItem icon={Globe} label="География" path="/geo" />
-                <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />
               </>
             )}
           </nav>
@@ -156,7 +168,7 @@ function App() {
         </aside>
 
         <main className="flex-1 ml-[220px]">
-          <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between px-6">
+          <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-40 flex items-center justify-between px-6">
              <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
                 {isLoading ? 'Обновление данных...' : `Данные актуальны (${payments.length})`}
              </div>
@@ -184,7 +196,6 @@ function App() {
               <Route path="/edit-employee/:id" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EditEmployeePage /></ProtectedRoute>} />
               <Route path="/birthdays" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><BirthdaysPage /></ProtectedRoute>} />
               
-              {/* ✅ НОВЫЕ РОУТЫ (Доступны всем, кто прошел ProtectedRoute - то есть всем авторизованным) */}
               <Route path="/products" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><ProductsPage /></ProtectedRoute>} />
               <Route path="/rules" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><RulesPage /></ProtectedRoute>} />
 

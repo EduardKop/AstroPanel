@@ -6,7 +6,8 @@ export const useAppStore = create((set, get) => ({
   user: null,
   payments: [],
   managers: [],
-  products: [], // ✅ Добавлено: Продукты базы знаний
+  products: [],
+  rules: [], // ✅ Добавлено: Правила
   stats: { totalEur: 0, count: 0 },
   isLoading: false,
   isInitialized: false,
@@ -20,10 +21,10 @@ export const useAppStore = create((set, get) => ({
   logout: async () => {
     await supabase.auth.signOut();
     localStorage.removeItem('astroUser');
-    set({ user: null, payments: [], managers: [], products: [], stats: { totalEur: 0, count: 0 } });
+    set({ user: null, payments: [], managers: [], products: [], rules: [], stats: { totalEur: 0, count: 0 } });
   },
 
-  // 3. ГЛАВНАЯ ФУНКЦИЯ ЗАГРУЗКИ (Payments + Managers + Products)
+  // 3. ГЛАВНАЯ ФУНКЦИЯ ЗАГРУЗКИ (Payments + Managers + Products + Rules)
   fetchAllData: async (forceUpdate = false) => {
     // Если уже загружаем и не форсим обновление - выходим
     if (get().isLoading && !forceUpdate) return;
@@ -54,7 +55,6 @@ export const useAppStore = create((set, get) => ({
       if (paymentsError) throw paymentsError;
 
       // В. Загружаем Продукты (База знаний)
-      // ✅ Новая логика для раздела "Продукты"
       const { data: productsData, error: productsError } = await supabase
         .from('knowledge_products')
         .select('*')
@@ -64,7 +64,18 @@ export const useAppStore = create((set, get) => ({
         console.warn('Warning fetching products:', productsError);
       }
 
-      // Г. НОРМАЛИЗАЦИЯ ПЛАТЕЖЕЙ (Приводим к единому виду)
+      // Г. Загружаем Правила (База знаний)
+      // ✅ Новая логика для раздела "Правила"
+      const { data: rulesData, error: rulesError } = await supabase
+        .from('knowledge_rules')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (rulesError) {
+        console.warn('Warning fetching rules:', rulesError);
+      }
+
+      // Д. НОРМАЛИЗАЦИЯ ПЛАТЕЖЕЙ (Приводим к единому виду)
       const formattedPayments = paymentsData.map(item => {
         // Определяем дату безопасно
         const rawDate = item.transaction_date || item.created_at;
@@ -95,14 +106,15 @@ export const useAppStore = create((set, get) => ({
         };
       });
 
-      // Д. Считаем статистику
+      // Е. Считаем статистику
       const total = formattedPayments.reduce((sum, item) => sum + item.amountEUR, 0);
 
-      // Е. Обновляем стейт
+      // Ж. Обновляем стейт
       set({ 
         payments: formattedPayments,
         managers: managersData || [],
-        products: productsData || [], // ✅ Сохраняем продукты
+        products: productsData || [],
+        rules: rulesData || [], // ✅ Сохраняем правила
         stats: { totalEur: total.toFixed(2), count: formattedPayments.length },
         isLoading: false,
         isInitialized: true
@@ -124,7 +136,10 @@ export const useAppStore = create((set, get) => ({
         () => { get().fetchAllData(true); }
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_products' }, 
-        () => { get().fetchAllData(true); } // ✅ Слушаем изменения в продуктах
+        () => { get().fetchAllData(true); }
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_rules' }, 
+        () => { get().fetchAllData(true); } // ✅ Слушаем изменения в правилах
       )
       .subscribe();
 

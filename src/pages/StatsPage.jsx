@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useAppStore } from '../store/appStore'; // ✅ Store
+import { useAppStore } from '../store/appStore';
 import { 
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
@@ -7,7 +7,6 @@ import { Calendar, BarChart2, PieChart, RotateCcw, Maximize2, X } from 'lucide-r
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// --- ПАЛИТРА ---
 const THEME_COLORS = [
   { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] }, 
   { main: '#EC4899', gradient: ['#EC4899', '#F472B6'] }, 
@@ -17,7 +16,6 @@ const THEME_COLORS = [
   { main: '#06B6D4', gradient: ['#06B6D4', '#22D3EE'] }, 
 ];
 
-// --- ХЕЛПЕРЫ ДАТ ---
 const getLastWeekRange = () => {
   const end = new Date();
   const start = new Date();
@@ -32,36 +30,26 @@ const getCurrentMonthRange = () => {
   return [start, end];
 };
 
-// --- ОСНОВНОЙ КОМПОНЕНТ ---
 const StatsPage = () => {
-  // ✅ 1. Берем данные из стора
   const { payments, user: currentUser } = useAppStore();
-
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
   const [expandedChart, setExpandedChart] = useState(null);
 
-  // Права доступа
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
 
-  // Фильтрация
   const filteredData = useMemo(() => {
     let data = payments.filter(item => {
-      // Проверка даты
       if (!item.transactionDate) return false;
       const transDate = new Date(item.transactionDate);
-      
       if (startDate && transDate < new Date(startDate.setHours(0,0,0,0))) return false;
       if (endDate && transDate > new Date(endDate.setHours(23,59,59,999))) return false;
-
-      // Приватность
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
       }
-
       return true;
     });
     return data.sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
@@ -71,7 +59,6 @@ const StatsPage = () => {
     const grouped = {};
     const allKeys = new Set();
     sourceData.forEach(item => {
-      // Используем только дату YYYY-MM-DD
       const date = new Date(item.transactionDate).toISOString().split('T')[0];
       const key = item[dataKey] || 'Unknown';
       allKeys.add(key);
@@ -93,8 +80,8 @@ const StatsPage = () => {
   return (
     <div className="animate-in fade-in zoom-in duration-300 pb-10">
       
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+      {/* ✅ STICKY HEADER */}
+      <div className="sticky top-0 z-30 -mt-6 -mx-6 px-6 py-4 bg-[#F5F5F5] dark:bg-[#0A0A0A] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 border-b border-transparent transition-colors duration-200">
         <div>
             <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
               <BarChart2 size={20} className="text-blue-500"/> Аналитика трендов
@@ -117,65 +104,20 @@ const StatsPage = () => {
         </div>
       </div>
 
-      {/* --- GRID 2x2 --- */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        
-        <ChartWidget 
-          id="geo"
-          title="Динамика по ГЕО" 
-          subtitle="Активность стран по дням"
-          type="area"
-          data={geoData.chartData} 
-          keys={geoData.keys}
-          onExpand={() => setExpandedChart('country')}
-        />
-
-        <ChartWidget 
-          id="manager"
-          title={isRestrictedUser ? "Моя эффективность" : "Вклад Менеджеров"} 
-          subtitle="Результативность команды"
-          type="area"
-          data={managerData.chartData} 
-          keys={managerData.keys}
-          onExpand={() => setExpandedChart('manager')}
-        />
-
-        <ChartWidget 
-          id="product"
-          title="Популярность Продуктов" 
-          subtitle="Сравнение объемов продаж"
-          type="bar"
-          data={productData.chartData} 
-          keys={productData.keys}
-          onExpand={() => setExpandedChart('product')}
-        />
-
-        <ChartWidget 
-          id="type"
-          title="Методы Оплаты" 
-          subtitle="Предпочтения клиентов"
-          type="bar"
-          data={typeData.chartData} 
-          keys={typeData.keys}
-          onExpand={() => setExpandedChart('type')}
-        />
-
+        <ChartWidget id="geo" title="Динамика по ГЕО" subtitle="Активность стран по дням" type="area" data={geoData.chartData} keys={geoData.keys} onExpand={() => setExpandedChart('country')} />
+        <ChartWidget id="manager" title={isRestrictedUser ? "Моя эффективность" : "Вклад Менеджеров"} subtitle="Результативность команды" type="area" data={managerData.chartData} keys={managerData.keys} onExpand={() => setExpandedChart('manager')} />
+        <ChartWidget id="product" title="Популярность Продуктов" subtitle="Сравнение объемов продаж" type="bar" data={productData.chartData} keys={productData.keys} onExpand={() => setExpandedChart('product')} />
+        <ChartWidget id="type" title="Методы Оплаты" subtitle="Предпочтения клиентов" type="bar" data={typeData.chartData} keys={typeData.keys} onExpand={() => setExpandedChart('type')} />
       </div>
 
-      {/* --- МОДАЛЬНОЕ ОКНО --- */}
       {expandedChart && (
-        <ExpandedChartModal 
-          chartKey={expandedChart} 
-          rawPayments={filteredData} // Уже отфильтрованные данные
-          onClose={() => setExpandedChart(null)} 
-        />
+        <ExpandedChartModal chartKey={expandedChart} rawPayments={filteredData} onClose={() => setExpandedChart(null)} />
       )}
-
     </div>
   );
 };
 
-// --- КОМПОНЕНТ МОДАЛЬНОГО ОКНА ---
 const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
   const [dateRange, setDateRange] = useState(getCurrentMonthRange());
   const [startDate, endDate] = dateRange;
@@ -208,19 +150,12 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
     };
   }, [filteredData, chartKey]);
 
-  const titles = {
-    country: "Детальная аналитика по ГЕО",
-    manager: "Детальная аналитика по Менеджерам",
-    product: "Детальная аналитика по Продуктам",
-    type: "Детальная аналитика по Методам Оплаты"
-  };
-
+  const titles = { country: "Детальная аналитика по ГЕО", manager: "Детальная аналитика по Менеджерам", product: "Детальная аналитика по Продуктам", type: "Детальная аналитика по Методам Оплаты" };
   const isBar = chartKey === 'product' || chartKey === 'type';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white dark:bg-[#09090b] w-full max-w-6xl h-[85vh] rounded-2xl border border-gray-200 dark:border-[#333] shadow-2xl flex flex-col overflow-hidden">
-        
         <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-[#222]">
           <div>
             <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">{titles[chartKey]}</h2>
@@ -234,7 +169,6 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
             <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#222] rounded-full text-gray-500 transition-colors"><X size={24} /></button>
           </div>
         </div>
-
         <div className="flex-1 p-6 min-h-0">
            <ResponsiveContainer width="100%" height="100%">
               {isBar ? (
@@ -264,7 +198,6 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
   );
 };
 
-// --- ВИДЖЕТ ГРАФИКА ---
 const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
   const hasData = data && data.length > 0;
   return (
