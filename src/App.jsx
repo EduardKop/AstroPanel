@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react
 import { 
   LayoutDashboard, Users, Globe, CreditCard, 
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase, 
-  Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift 
+  Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift,LayoutGrid 
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient'; 
@@ -20,6 +20,7 @@ import EmployeesPage from './pages/EmployeesPage';
 import AddEmployeePage from './pages/AddEmployeePage';
 import EditEmployeePage from './pages/EditEmployeePage';
 import BirthdaysPage from './pages/BirthdaysPage';
+import GeoMatrixPage from './pages/GeoMatrixPage';
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
@@ -147,11 +148,17 @@ function App() {
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider">Дашборды</div>
             <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
             <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />
+
+{/* ТОЛЬКО ДЛЯ АДМИНОВ */}
+{isAdminAccess && (
+   <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix"  />
+)}
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
             
             {/* ✅ СКРЫВАЕМ ВЕСЬ БЛОК "ЛЮДИ", ВКЛЮЧАЯ ЗАГОЛОВОК */}
             {isAdminAccess && (
               <>
+              
                 <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
                 
                 <button 
@@ -227,6 +234,11 @@ function App() {
               <Route path="/edit-employee/:id" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><EditEmployeePage /></ProtectedRoute>} />
               <Route path="/birthdays" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><BirthdaysPage /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" />} />
+              <Route path="/geo-matrix" element={
+    <ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}>
+        <GeoMatrixPage payments={payments} currentUser={user} />
+    </ProtectedRoute>
+} />
             </Routes>
           </div>
         </main>
