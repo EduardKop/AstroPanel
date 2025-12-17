@@ -9,7 +9,7 @@ const LoginPage = ({ onLoginSuccess }) => {
   const [botLink, setBotLink] = useState('');
 
   // Имя твоего бота (без @)
-  const BOT_USERNAME = 'PaymentAstrobot'; 
+  const BOT_USERNAME = 'AstroAuthBot'; 
 
   useEffect(() => {
     const initSession = async () => {
