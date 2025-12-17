@@ -8,7 +8,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { motion, AnimatePresence } from 'framer-motion';
 
-// --- СПРАВОЧНИК ДЛЯ АВТОЗАПОЛНЕНИЯ (При добавлении нового) ---
+// --- СПРАВОЧНИК ДЛЯ АВТОЗАПОЛНЕНИЯ ---
 const STATIC_GEO_LOOKUP = {
   RO: { name: 'Румыния', emoji: '🇷🇴' },
   BG: { name: 'Болгария', emoji: '🇧🇬' },
@@ -67,8 +67,6 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
   
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // Состояние для Drill-down (выбранная ячейка)
   const [selectedCell, setSelectedCell] = useState(null);
 
   const [dateRange, setDateRange] = useState(getCurrentMonthRange());
@@ -99,7 +97,6 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
     fetchCountries();
   }, []);
 
-  // Генерация дат
   const dateList = useMemo(() => {
     if (!startDate || !endDate) return [];
     const list = [];
@@ -115,7 +112,6 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
     return list;
   }, [startDate, endDate]);
 
-  // Матрица и Тоталы
   const { matrixData, totalsByCountry, totalsByDate, grandTotal } = useMemo(() => {
     const data = {};
     dateList.forEach(date => {
@@ -132,7 +128,8 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
         if (filters.product && p.product !== filters.product) return;
         if (filters.type && p.type !== filters.type) return;
 
-        const pDate = p.transactionDate.replace(' ', 'T').split('T')[0];
+        // Приводим дату к формату YYYY-MM-DD (отрезаем время)
+        const pDate = p.transactionDate.split(/[T ]/)[0]; // Split by T or space
         const geo = p.country;
         const isTracked = countriesList.some(c => c.code === geo);
 
@@ -160,7 +157,6 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
     return { matrixData: data, totalsByCountry: tCountry, totalsByDate: tDate, grandTotal: total };
   }, [dateList, countriesList, isDemoMode, payments, filters]);
 
-  // Сортировка
   const sortedCountries = useMemo(() => {
     let sorted = [...countriesList];
     if (sortOrder === 'desc') {
@@ -182,12 +178,10 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
 
   const resetFilters = () => setFilters({ product: '', type: '' });
 
-  // Обработчик клика по ячейке для Drill-down
   const handleCellClick = (countryCode, dateKey, count) => {
-    // Фильтруем транзакции для этой ячейки
     const cellTransactions = payments.filter(p => {
        if (!p.transactionDate) return false;
-       const pDate = p.transactionDate.replace(' ', 'T').split('T')[0];
+       const pDate = p.transactionDate.split(/[T ]/)[0]; // Robust split
        
        if (filters.product && p.product !== filters.product) return false;
        if (filters.type && p.type !== filters.type) return false;
@@ -209,7 +203,6 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
 
   return (
     <div className="animate-in fade-in zoom-in duration-300 pb-10 min-h-screen">
-      
       <style>{`
         .matrix-cell:hover::after {
           content: '';
@@ -298,28 +291,18 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
                             <th className="w-[120px] min-w-[120px] p-2 bg-gray-50 dark:bg-[#161616] border-b border-r border-gray-200 dark:border-[#333] text-left align-bottom z-20 sticky left-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                 <span className="text-gray-400 font-medium pl-1 text-xs">ГЕО</span>
                             </th>
-                            
                             {dateList.map(date => {
                                 const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short' }).toUpperCase();
                                 const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                                const badgeClass = isWeekend 
-                                    ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10' 
-                                    : 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#222]';
-
+                                const badgeClass = isWeekend ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10' : 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#222]';
                                 return (
                                     <th key={date.toISOString()} className="h-[60px] min-w-[34px] bg-gray-50 dark:bg-[#161616] border-b border-r border-gray-200 dark:border-[#333] p-0 align-bottom group hover:bg-gray-100 dark:hover:bg-[#222] transition-colors relative z-10">
                                         <div className="flex flex-col items-center justify-end pb-2 w-full h-full gap-1">
-                                            <span className={`text-[8px] font-bold uppercase px-1 rounded-[2px] mb-1 ${badgeClass}`}>
-                                                {dayName}
-                                            </span>
+                                            <span className={`text-[8px] font-bold uppercase px-1 rounded-[2px] mb-1 ${badgeClass}`}>{dayName}</span>
                                             <div className="flex flex-col items-center leading-none">
-                                                <span className="text-[12px] font-bold text-gray-900 dark:text-white">
-                                                    {date.getDate()}
-                                                </span>
+                                                <span className="text-[12px] font-bold text-gray-900 dark:text-white">{date.getDate()}</span>
                                                 <div className="w-3 h-px bg-gray-300 dark:bg-[#444] my-0.5"></div>
-                                                <span className="text-[9px] font-medium text-gray-400">
-                                                    {date.getMonth() + 1}
-                                                </span>
+                                                <span className="text-[9px] font-medium text-gray-400">{date.getMonth() + 1}</span>
                                             </div>
                                         </div>
                                     </th>
@@ -331,35 +314,24 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
                         {sortedCountries.map(country => {
                             return (
                                 <tr key={country.code} className="group hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
-                                    
                                     <td className="px-3 py-1 border-b border-r border-gray-200 dark:border-[#333] bg-white dark:bg-[#111] group-hover:bg-gray-50 dark:group-hover:bg-[#1A1A1A] sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                         <div className="flex items-center justify-between h-full w-full">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xl leading-none">{country.emoji}</span>
                                                 <span className="font-bold text-gray-900 dark:text-gray-200 text-xs">{country.code}</span>
                                             </div>
-                                            
                                             <div className="px-1.5 py-0.5 bg-gray-50 dark:bg-[#222] rounded text-[10px] font-bold text-gray-900 dark:text-white border border-gray-100 dark:border-[#333]">
                                                 {totalsByCountry[country.code]}
                                             </div>
                                         </div>
                                     </td>
-
                                     {dateList.map(date => {
                                         const dateKey = date.toISOString().split('T')[0];
                                         const count = matrixData[dateKey]?.[country.code] || 0;
                                         const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short' });
-                                        
                                         return (
-                                            <td 
-                                                key={`${country.code}-${dateKey}`} 
-                                                onClick={() => handleCellClick(country.code, dateKey, count)}
-                                                className="p-0 border-b border-r border-gray-100 dark:border-[#222] text-center relative h-8 matrix-cell cursor-pointer-cell"
-                                            >
-                                                <div 
-                                                    title={`${country.code} - ${dateKey} (${dayName}): ${count} продаж. Нажмите для деталей.`}
-                                                    className={`w-full h-full flex items-center justify-center transition-all duration-300 text-[11px] font-medium rounded-none relative z-0 ${getHeatColor(count)}`}
-                                                >
+                                            <td key={`${country.code}-${dateKey}`} onClick={() => handleCellClick(country.code, dateKey, count)} className="p-0 border-b border-r border-gray-100 dark:border-[#222] text-center relative h-8 matrix-cell cursor-pointer-cell">
+                                                <div title={`${country.code} - ${dateKey} (${dayName}): ${count} продаж`} className={`w-full h-full flex items-center justify-center transition-all duration-300 text-[11px] font-medium rounded-none relative z-0 ${getHeatColor(count)}`}>
                                                     {count > 0 && <span className="hidden xl:inline">{count}</span>}
                                                     {count > 0 && <span className="xl:hidden w-1.5 h-1.5 bg-black/30 dark:bg-white/30 rounded-full"></span>}
                                                 </div>
@@ -369,26 +341,19 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
                                 </tr>
                             );
                         })}
-
-                        {/* TOTAL ROW */}
                         <tr className="bg-gray-50 dark:bg-[#161616]">
                             <td className="px-3 py-1 border-t border-r border-gray-200 dark:border-[#333] bg-gray-100 dark:bg-[#222] sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                 <div className="flex items-center justify-between h-full">
                                     <span className="font-black text-gray-900 dark:text-white text-[10px] uppercase tracking-wider">Всего</span>
-                                    <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">
-                                        {grandTotal}
-                                    </span>
+                                    <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">{grandTotal}</span>
                                 </div>
                             </td>
-
                             {dateList.map(date => {
                                 const dateKey = date.toISOString().split('T')[0];
                                 const count = totalsByDate[dateKey] || 0;
                                 return (
                                     <td key={`total-${dateKey}`} className="p-0 border-t border-r border-gray-200 dark:border-[#333] text-center relative h-8 bg-gray-50 dark:bg-[#1c1c1c]">
-                                        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-gray-700 dark:text-gray-300">
-                                            {count}
-                                        </div>
+                                        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-gray-700 dark:text-gray-300">{count}</div>
                                     </td>
                                 )
                             })}
@@ -399,20 +364,8 @@ const GeoMatrixPage = ({ payments = [], currentUser }) => {
         </div>
       </div>
 
-      {/* УПРАВЛЕНИЕ ГЕО (Модалка) */}
-      <GeoManagerModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        countriesList={countriesList}
-        onUpdate={fetchCountries}
-      />
-
-      {/* DRILL-DOWN МОДАЛКА (Новая) */}
-      <DrillDownModal 
-        selectedCell={selectedCell} 
-        onClose={() => setSelectedCell(null)} 
-      />
-
+      <GeoManagerModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} countriesList={countriesList} onUpdate={fetchCountries} />
+      <DrillDownModal selectedCell={selectedCell} onClose={() => setSelectedCell(null)} />
     </div>
   );
 };
@@ -425,40 +378,42 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
 
     const { countryCode, countryName, countryEmoji, dateKey, count, transactions } = selectedCell;
 
-    // ЗАГЛУШКА ДЛЯ ТРАФИКА
     const trafficCount = 100; 
     const conversionRate = trafficCount > 0 ? ((count / trafficCount) * 100).toFixed(2) : 0;
+    
+    // Берем имя менеджера из подготовленного поля 'manager' (из App.jsx)
+    const managerName = transactions.length > 0 ? (transactions[0].manager || 'Не назначен') : "Не назначен";
 
-    // МЕНЕДЖЕР
-    const managerName = transactions.length > 0 && transactions[0].manager_id ? "ID: " + transactions[0].manager_id.slice(0, 8) + "..." : "Не назначен";
+    const totalAmountEUR = transactions.reduce((sum, t) => sum + (Number(t.amountEUR) || 0), 0);
+    const totalAmountOriginal = transactions.reduce((sum, t) => sum + (Number(t.amountLocal) || 0), 0);
 
-    // СУММЫ
-    const totalAmountEUR = transactions.reduce((sum, t) => {
-        const val = Number(t.amount_eur); 
-        return sum + (isNaN(val) ? 0 : val);
-    }, 0);
+    const formattedDate = new Date(dateKey).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
 
-    const totalAmountOriginal = transactions.reduce((sum, t) => {
-        const val = Number(t.amount_local);
-        return sum + (isNaN(val) ? 0 : val);
-    }, 0);
-
-    const formattedDate = new Date(dateKey).toLocaleDateString('ru-RU', { 
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric',
-        weekday: 'long'
-    });
+    // 🟢 БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ВРЕМЕНИ (ФИКС ОШИБКИ SLICE)
+    const getTimeString = (dateStr) => {
+        if (!dateStr) return '--:--';
+        try {
+            // Если дата с пробелом (как в вашей БД): "2025-12-14 13:14:00+00"
+            if (dateStr.includes(' ')) {
+                return dateStr.split(' ')[1].slice(0, 5);
+            }
+            // Если дата в ISO (с T): "2025-12-14T13:14:00+00"
+            if (dateStr.includes('T')) {
+                return dateStr.split('T')[1].slice(0, 5);
+            }
+            // Если это просто объект Date (мало ли)
+            const d = new Date(dateStr);
+            if (!isNaN(d)) return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            
+            return '--:--';
+        } catch (e) {
+            return '--:--';
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={onClose}>
-            <motion.div 
-                initial={{ scale: 0.9, opacity: 0, y: 20 }} 
-                animate={{ scale: 1, opacity: 1, y: 0 }} 
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                className="bg-white dark:bg-[#111] w-full max-w-md rounded-xl border border-gray-200 dark:border-[#333] shadow-2xl overflow-hidden"
-                onClick={e => e.stopPropagation()}
-            >
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="bg-white dark:bg-[#111] w-full max-w-md rounded-xl border border-gray-200 dark:border-[#333] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="p-5 border-b border-gray-100 dark:border-[#222] bg-gray-50/50 dark:bg-[#161616] flex justify-between items-start">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
@@ -467,38 +422,21 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
                         </div>
                         <p className="text-xs text-gray-500 capitalize font-medium">{formattedDate}</p>
                     </div>
-                    <button onClick={onClose} className="p-1.5 hover:bg-gray-200 dark:hover:bg-[#222] rounded-full text-gray-500 transition-colors">
-                        <X size={18}/>
-                    </button>
+                    <button onClick={onClose} className="p-1.5 hover:bg-gray-200 dark:hover:bg-[#222] rounded-full text-gray-500 transition-colors"><X size={18}/></button>
                 </div>
-
                 <div className="p-5 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                         <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/20">
-                            <div className="text-[10px] text-blue-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1">
-                                <Activity size={10} /> Конверсия
-                            </div>
-                            <div className="text-xl font-black text-gray-900 dark:text-white">
-                                {conversionRate}%
-                            </div>
-                            <div className="text-[10px] text-gray-400 mt-1">
-                                {count} продаж / {trafficCount} кликов
-                            </div>
+                            <div className="text-[10px] text-blue-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><Activity size={10} /> Конверсия</div>
+                            <div className="text-xl font-black text-gray-900 dark:text-white">{conversionRate}%</div>
+                            <div className="text-[10px] text-gray-400 mt-1">{count} продаж / {trafficCount} кликов</div>
                         </div>
-
                         <div className="p-3 bg-purple-50 dark:bg-purple-900/10 rounded-lg border border-purple-100 dark:border-purple-900/20">
-                            <div className="text-[10px] text-purple-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1">
-                                <User size={10} /> Менеджер
-                            </div>
-                            <div className="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title={managerName}>
-                                {managerName}
-                            </div>
-                            <div className="text-[10px] text-gray-400 mt-1">
-                                Ответственный
-                            </div>
+                            <div className="text-[10px] text-purple-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><User size={10} /> Менеджер</div>
+                            <div className="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title={managerName}>{managerName}</div>
+                            <div className="text-[10px] text-gray-400 mt-1">Ответственный</div>
                         </div>
                     </div>
-
                     <div className="p-4 bg-gray-50 dark:bg-[#1A1A1A] rounded-lg border border-gray-100 dark:border-[#222] flex items-center justify-between">
                         <div>
                             <div className="text-[10px] text-gray-400 uppercase font-bold mb-0.5">Сумма (EUR)</div>
@@ -507,12 +445,9 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
                         <div className="w-px h-8 bg-gray-200 dark:bg-[#333]"></div>
                         <div className="text-right">
                             <div className="text-[10px] text-gray-400 uppercase font-bold mb-0.5">Сумма (Local)</div>
-                            <div className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-1 justify-end">
-                                <DollarSign size={14} className="text-gray-400"/> {totalAmountOriginal.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}
-                            </div>
+                            <div className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-1 justify-end"><DollarSign size={14} className="text-gray-400"/> {totalAmountOriginal.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</div>
                         </div>
                     </div>
-
                     {transactions.length > 0 && (
                         <div>
                             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Детализация чеков</div>
@@ -520,12 +455,12 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
                                 {transactions.map((t, idx) => (
                                     <div key={t.id || idx} className="flex justify-between items-center p-2 bg-white dark:bg-[#222] border border-gray-100 dark:border-[#333] rounded text-xs">
                                         <span className="font-mono text-gray-500 w-10">
-                                            {t.transactionDate ? t.transactionDate.split(' ')[1].slice(0, 5) : '--:--'}
+                                            {getTimeString(t.transactionDate)}
                                         </span>
                                         <span className="font-bold dark:text-white flex-1 truncate px-2">{t.product || 'Не указан'}</span>
                                         <div className="text-right">
-                                            <div className="font-mono font-bold">€{Number(t.amount_eur).toFixed(0)}</div>
-                                            <div className="text-[9px] text-gray-400">{Number(t.amount_local).toFixed(0)} loc</div>
+                                            <div className="font-mono font-bold">€{Number(t.amountEUR).toFixed(0)}</div>
+                                            <div className="text-[9px] text-gray-400">{Number(t.amountLocal).toFixed(0)} loc</div>
                                         </div>
                                     </div>
                                 ))}
@@ -538,9 +473,6 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
     );
 };
 
-// ==========================================
-// КОМПОНЕНТ УПРАВЛЕНИЯ ГЕО
-// ==========================================
 const GeoManagerModal = ({ isOpen, onClose, countriesList, onUpdate }) => {
   const [newGeoCode, setNewGeoCode] = useState('');
   const [activeTab, setActiveTab] = useState('list');
@@ -551,48 +483,21 @@ const GeoManagerModal = ({ isOpen, onClose, countriesList, onUpdate }) => {
   const handleAddGeo = async () => {
     if (!newGeoCode) return;
     const lookup = STATIC_GEO_LOOKUP[newGeoCode] || { name: newGeoCode, emoji: '🏳️' };
-    
     setLoading(true);
     try {
-        const { error } = await supabase
-            .from('countries')
-            .insert([{ 
-                code: newGeoCode, 
-                name: lookup.name, 
-                emoji: lookup.emoji 
-            }]);
-
-        if (error) {
-            console.error('Error adding country:', error);
-            alert('Ошибка добавления. Возможно, страна уже есть.');
-        } else {
-            setNewGeoCode('');
-            await onUpdate();
-            setActiveTab('list');
-        }
-    } finally {
-        setLoading(false);
-    }
+        const { error } = await supabase.from('countries').insert([{ code: newGeoCode, name: lookup.name, emoji: lookup.emoji }]);
+        if (error) { console.error('Error adding country:', error); alert('Ошибка добавления. Возможно, страна уже есть.'); } else { setNewGeoCode(''); await onUpdate(); setActiveTab('list'); }
+    } finally { setLoading(false); }
   };
 
   const handleRemoveGeo = async (code) => {
     if (!window.confirm(`Удалить ${code}?`)) return;
-
     setLoading(true);
     try {
-        const { error } = await supabase
-            .from('countries')
-            .delete()
-            .eq('code', code);
-        
+        const { error } = await supabase.from('countries').delete().eq('code', code);
         if (error) throw error;
         await onUpdate();
-    } catch (error) {
-        console.error(error);
-        alert('Ошибка удаления');
-    } finally {
-        setLoading(false);
-    }
+    } catch (error) { console.error(error); alert('Ошибка удаления'); } finally { setLoading(false); }
   };
 
   return (
@@ -602,64 +507,33 @@ const GeoManagerModal = ({ isOpen, onClose, countriesList, onUpdate }) => {
                 <h3 className="text-sm font-bold dark:text-white flex items-center gap-2"><Globe size={16} className="text-blue-500" /> Управление ГЕО</h3>
                 <button onClick={onClose} className="p-1 hover:bg-gray-200 dark:hover:bg-[#222] rounded-full text-gray-500"><X size={16}/></button>
             </div>
-            
             <div className="p-4">
                 <div className="flex bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg mb-4">
                     <button onClick={() => setActiveTab('list')} className={`flex-1 py-1 text-[10px] font-bold rounded-[5px] transition-all ${activeTab === 'list' ? 'bg-white dark:bg-[#333] shadow-sm text-black dark:text-white' : 'text-gray-500'}`}>Активные ({countriesList.length})</button>
                     <button onClick={() => setActiveTab('add')} className={`flex-1 py-1 text-[10px] font-bold rounded-[5px] transition-all ${activeTab === 'add' ? 'bg-white dark:bg-[#333] shadow-sm text-black dark:text-white' : 'text-gray-500'}`}>Добавить</button>
                 </div>
-
                 {activeTab === 'list' ? (
                     <div className="space-y-1.5 max-h-[250px] overflow-y-auto custom-scrollbar pr-1 relative">
                         {loading && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center"><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
-                        
                         {countriesList.map(country => (
                             <div key={country.code} className="flex items-center justify-between p-2.5 bg-gray-50 dark:bg-[#161616] rounded-lg border border-gray-100 dark:border-[#222] group">
                                 <div className="flex items-center gap-2.5">
                                     <span className="text-lg">{country.emoji}</span>
-                                    <div>
-                                        <div className="text-[11px] font-bold dark:text-white">{country.name}</div>
-                                        <div className="text-[9px] text-gray-400 font-mono">{country.code}</div>
-                                    </div>
+                                    <div><div className="text-[11px] font-bold dark:text-white">{country.name}</div><div className="text-[9px] text-gray-400 font-mono">{country.code}</div></div>
                                 </div>
-                                <button onClick={() => handleRemoveGeo(country.code)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-all">
-                                    <Trash2 size={12} />
-                                </button>
+                                <button onClick={() => handleRemoveGeo(country.code)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-all"><Trash2 size={12} /></button>
                             </div>
                         ))}
                         {countriesList.length === 0 && <div className="text-center text-xs text-gray-400 py-4">Список пуст</div>}
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/20 flex gap-2">
-                            <AlertCircle className="text-blue-500 shrink-0" size={14} />
-                            <p className="text-[10px] text-blue-600 dark:text-blue-300 leading-relaxed">Введите ISO код (например DE, US). Имя и флаг подставятся автоматически.</p>
-                        </div>
-                        <div>
-                            <input 
-                                type="text" 
-                                value={newGeoCode} 
-                                onChange={(e) => setNewGeoCode(e.target.value.toUpperCase())} 
-                                placeholder="Код страны (XX)" 
-                                maxLength={2} 
-                                className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none focus:border-blue-500 dark:text-white uppercase" 
-                            />
-                        </div>
-                        
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/20 flex gap-2"><AlertCircle className="text-blue-500 shrink-0" size={14} /><p className="text-[10px] text-blue-600 dark:text-blue-300 leading-relaxed">Введите ISO код (например DE, US). Имя и флаг подставятся автоматически.</p></div>
+                        <div><input type="text" value={newGeoCode} onChange={(e) => setNewGeoCode(e.target.value.toUpperCase())} placeholder="Код страны (XX)" maxLength={2} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-xs font-mono font-bold outline-none focus:border-blue-500 dark:text-white uppercase" /></div>
                         {newGeoCode.length === 2 && (
-                            <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-[#1A1A1A] rounded text-xs text-gray-500">
-                                <span className="text-sm">{STATIC_GEO_LOOKUP[newGeoCode]?.emoji || '🏳️'}</span>
-                                <span className="font-bold">{STATIC_GEO_LOOKUP[newGeoCode]?.name || newGeoCode}</span>
-                            </div>
+                            <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-[#1A1A1A] rounded text-xs text-gray-500"><span className="text-sm">{STATIC_GEO_LOOKUP[newGeoCode]?.emoji || '🏳️'}</span><span className="font-bold">{STATIC_GEO_LOOKUP[newGeoCode]?.name || newGeoCode}</span></div>
                         )}
-
-                        <button 
-                            onClick={handleAddGeo} 
-                            disabled={newGeoCode.length !== 2 || loading} 
-                            className="w-full py-2 bg-black dark:bg-white text-white dark:text-black rounded-lg font-bold text-[10px] hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex justify-center"
-                        >
-                            {loading ? 'Сохранение...' : 'Добавить в базу'}
-                        </button>
+                        <button onClick={handleAddGeo} disabled={newGeoCode.length !== 2 || loading} className="w-full py-2 bg-black dark:bg-white text-white dark:text-black rounded-lg font-bold text-[10px] hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex justify-center">{loading ? 'Сохранение...' : 'Добавить в базу'}</button>
                     </div>
                 )}
             </div>

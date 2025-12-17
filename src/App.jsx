@@ -3,12 +3,12 @@ import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react
 import { 
   LayoutDashboard, Users, Globe, CreditCard, 
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase, 
-  Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift,LayoutGrid 
+  Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid 
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient'; 
-import { fetchPaymentsData } from './services/dataService';
 
+// Импорт страниц
 import LoginPage from './pages/LoginPage';
 import PaymentsPage from './pages/PaymentsPage';
 import DashboardPage from './pages/DashboardPage'
@@ -22,6 +22,7 @@ import EditEmployeePage from './pages/EditEmployeePage';
 import BirthdaysPage from './pages/BirthdaysPage';
 import GeoMatrixPage from './pages/GeoMatrixPage';
 
+// --- КОМПОНЕНТЫ UI ---
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
   const isActive = location.pathname === path;
@@ -55,6 +56,7 @@ const ProtectedRoute = ({ user, allowedRoles, children }) => {
   return children;
 };
 
+// --- APP COMPONENT ---
 function App() {
   const [darkMode, setDarkMode] = useState(true)
   const [user, setUser] = useState(null)
@@ -90,21 +92,76 @@ function App() {
   const handleLogin = (managerData) => { localStorage.setItem('astroUser', JSON.stringify(managerData)); setUser(managerData); }
   const handleLogout = () => { localStorage.removeItem('astroUser'); setUser(null); }
 
+  // --- ЛОГИКА ЗАГРУЗКИ ДАННЫХ (ИСПРАВЛЕННАЯ) ---
   const loadData = async (isBackgroundUpdate = false) => {
     if (!user) return; 
     if (!isBackgroundUpdate) setLoading(true)
+    
     try {
-      const data = await fetchPaymentsData();
-      setPayments(data)
-      const total = data.reduce((sum, item) => sum + (item.amountEUR || 0), 0)
-      setStats({ totalEur: total.toFixed(2), count: data.length })
-    } catch (err) { console.error(err) } finally { if (!isBackgroundUpdate) setLoading(false) }
+      // 1. Загружаем менеджеров для получения имен
+      const { data: managersData, error: managersError } = await supabase
+        .from('managers')
+        .select('id, name');
+      
+      if (managersError) throw managersError;
+
+      // Создаем карту: ID -> Имя (для быстрого поиска)
+      const managersMap = {};
+      if (managersData) {
+        managersData.forEach(m => {
+          managersMap[m.id] = m.name;
+        });
+      }
+
+      // 2. Загружаем платежи
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*') 
+        .order('transaction_date', { ascending: false });
+
+      if (paymentsError) throw paymentsError;
+
+      // 3. Собираем полные данные для всего приложения
+      const formattedData = paymentsData.map(item => ({
+        ...item, // Все исходные поля (amount_eur, manager_id, payment_type и т.д.)
+        
+        // --- ПОЛЯ ДЛЯ СОВМЕСТИМОСТИ СО СТАРЫМИ СТРАНИЦАМИ ---
+        
+        // Дата (превращаем transaction_date в transactionDate)
+        transactionDate: item.transaction_date || item.created_at, 
+        
+        // Валюта (превращаем snake_case в CamelCase и число)
+        amountEUR: Number(item.amount_eur) || 0,
+        amountLocal: Number(item.amount_local) || 0,
+        amount: Number(item.amount_local) || Number(item.amount_eur) || 0, // Fallback
+        
+        // Тип/Метод (в базе payment_type, приложение ждет type)
+        type: item.payment_type || 'Other',
+        
+        // Менеджер (в базе manager_id, приложение ждет manager как Имя)
+        manager: managersMap[item.manager_id] || 'Не назначен',
+        managerId: item.manager_id // Сохраняем ID на всякий случай
+      }));
+
+      setPayments(formattedData)
+      
+      const total = formattedData.reduce((sum, item) => sum + item.amountEUR, 0)
+      setStats({ totalEur: total.toFixed(2), count: formattedData.length })
+
+    } catch (err) { 
+      console.error("Critical Data Load Error:", err) 
+    } finally { 
+      if (!isBackgroundUpdate) setLoading(false) 
+    }
   }
 
   useEffect(() => {
     if (user) {
       loadData();
-      const ch = supabase.channel('table-db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => loadData(true)).subscribe()
+      const ch = supabase.channel('global-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => loadData(true))
+        .subscribe()
+      
       return () => { supabase.removeChannel(ch) }
     }
   }, [user])
@@ -149,16 +206,14 @@ function App() {
             <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
             <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />
 
-{/* ТОЛЬКО ДЛЯ АДМИНОВ */}
-{isAdminAccess && (
-   <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix"  />
-)}
+            {/* ТОЛЬКО ДЛЯ АДМИНОВ */}
+            {isAdminAccess && (
+               <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix"  />
+            )}
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
             
-            {/* ✅ СКРЫВАЕМ ВЕСЬ БЛОК "ЛЮДИ", ВКЛЮЧАЯ ЗАГОЛОВОК */}
             {isAdminAccess && (
               <>
-              
                 <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
                 
                 <button 
@@ -208,7 +263,7 @@ function App() {
         <main className="flex-1 ml-[220px]">
           <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between px-6">
              <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
-                {loading ? 'Обновление данных...' : 'Данные актуальны'}
+                {loading ? 'Обновление данных...' : `Данные актуальны (${payments.length})`}
              </div>
              <button onClick={() => loadData(false)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
                <RefreshCcw size={14} className={loading ? 'animate-spin' : ''} />
