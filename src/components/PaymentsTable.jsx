@@ -3,6 +3,22 @@ import React from 'react';
 const PaymentsTable = ({ payments = [], loading, limit }) => {
   const displayData = limit ? payments.slice(0, limit) : payments;
 
+  // Функция для красивой даты (ДД.ММ ВВ:ММ)
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '---';
+    try {
+      const date = new Date(dateStr);
+      return new Intl.DateTimeFormat('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
+    } catch (e) {
+      return dateStr; // Если ошибка, возвращаем как есть
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden">
       <div className="px-4 py-2 border-b border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#161616] flex justify-between items-center">
@@ -31,26 +47,35 @@ const PaymentsTable = ({ payments = [], loading, limit }) => {
               <tr><td colSpan="6" className="px-4 py-6 text-center">Нет данных</td></tr>
             ) : (
               displayData.map((p, i) => (
-                <tr key={i} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
+                <tr key={p.id || i} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
+                  {/* ДАТА С ФОРМАТИРОВАНИЕМ */}
                   <td className="px-4 py-2 font-mono text-gray-700 dark:text-[#AAA]">
-                    {p.transactionDate}
+                    {formatDate(p.transactionDate)}
                   </td>
-                  <td className="px-4 py-2 text-gray-900 dark:text-white">
+                  
+                  {/* МЕНЕДЖЕР (ТЕПЕРЬ ТУТ ИМЯ ИЗ СТОРА) */}
+                  <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">
                     {p.manager}
                   </td>
+                  
+                  {/* СУММА (УЖЕ ЧИСЛО ИЗ СТОРА) */}
                   <td className="px-4 py-2">
                     <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                      {p.amountEUR} €
+                      {typeof p.amountEUR === 'number' ? p.amountEUR.toFixed(2) : p.amountEUR} €
                     </span>
                   </td>
+                  
                   <td className="px-4 py-2">
                     {p.product}
                   </td>
+                  
                   <td className="px-4 py-2">
                     <span className="px-1.5 py-0.5 rounded-[4px] bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-[#999] border border-gray-200 dark:border-[#333] font-bold text-[10px]">
                       {p.country}
                     </span>
                   </td>
+                  
+                  {/* ТИП (ИЗ СТОРА) */}
                   <td className="px-4 py-2 text-right">
                     {p.type}
                   </td>

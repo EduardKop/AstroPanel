@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useAppStore } from '../store/appStore'; // ✅ Подключаем Store
 import { 
   Filter, Calendar, RotateCcw, XCircle, 
   Users, DollarSign, Percent, CreditCard, LayoutDashboard,
@@ -7,10 +8,8 @@ import {
 import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import PaymentsTable from '../components/PaymentsTable';
 
-// --- КОНФИГУРАЦИЯ И ХЕЛПЕРЫ ---
-
+// --- КОНФИГУРАЦИЯ ---
 const FLAGS = {
   UA: '🇺🇦', PL: '🇵🇱', IT: '🇮🇹', HR: '🇭🇷',
   BG: '🇧🇬', CZ: '🇨🇿', RO: '🇷🇴', LT: '🇱🇹',
@@ -57,21 +56,21 @@ const DenseSelect = ({ label, value, options, onChange }) => (
   </div>
 );
 
-// ✅ Добавлен проп currentUser
-const DashboardPage = ({ payments = [], loading, currentUser }) => {
+const DashboardPage = () => {
+  // ✅ 1. БЕРЕМ ДАННЫЕ ИЗ СТОРА
+  const { payments, user: currentUser, isLoading } = useAppStore();
+
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
   const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '' });
 
-  // ✅ ОПРЕДЕЛЕНИЕ ПРАВ ДОСТУПА
-  // Если роль Sales или Retention/Consultant — ограничиваем просмотр
+  // Права доступа
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
-    const restrictedRoles = ['Sales', 'Retention', 'Consultant']; // Добавьте сюда точные названия ролей из вашей БД
+    const restrictedRoles = ['Sales', 'Retention', 'Consultant']; 
     return restrictedRoles.includes(currentUser.role);
   }, [currentUser]);
 
-  // --- ЛОГИКА ДАННЫХ ---
   const uniqueValues = useMemo(() => {
     const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
     return {
@@ -84,19 +83,19 @@ const DashboardPage = ({ payments = [], loading, currentUser }) => {
 
   const filteredData = useMemo(() => {
     let data = payments.filter(item => {
-      // 1. Фильтр по дате
+      // 1. Дата (берем transactionDate из стора, она уже готова)
       if (!item.transactionDate) return false;
-      const d = new Date(item.transactionDate.split(' ')[0]);
+      
+      // Парсим дату безопасно (так как в сторе это может быть строка с T или без)
+      const d = new Date(item.transactionDate);
+      
       if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return false;
       if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return false;
 
-      // ✅ 2. ПРИНУДИТЕЛЬНЫЙ ФИЛЬТР ПО РОЛИ
+      // 2. Фильтр по роли
       if (isRestrictedUser) {
-        // Если это Sales/Consultant — он видит ТОЛЬКО свои продажи
-        // Предполагаем, что item.manager совпадает с currentUser.name
         if (item.manager !== currentUser.name) return false;
       } else {
-        // Если это Admin/TeamLead — работает обычный фильтр
         if (filters.manager && item.manager !== filters.manager) return false;
       }
 
@@ -107,6 +106,7 @@ const DashboardPage = ({ payments = [], loading, currentUser }) => {
       
       return true;
     });
+    // Сортировка (новые сначала)
     return data.sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate));
   }, [payments, startDate, endDate, filters, isRestrictedUser, currentUser]);
 
@@ -142,7 +142,8 @@ const DashboardPage = ({ payments = [], loading, currentUser }) => {
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
-      const date = item.transactionDate.split(' ')[0];
+      // Берем только дату YYYY-MM-DD
+      const date = new Date(item.transactionDate).toISOString().split('T')[0];
       if (!grouped[date]) grouped[date] = { date, count: 0 };
       grouped[date].count += 1;
     });
@@ -200,7 +201,6 @@ const DashboardPage = ({ payments = [], loading, currentUser }) => {
                <button onClick={resetDateRange} className="ml-1 text-gray-400 hover:text-black dark:hover:text-white"><RotateCcw size={10}/></button>
             </div>
             
-            {/* ✅ Скрываем фильтр менеджера, если пользователь Sales/Consultant */}
             {!isRestrictedUser && (
               <DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />
             )}
@@ -368,11 +368,19 @@ const DashboardPage = ({ payments = [], loading, currentUser }) => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
-                    {filteredData.slice(0, 10).map((p) => (
+                    {isLoading ? (
+                        <tr><td colSpan="7" className="px-4 py-6 text-center text-xs">Загрузка...</td></tr>
+                    ) : filteredData.slice(0, 10).map((p) => (
                         <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
-                            <td className="px-4 py-2 font-mono text-[10px] text-gray-400">#{p.id}</td>
-                            <td className="px-4 py-2 text-gray-500">{new Date(p.transactionDate).toLocaleDateString()}</td>
-                            <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">{p.manager}</td>
+                            <td className="px-4 py-2 font-mono text-[10px] text-gray-400" title={p.id}>
+                                #{p.id.slice(0, 8)}...
+                            </td>
+                            <td className="px-4 py-2 text-gray-500">
+                                {new Date(p.transactionDate).toLocaleDateString('ru-RU')}
+                            </td>
+                            <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">
+                                {p.manager}
+                            </td>
                             <td className="px-4 py-2">
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-600 dark:text-gray-300">
                                     {getFlag(p.country)} {p.country}
@@ -385,12 +393,12 @@ const DashboardPage = ({ payments = [], loading, currentUser }) => {
                             </td>
                             <td className="px-4 py-2 font-mono font-bold text-gray-900 dark:text-white">€{p.amountEUR}</td>
                             <td className="px-4 py-2 text-right">
-                                <span className="text-emerald-500 text-[10px] font-bold uppercase">Paid</span>
+                                <span className="text-emerald-500 text-[10px] font-bold uppercase">{p.status}</span>
                             </td>
                         </tr>
                     ))}
-                    {filteredData.length === 0 && (
-                        <tr><td colSpan="7" className="px-4 py-6 text-center">Нет данных</td></tr>
+                    {!isLoading && filteredData.length === 0 && (
+                        <tr><td colSpan="7" className="px-4 py-6 text-center text-xs">Нет данных</td></tr>
                     )}
                 </tbody>
              </table>

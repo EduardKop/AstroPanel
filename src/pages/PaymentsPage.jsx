@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useAppStore } from '../store/appStore'; // ✅ Подключаем Store
 import { 
   Filter, ChevronLeft, ChevronRight, Calendar, 
   XCircle, RotateCcw, ArrowUpDown 
@@ -7,7 +8,6 @@ import PaymentsTable from '../components/PaymentsTable';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// Функция для получения даты "7 дней назад"
 const getLastWeekRange = () => {
   const end = new Date();
   const start = new Date();
@@ -31,29 +31,25 @@ const SelectFilter = ({ label, value, options, onChange }) => (
   </div>
 );
 
-const PaymentsPage = ({ payments = [], currentUser }) => {
-  // --- STATE ---
+const PaymentsPage = () => {
+  // ✅ 1. БЕРЕМ ДАННЫЕ ИЗ СТОРА
+  const { payments, user: currentUser, isLoading } = useAppStore();
+
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
 
-  const [filters, setFilters] = useState({
-    manager: '',
-    country: '',
-    product: '',
-    type: ''
-  });
-
+  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '' });
   const [sortOrder, setSortOrder] = useState('desc'); 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
 
-  // ✅ 1. ПРОВЕРКА РОЛИ
+  // Права доступа
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
 
-  // --- HELPERS ---
+  // Уникальные значения
   const uniqueValues = useMemo(() => {
     const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
     return {
@@ -67,20 +63,20 @@ const PaymentsPage = ({ payments = [], currentUser }) => {
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const toggleSort = () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
 
-  // --- ГЛАВНАЯ ЛОГИКА ---
+  // ГЛАВНАЯ ЛОГИКА ФИЛЬТРАЦИИ
   const processedData = useMemo(() => {
     let data = payments.filter(item => {
-      // ✅ 2. ФИЛЬТРАЦИЯ ПО РОЛИ
+      // 1. Фильтр по роли
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
       } else {
-        // Если админ - проверяем выбранный фильтр
         if (filters.manager && item.manager !== filters.manager) return false;
       }
 
+      // 2. Фильтр по дате (Безопасный парсинг)
       if (!item.transactionDate) return false;
       
-      const itemDate = new Date(item.transactionDate.replace(' ', 'T'));
+      const itemDate = new Date(item.transactionDate);
       const itemDay = new Date(itemDate);
       itemDay.setHours(0, 0, 0, 0);
 
@@ -96,6 +92,7 @@ const PaymentsPage = ({ payments = [], currentUser }) => {
         if (itemDay > endDay) return false;
       }
 
+      // 3. Остальные фильтры
       if (filters.country && item.country !== filters.country) return false;
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
@@ -103,16 +100,17 @@ const PaymentsPage = ({ payments = [], currentUser }) => {
       return true;
     });
 
+    // Сортировка
     data.sort((a, b) => {
-      const dateA = new Date(a.transactionDate.replace(' ', 'T'));
-      const dateB = new Date(b.transactionDate.replace(' ', 'T'));
+      const dateA = new Date(a.transactionDate);
+      const dateB = new Date(b.transactionDate);
       return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
     });
 
     return data;
   }, [payments, startDate, endDate, filters, sortOrder, isRestrictedUser, currentUser]);
 
-  // --- ПАГИНАЦИЯ ---
+  // Пагинация
   const totalPages = Math.ceil(processedData.length / itemsPerPage);
   const paginatedData = processedData.slice(
     (currentPage - 1) * itemsPerPage,
@@ -175,7 +173,6 @@ const PaymentsPage = ({ payments = [], currentUser }) => {
              </button>
           </div>
 
-          {/* ✅ 3. СКРЫВАЕМ СЕЛЕКТ МЕНЕДЖЕРА, ЕСЛИ НЕ АДМИН */}
           {!isRestrictedUser && (
             <SelectFilter label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => { setFilters(prev => ({ ...prev, manager: val })); setCurrentPage(1); }} />
           )}
@@ -186,7 +183,7 @@ const PaymentsPage = ({ payments = [], currentUser }) => {
         </div>
       </div>
 
-      <PaymentsTable payments={paginatedData} loading={false} />
+      <PaymentsTable payments={paginatedData} loading={isLoading} />
 
       {/* Пагинация */}
       {totalPages > 1 && (

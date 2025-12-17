@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useAppStore } from '../store/appStore'; // ✅ Подключаем Store
 import { Filter, Calendar, RotateCcw, XCircle, ArrowUpDown, Users, TrendingUp, DollarSign, Globe } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -18,7 +19,10 @@ const SelectFilter = ({ label, value, options, onChange }) => (
   </div>
 );
 
-const GeoPage = ({ payments = [] }) => {
+const GeoPage = () => {
+  // ✅ 1. Берем платежи из глобального стейта
+  const { payments } = useAppStore();
+
   const [dateRange, setDateRange] = useState([new Date(new Date().setDate(new Date().getDate() - 7)), new Date()]);
   const [startDate, endDate] = dateRange;
   const [filters, setFilters] = useState({ manager: '', product: '', type: '' });
@@ -37,13 +41,21 @@ const GeoPage = ({ payments = [] }) => {
   // Основная логика
   const geoStats = useMemo(() => {
     const filtered = payments.filter(item => {
+      // 1. Проверка даты (безопасная)
       if (!item.transactionDate) return false;
-      const d = item.transactionDate.split(' ')[0];
-      if (startDate && d < startDate.toISOString().split('T')[0]) return false;
-      if (endDate && d > endDate.toISOString().split('T')[0]) return false;
+      
+      // Приводим дату транзакции к объекту Date для сравнения
+      const transDate = new Date(item.transactionDate);
+      
+      // Фильтр по дате
+      if (startDate && transDate < new Date(startDate.setHours(0,0,0,0))) return false;
+      if (endDate && transDate > new Date(endDate.setHours(23,59,59,999))) return false;
+
+      // 2. Остальные фильтры
       if (filters.manager && item.manager !== filters.manager) return false;
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
+      
       return true;
     });
 
@@ -52,11 +64,11 @@ const GeoPage = ({ payments = [] }) => {
       const code = p.country || 'Unknown';
       if (!statsByGeo[code]) statsByGeo[code] = { count: 0, sum: 0 };
       statsByGeo[code].count += 1;
-      statsByGeo[code].sum += (p.amountEUR || 0);
+      statsByGeo[code].sum += (p.amountEUR || 0); // amountEUR уже число (спасибо Store)
     });
 
     return Object.entries(statsByGeo).map(([code, data]) => {
-      // Mock данные для трафика (т.к. нет в payments)
+      // Mock данные для трафика
       const mockTraffic = data.count * 12; 
       const mockCR = ((data.count / mockTraffic) * 100).toFixed(1);
       
@@ -137,7 +149,6 @@ const GeoPage = ({ payments = [] }) => {
                 <tr><td colSpan="5" className="px-4 py-8 text-center">Нет данных</td></tr>
               ) : (
                 geoStats.map((geo, index) => {
-                  // Логика цвета для CR
                   let crColorClass = 'text-gray-500';
                   if (geo.cr >= 8) crColorClass = 'text-emerald-500 font-bold';
                   else if (geo.cr >= 4) crColorClass = 'text-amber-500 font-medium';
@@ -145,8 +156,6 @@ const GeoPage = ({ payments = [] }) => {
 
                   return (
                     <tr key={geo.code} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group">
-                      
-                      {/* ГЕО */}
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                            <div className="w-6 h-6 rounded bg-gray-100 dark:bg-[#222] flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-[#AAA] border border-gray-200 dark:border-[#333]">
@@ -158,31 +167,10 @@ const GeoPage = ({ payments = [] }) => {
                            )}
                         </div>
                       </td>
-
-                      {/* Трафик */}
-                      <td className="px-4 py-2 text-center font-mono text-gray-500">
-                        {geo.traffic}
-                      </td>
-
-                      {/* Конверсия */}
-                      <td className="px-4 py-2 text-center">
-                        <span className={`text-xs font-mono ${crColorClass}`}>
-                          {geo.cr}%
-                        </span>
-                      </td>
-
-                      {/* Продажи */}
-                      <td className="px-4 py-2 text-right">
-                        <span className="inline-block min-w-[24px] text-center font-mono font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-[#222] rounded px-1 py-0.5 text-[11px]">
-                          {geo.salesCount}
-                        </span>
-                      </td>
-
-                      {/* Оборот */}
-                      <td className="px-4 py-2 text-right font-mono font-bold text-gray-900 dark:text-white">
-                        € {geo.salesSum.toFixed(2)}
-                      </td>
-
+                      <td className="px-4 py-2 text-center font-mono text-gray-500">{geo.traffic}</td>
+                      <td className="px-4 py-2 text-center"><span className={`text-xs font-mono ${crColorClass}`}>{geo.cr}%</span></td>
+                      <td className="px-4 py-2 text-right"><span className="inline-block min-w-[24px] text-center font-mono font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-[#222] rounded px-1 py-0.5 text-[11px]">{geo.salesCount}</span></td>
+                      <td className="px-4 py-2 text-right font-mono font-bold text-gray-900 dark:text-white">€ {geo.salesSum.toFixed(2)}</td>
                     </tr>
                   );
                 })

@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchManagersData, toggleManagerStatus } from '../services/dataService';
+import { useAppStore } from '../store/appStore';
+import { toggleManagerStatus } from '../services/dataService';
 import { 
-  Mail, Phone, Calendar, Globe, Send, User, 
-  Briefcase, Clock, Search, Filter, XCircle, Plus, 
-  Pencil, Lock, Unlock, MapPin, ShieldCheck, Ban 
+  Mail, Phone, Clock, Globe, Send, User, 
+  Briefcase, Search, Filter, XCircle, Plus, 
+  Pencil, Lock, Unlock, Ban, ShieldCheck 
 } from 'lucide-react';
 
 const SelectFilter = ({ label, value, options, onChange }) => (
@@ -25,41 +26,29 @@ const SelectFilter = ({ label, value, options, onChange }) => (
   </div>
 );
 
-const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, excludeRole, currentUser, showAddButton = false }) => {
+const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, excludeRole, showAddButton = false }) => {
   const navigate = useNavigate();
-  const [managers, setManagers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { managers, user: currentUser, fetchAllData, isLoading } = useAppStore();
   const [filters, setFilters] = useState({ geo: '' });
 
-  // Загрузка данных
-  const loadManagers = async () => {
-    setLoading(true);
-    const data = await fetchManagersData();
-    
-    let filtered = data;
+  // Фильтрация
+  const processedManagers = useMemo(() => {
+    let result = managers;
+
+    // 1. Фильтр по роли (из пропсов роутера)
     if (targetRole) {
-      filtered = filtered.filter(m => m.role?.toLowerCase() === targetRole.toLowerCase());
+      result = result.filter(m => m.role?.toLowerCase() === targetRole.toLowerCase());
     }
     if (excludeRole) {
-      filtered = filtered.filter(m => m.role?.toLowerCase() !== excludeRole.toLowerCase());
+      result = result.filter(m => m.role?.toLowerCase() !== excludeRole.toLowerCase());
     }
 
-    setManagers(filtered);
-    setLoading(false);
-  };
+    // 2. Фильтр по ГЕО (из выпадающего списка)
+    if (filters.geo) {
+      result = result.filter(mgr => mgr.geo && Array.isArray(mgr.geo) && mgr.geo.includes(filters.geo));
+    }
 
-  useEffect(() => {
-    loadManagers();
-  }, [targetRole, excludeRole]);
-
-  // Сортировка и фильтрация
-  const processedManagers = useMemo(() => {
-    let result = managers.filter(mgr => {
-      if (filters.geo && (!mgr.geo || !mgr.geo.includes(filters.geo))) return false;
-      return true;
-    });
-
-    // СОРТИРОВКА: Active сверху, Blocked снизу
+    // 3. Сортировка (Активные выше)
     result.sort((a, b) => {
       if (a.status === 'active' && b.status !== 'active') return -1;
       if (a.status !== 'active' && b.status === 'active') return 1;
@@ -67,31 +56,27 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     });
 
     return result;
-  }, [managers, filters]);
+  }, [managers, targetRole, excludeRole, filters.geo]);
 
+  // Собираем уникальные ГЕО для фильтра
   const uniqueGeos = useMemo(() => {
     return [...new Set(managers.flatMap(m => m.geo || []))].sort();
   }, [managers]);
 
-  // ПРАВА ДОСТУПА: Админ или C-level
   const canManage = currentUser && ['Admin', 'C-level'].includes(currentUser.role);
 
-  // Обработчик Блокировки
   const handleToggleBlock = async (id, currentStatus, name) => {
     const action = currentStatus === 'active' ? 'заблокировать' : 'разблокировать';
     if (!window.confirm(`Вы уверены, что хотите ${action} сотрудника ${name}?`)) return;
 
     try {
       await toggleManagerStatus(id, currentStatus);
-      setManagers(prev => prev.map(m => 
-        m.id === id ? { ...m, status: m.status === 'active' ? 'blocked' : 'active' } : m
-      ));
+      fetchAllData(true); 
     } catch (e) {
       alert('Ошибка при смене статуса');
     }
   };
 
-  // Вспомогательные функции
   const calculateAge = (birthDateString) => {
     if (!birthDateString) return null;
     const today = new Date();
@@ -106,12 +91,12 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     if (!createdAt) return { dateStr: '-', days: 0 };
     const diff = Math.abs(new Date() - new Date(createdAt));
     return { 
-      dateStr: new Date(createdAt).toLocaleDateString(), 
+      dateStr: new Date(createdAt).toLocaleDateString('ru-RU'), 
       days: Math.ceil(diff / (1000 * 3600 * 24)) 
     };
   };
 
-  if (loading) {
+  if (isLoading && managers.length === 0) {
     return <div className="flex justify-center items-center h-64 text-gray-500 animate-pulse text-xs font-mono">Загрузка данных...</div>;
   }
 
@@ -173,10 +158,9 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
               `}
             >
               
-              {/* --- HEADER КАРТОЧКИ --- */}
+              {/* CARD HEADER */}
               <div className="p-4 flex items-start justify-between border-b border-gray-100 dark:border-[#222] bg-gray-50/50 dark:bg-[#161616]/50">
                 <div className="flex items-center gap-3">
-                   {/* Аватар */}
                    <div className="relative">
                      {mgr.avatar_url ? (
                        <img 
@@ -186,12 +170,11 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                        />
                      ) : (
                        <div className={`w-10 h-10 rounded-[8px] flex items-center justify-center text-xs font-bold border ${isBlocked ? 'bg-red-50 text-red-400 border-red-100' : 'bg-white dark:bg-[#222] text-gray-500 border-gray-200 dark:border-[#333]'}`}>
-                          {mgr.name.charAt(0)}
+                          {mgr.name?.charAt(0)}
                        </div>
                      )}
                    </div>
                    
-                   {/* Имя и Возраст */}
                    <div>
                       <h3 className={`text-sm font-bold leading-tight ${isBlocked ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
                         {mgr.name}
@@ -204,7 +187,6 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                    </div>
                 </div>
 
-                {/* STATUS BADGE (Явный и четкий) */}
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded-[4px] border text-[10px] font-bold uppercase tracking-wider ${
                   isBlocked 
                     ? 'bg-red-50 dark:bg-red-900/10 text-red-600 border-red-100 dark:border-red-900/30' 
@@ -215,19 +197,17 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                 </div>
               </div>
 
-              {/* --- BODY: ТЕХНИЧЕСКИЕ ДАННЫЕ (GRID) --- */}
+              {/* CARD BODY */}
               <div className="p-4 grid grid-cols-2 gap-y-4 gap-x-2 text-xs">
                 
-                {/* Роль */}
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Должность</span>
                   <div className="flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
                     <Briefcase size={12} className="text-blue-500" />
-                    {mgr.role}
+                    {mgr.role || 'Не указана'}
                   </div>
                 </div>
 
-                {/* ГЕО (Теперь видно хорошо) */}
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Локация (ГЕО)</span>
                   <div className="flex items-center gap-1.5 font-medium text-gray-900 dark:text-white">
@@ -240,7 +220,6 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                   </div>
                 </div>
 
-                {/* Стаж */}
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">В команде</span>
                   <div className="flex items-center gap-1.5 font-mono text-gray-600 dark:text-gray-400">
@@ -249,7 +228,6 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                   </div>
                 </div>
 
-                {/* Дата старта */}
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Дата начала</span>
                   <div className="font-mono text-gray-600 dark:text-gray-400">
@@ -259,10 +237,8 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
 
               </div>
 
-              {/* --- FOOTER: КОНТАКТЫ И ДЕЙСТВИЯ --- */}
+              {/* FOOTER */}
               <div className="px-4 py-3 border-t border-gray-100 dark:border-[#222] flex items-center justify-between bg-gray-50/30 dark:bg-[#161616]/30">
-                
-                {/* Контакты (Иконки) */}
                 <div className="flex items-center gap-3">
                   {mgr.telegram_username && (
                     <a 
@@ -287,7 +263,6 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                   )}
                 </div>
 
-                {/* Действия админа */}
                 {canManage && (
                   <div className="flex items-center gap-2">
                     <button 

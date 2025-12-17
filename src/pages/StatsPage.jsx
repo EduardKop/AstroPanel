@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useAppStore } from '../store/appStore'; // ✅ Store
 import { 
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
@@ -32,26 +33,31 @@ const getCurrentMonthRange = () => {
 };
 
 // --- ОСНОВНОЙ КОМПОНЕНТ ---
-const StatsPage = ({ payments = [], currentUser }) => {
+const StatsPage = () => {
+  // ✅ 1. Берем данные из стора
+  const { payments, user: currentUser } = useAppStore();
+
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
   const [expandedChart, setExpandedChart] = useState(null);
 
-  // ✅ 1. ПРОВЕРКА РОЛИ
+  // Права доступа
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
 
-  // ✅ 2. ФИЛЬТРАЦИЯ
+  // Фильтрация
   const filteredData = useMemo(() => {
     let data = payments.filter(item => {
+      // Проверка даты
       if (!item.transactionDate) return false;
-      const d = new Date(item.transactionDate.split(' ')[0]);
-      if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return false;
-      if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return false;
+      const transDate = new Date(item.transactionDate);
+      
+      if (startDate && transDate < new Date(startDate.setHours(0,0,0,0))) return false;
+      if (endDate && transDate > new Date(endDate.setHours(23,59,59,999))) return false;
 
-      // 🔒 ПРИВАТНОСТЬ: Если пользователь ограничен, показываем только его данные
+      // Приватность
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
       }
@@ -65,7 +71,8 @@ const StatsPage = ({ payments = [], currentUser }) => {
     const grouped = {};
     const allKeys = new Set();
     sourceData.forEach(item => {
-      const date = item.transactionDate.split(' ')[0];
+      // Используем только дату YYYY-MM-DD
+      const date = new Date(item.transactionDate).toISOString().split('T')[0];
       const key = item[dataKey] || 'Unknown';
       allKeys.add(key);
       if (!grouped[date]) grouped[date] = { date };
@@ -155,11 +162,11 @@ const StatsPage = ({ payments = [], currentUser }) => {
 
       </div>
 
-      {/* --- МОДАЛЬНОЕ ОКНО ДЕТАЛЬНОГО ПРОСМОТРА --- */}
+      {/* --- МОДАЛЬНОЕ ОКНО --- */}
       {expandedChart && (
         <ExpandedChartModal 
           chartKey={expandedChart} 
-          rawPayments={filteredData} // Передаем УЖЕ отфильтрованные данные
+          rawPayments={filteredData} // Уже отфильтрованные данные
           onClose={() => setExpandedChart(null)} 
         />
       )}
@@ -176,7 +183,7 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
   const filteredData = useMemo(() => {
     let data = rawPayments.filter(item => {
       if (!item.transactionDate) return false;
-      const d = new Date(item.transactionDate.split(' ')[0]);
+      const d = new Date(item.transactionDate);
       if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return false;
       if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return false;
       return true;
@@ -188,7 +195,7 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
     const grouped = {};
     const allKeys = new Set();
     filteredData.forEach(item => {
-      const date = item.transactionDate.split(' ')[0];
+      const date = new Date(item.transactionDate).toISOString().split('T')[0];
       const key = item[chartKey] || 'Unknown';
       allKeys.add(key);
       if (!grouped[date]) grouped[date] = { date };
@@ -214,7 +221,6 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white dark:bg-[#09090b] w-full max-w-6xl h-[85vh] rounded-2xl border border-gray-200 dark:border-[#333] shadow-2xl flex flex-col overflow-hidden">
         
-        {/* HEADER MODAL */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-[#222]">
           <div>
             <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">{titles[chartKey]}</h2>
@@ -229,7 +235,6 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
           </div>
         </div>
 
-        {/* CHART AREA */}
         <div className="flex-1 p-6 min-h-0">
            <ResponsiveContainer width="100%" height="100%">
               {isBar ? (
@@ -259,7 +264,7 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
   );
 };
 
-// --- ВИДЖЕТ ГРАФИКА (MINI) ---
+// --- ВИДЖЕТ ГРАФИКА ---
 const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
   const hasData = data && data.length > 0;
   return (

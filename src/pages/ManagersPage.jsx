@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useAppStore } from '../store/appStore'; // ✅ Store
 import { 
   Filter, Calendar, RotateCcw, XCircle, 
   ArrowUpDown, Globe, ShoppingCart, DollarSign, 
@@ -22,7 +23,10 @@ const SelectFilter = ({ label, value, options, onChange }) => (
   </div>
 );
 
-const ManagersPage = ({ payments = [] }) => {
+const ManagersPage = () => {
+  // ✅ 1. Берем данные из стора
+  const { payments } = useAppStore();
+
   const [dateRange, setDateRange] = useState([new Date(new Date().setDate(new Date().getDate() - 7)), new Date()]);
   const [startDate, endDate] = dateRange;
   const [filters, setFilters] = useState({ country: '', product: '', type: '' });
@@ -45,10 +49,12 @@ const ManagersPage = ({ payments = [] }) => {
   const managersStats = useMemo(() => {
     // 1. Фильтрация
     const filtered = payments.filter(item => {
+      // Безопасная проверка даты
       if (!item.transactionDate) return false;
-      const d = item.transactionDate.split(' ')[0];
-      if (startDate && d < startDate.toISOString().split('T')[0]) return false;
-      if (endDate && d > endDate.toISOString().split('T')[0]) return false;
+      const transDate = new Date(item.transactionDate);
+      
+      if (startDate && transDate < new Date(startDate.setHours(0,0,0,0))) return false;
+      if (endDate && transDate > new Date(endDate.setHours(23,59,59,999))) return false;
       if (filters.country && item.country !== filters.country) return false;
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
@@ -58,12 +64,12 @@ const ManagersPage = ({ payments = [] }) => {
     // 2. Группировка
     const statsByName = {};
     filtered.forEach(p => {
-      const name = p.manager || 'Неизвестно';
+      const name = p.manager || 'Неизвестно'; // manager уже имя (из Store)
       if (!statsByName[name]) {
         statsByName[name] = { count: 0, sum: 0, countries: new Set() };
       }
       statsByName[name].count += 1;
-      statsByName[name].sum += (p.amountEUR || 0);
+      statsByName[name].sum += (p.amountEUR || 0); // amountEUR уже число
       if (p.country) statsByName[name].countries.add(p.country);
     });
 
@@ -158,7 +164,6 @@ const ManagersPage = ({ payments = [] }) => {
                 <tr><td colSpan="8" className="px-4 py-8 text-center">Нет данных</td></tr>
               ) : (
                 managersStats.map((mgr) => {
-                  // Логика цвета для CR
                   let crColorClass = 'text-gray-500';
                   if (mgr.cr >= 10) crColorClass = 'text-emerald-500 font-bold';
                   else if (mgr.cr >= 5) crColorClass = 'text-amber-500 font-medium';
@@ -167,7 +172,6 @@ const ManagersPage = ({ payments = [] }) => {
                   return (
                     <tr key={mgr.name} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group">
                       
-                      {/* Менеджер */}
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                            <div className="w-6 h-6 rounded bg-gray-100 dark:bg-[#222] flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-[#AAA]">
@@ -177,43 +181,36 @@ const ManagersPage = ({ payments = [] }) => {
                         </div>
                       </td>
 
-                      {/* Роль */}
                       <td className="px-4 py-2 hidden sm:table-cell">
                         <span className="text-[10px] bg-gray-50 dark:bg-[#222] border border-gray-100 dark:border-[#333] px-1.5 py-0.5 rounded text-gray-500">
                           {mgr.role}
                         </span>
                       </td>
 
-                      {/* ГЕО */}
                       <td className="px-4 py-2 text-[10px] font-mono text-gray-500">
                         {mgr.geoDisplay || '-'}
                       </td>
 
-                      {/* Смены */}
                       <td className="px-4 py-2 text-center font-mono hidden sm:table-cell">
                         {mgr.shifts}
                       </td>
 
-                      {/* CR (Цветной) */}
                       <td className="px-4 py-2 text-center">
                         <span className={`text-xs font-mono ${crColorClass}`}>
                           {mgr.cr}%
                         </span>
                       </td>
 
-                      {/* Продажи */}
                       <td className="px-4 py-2 text-center">
                         <span className="inline-block min-w-[24px] text-center font-mono font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-[#222] rounded px-1 py-0.5 text-[11px]">
                           {mgr.salesCount}
                         </span>
                       </td>
 
-                      {/* Оборот */}
                       <td className="px-4 py-2 text-right font-mono text-gray-600 dark:text-gray-400">
                         € {mgr.salesSum.toFixed(0)}
                       </td>
 
-                      {/* Зарплата (Зеленая Жирная) */}
                       <td className="px-4 py-2 text-right">
                         <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                           € {mgr.salary}

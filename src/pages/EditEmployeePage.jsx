@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 
 const ROLES = ['Sales', 'Consultant', 'Admin', 'C-level', 'Manager'];
-const COUNTRIES = ['UA', 'PL', 'DE', 'RO', 'BG', 'CZ', 'IT', 'ES', 'PT', 'TR', 'FR', 'US'];
 
 const EditEmployeePage = () => {
   const { id } = useParams();
@@ -18,6 +17,9 @@ const EditEmployeePage = () => {
   
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+
+  // ✅ 1. Список стран из БД
+  const [availableCountries, setAvailableCountries] = useState([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -31,21 +33,31 @@ const EditEmployeePage = () => {
     avatar_url: null
   });
 
-  // Загрузка данных сотрудника
+  // Загрузка данных
   useEffect(() => {
     const load = async () => {
-      const data = await fetchManagerById(id);
-      if (data) {
-        setFormData({
-          ...data,
-          geo: data.geo || [], // Если null, ставим пустой массив
-        });
-        setPreviewUrl(data.avatar_url);
-      } else {
-        alert('Сотрудник не найден');
-        navigate('/all-employees');
+      try {
+        // А. Загружаем страны
+        const { data: countriesData } = await supabase.from('countries').select('*').order('code');
+        if (countriesData) setAvailableCountries(countriesData);
+
+        // Б. Загружаем сотрудника
+        const data = await fetchManagerById(id);
+        if (data) {
+          setFormData({
+            ...data,
+            geo: data.geo || [], 
+          });
+          setPreviewUrl(data.avatar_url);
+        } else {
+          alert('Сотрудник не найден');
+          navigate('/all-employees');
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     load();
   }, [id, navigate]);
@@ -80,7 +92,6 @@ const EditEmployeePage = () => {
     try {
       let finalAvatarUrl = formData.avatar_url;
 
-      // Если выбрали новый файл - грузим его
       if (avatarFile) {
         const fileExt = avatarFile.name.split('.').pop();
         const fileName = `${Date.now()}.${fileExt}`;
@@ -96,7 +107,6 @@ const EditEmployeePage = () => {
         finalAvatarUrl = data.publicUrl;
       }
 
-      // Обновляем данные
       await updateManagerProfile(id, {
         name: formData.name,
         role: formData.role,
@@ -110,7 +120,7 @@ const EditEmployeePage = () => {
       });
 
       alert('Данные обновлены!');
-      navigate(-1); // Возвращаемся назад
+      navigate(-1); 
 
     } catch (error) {
       console.error('Error updating:', error);
@@ -140,7 +150,13 @@ const EditEmployeePage = () => {
         <div className="lg:col-span-1">
           <div className="bg-white dark:bg-dark-card p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center text-center">
             <div className="relative w-40 h-40 mb-4 group">
-              <img src={previewUrl} alt="Preview" className="w-full h-full rounded-full object-cover border-4 border-gray-100 dark:border-gray-700 shadow-md" />
+              {previewUrl ? (
+                <img src={previewUrl} alt="Preview" className="w-full h-full rounded-full object-cover border-4 border-gray-100 dark:border-gray-700 shadow-md" />
+              ) : (
+                <div className="w-full h-full rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                  <User size={48} className="text-gray-300"/>
+                </div>
+              )}
               <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 rounded-full cursor-pointer transition-opacity backdrop-blur-sm">
                 <UploadCloud size={24} />
                 <span className="text-xs font-bold ml-2">Изменить</span>
@@ -202,18 +218,34 @@ const EditEmployeePage = () => {
                </InputGroup>
             </div>
 
+            {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2"><MapPin size={14} /> ГЕО</label>
-              <div className="flex flex-wrap gap-2">
-                {COUNTRIES.map(c => {
-                  const isActive = formData.geo.includes(c);
-                  return (
-                    <button key={c} type="button" onClick={() => toggleCountry(c)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${isActive ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'}`}>
-                      {c}
-                    </button>
-                  )
-                })}
-              </div>
+              
+              {availableCountries.length === 0 ? (
+                <div className="text-xs text-gray-400">Загрузка стран...</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {availableCountries.map(country => {
+                    const isActive = formData.geo.includes(country.code);
+                    return (
+                      <button
+                        key={country.code}
+                        type="button"
+                        onClick={() => toggleCountry(country.code)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${
+                          isActive 
+                          ? 'bg-blue-600 text-white border-blue-600' 
+                          : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'
+                        }`}
+                      >
+                        <span>{country.emoji}</span>
+                        <span>{country.code}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             <button type="submit" disabled={saving} className="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-70">

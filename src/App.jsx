@@ -3,12 +3,13 @@ import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react
 import { 
   LayoutDashboard, Users, Globe, CreditCard, 
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase, 
-  Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid 
+  Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
+  BookOpen, Shield // ✅ Новые иконки для базы знаний
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient'; 
+import { useAppStore } from './store/appStore';
 
-// Импорт страниц
 import LoginPage from './pages/LoginPage';
 import PaymentsPage from './pages/PaymentsPage';
 import DashboardPage from './pages/DashboardPage'
@@ -21,51 +22,37 @@ import AddEmployeePage from './pages/AddEmployeePage';
 import EditEmployeePage from './pages/EditEmployeePage';
 import BirthdaysPage from './pages/BirthdaysPage';
 import GeoMatrixPage from './pages/GeoMatrixPage';
+import ProductsPage from './pages/knowledge/ProductsPage'; // ✅ Новая страница
+import RulesPage from './pages/knowledge/RulesPage';       // ✅ Новая страница
 
-// --- КОМПОНЕНТЫ UI ---
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
   const isActive = location.pathname === path;
-
-  const baseClasses = `
-    group w-full flex items-center gap-2.5 px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium
-    ${isChild ? 'pl-8' : ''} 
-  `;
-
-  const stateClasses = isActive
-    ? 'bg-gray-200 text-black dark:bg-[#2A2A2A] dark:text-white font-semibold' 
-    : 'text-gray-600 dark:text-[#888888] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] hover:text-black dark:hover:text-[#EAEAEA]';
-
+  const baseClasses = `group w-full flex items-center gap-2.5 px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isChild ? 'pl-8' : ''}`;
+  const stateClasses = isActive ? 'bg-gray-200 text-black dark:bg-[#2A2A2A] dark:text-white font-semibold' : 'text-gray-600 dark:text-[#888888] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] hover:text-black dark:hover:text-[#EAEAEA]';
   return (
-    <Link 
-      to={path} 
-      onClick={onClick}
-      className={`${baseClasses} ${stateClasses} ${className || ''}`}
-    >
+    <Link to={path} onClick={onClick} className={`${baseClasses} ${stateClasses} ${className || ''}`}>
       <Icon size={isChild ? 14 : 16} className={isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'} />
       <span>{label}</span>
     </Link>
   )
 }
 
-const ProtectedRoute = ({ user, allowedRoles, children }) => {
+const ProtectedRoute = ({ allowedRoles, children }) => {
+  const user = useAppStore(state => state.user);
   if (!user) return <Navigate to="/" />; 
-  if (!allowedRoles.includes(user.role)) {
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <div className="h-full flex items-center justify-center text-gray-500 text-sm">⛔ Доступ запрещен</div>;
   }
   return children;
 };
 
-// --- APP COMPONENT ---
 function App() {
   const [darkMode, setDarkMode] = useState(true)
-  const [user, setUser] = useState(null)
-  const [isAuthChecking, setIsAuthChecking] = useState(true)
   const [isEmployeesOpen, setIsEmployeesOpen] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
-  const [payments, setPayments] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [stats, setStats] = useState({ totalEur: 0, count: 0 })
+  const { user, setUser, logout, fetchAllData, payments, isLoading } = useAppStore();
 
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark')
@@ -73,125 +60,51 @@ function App() {
   }, [darkMode])
 
   useEffect(() => {
-    const initUser = async () => {
+    const initAuth = async () => {
       const savedUserStr = localStorage.getItem('astroUser');
-      let currentUser = null;
       if (savedUserStr) {
-        currentUser = JSON.parse(savedUserStr);
-        setUser(currentUser);
+        const parsedUser = JSON.parse(savedUserStr);
+        setUser(parsedUser);
+        fetchAllData(); 
       }
       setIsAuthChecking(false);
-      if (currentUser && currentUser.id) {
-        const { data } = await supabase.from('managers').select('*').eq('id', currentUser.id).single();
-        if (data) { setUser(data); localStorage.setItem('astroUser', JSON.stringify(data)); }
-      }
     };
-    initUser();
-  }, [])
-
-  const handleLogin = (managerData) => { localStorage.setItem('astroUser', JSON.stringify(managerData)); setUser(managerData); }
-  const handleLogout = () => { localStorage.removeItem('astroUser'); setUser(null); }
-
-  // --- ЛОГИКА ЗАГРУЗКИ ДАННЫХ (ИСПРАВЛЕННАЯ) ---
-  const loadData = async (isBackgroundUpdate = false) => {
-    if (!user) return; 
-    if (!isBackgroundUpdate) setLoading(true)
-    
-    try {
-      // 1. Загружаем менеджеров для получения имен
-      const { data: managersData, error: managersError } = await supabase
-        .from('managers')
-        .select('id, name');
-      
-      if (managersError) throw managersError;
-
-      // Создаем карту: ID -> Имя (для быстрого поиска)
-      const managersMap = {};
-      if (managersData) {
-        managersData.forEach(m => {
-          managersMap[m.id] = m.name;
-        });
-      }
-
-      // 2. Загружаем платежи
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('payments')
-        .select('*') 
-        .order('transaction_date', { ascending: false });
-
-      if (paymentsError) throw paymentsError;
-
-      // 3. Собираем полные данные для всего приложения
-      const formattedData = paymentsData.map(item => ({
-        ...item, // Все исходные поля (amount_eur, manager_id, payment_type и т.д.)
-        
-        // --- ПОЛЯ ДЛЯ СОВМЕСТИМОСТИ СО СТАРЫМИ СТРАНИЦАМИ ---
-        
-        // Дата (превращаем transaction_date в transactionDate)
-        transactionDate: item.transaction_date || item.created_at, 
-        
-        // Валюта (превращаем snake_case в CamelCase и число)
-        amountEUR: Number(item.amount_eur) || 0,
-        amountLocal: Number(item.amount_local) || 0,
-        amount: Number(item.amount_local) || Number(item.amount_eur) || 0, // Fallback
-        
-        // Тип/Метод (в базе payment_type, приложение ждет type)
-        type: item.payment_type || 'Other',
-        
-        // Менеджер (в базе manager_id, приложение ждет manager как Имя)
-        manager: managersMap[item.manager_id] || 'Не назначен',
-        managerId: item.manager_id // Сохраняем ID на всякий случай
-      }));
-
-      setPayments(formattedData)
-      
-      const total = formattedData.reduce((sum, item) => sum + item.amountEUR, 0)
-      setStats({ totalEur: total.toFixed(2), count: formattedData.length })
-
-    } catch (err) { 
-      console.error("Critical Data Load Error:", err) 
-    } finally { 
-      if (!isBackgroundUpdate) setLoading(false) 
-    }
-  }
+    initAuth();
+  }, []);
 
   useEffect(() => {
     if (user) {
-      loadData();
-      const ch = supabase.channel('global-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => loadData(true))
-        .subscribe()
-      
-      return () => { supabase.removeChannel(ch) }
+      const unsubscribe = useAppStore.getState().subscribeToRealtime();
+      return () => unsubscribe();
     }
-  }, [user])
+  }, [user]);
+
+  const handleLoginSuccess = (managerData) => {
+    localStorage.setItem('astroUser', JSON.stringify(managerData));
+    setUser(managerData);
+    fetchAllData();
+  }
 
   const isAdminAccess = user && ['Admin', 'C-level'].includes(user.role);
 
   if (isAuthChecking) return <div className="min-h-screen bg-[#0A0A0A]" />
-  if (!user) return <LoginPage onLoginSuccess={handleLogin} />
+  if (!user) return <LoginPage onLoginSuccess={handleLoginSuccess} />
 
   return (
     <BrowserRouter>
-      {/* BACKGROUND: Technical Dark */}
       <div className="min-h-screen flex bg-[#F5F5F5] dark:bg-[#0A0A0A] font-sans transition-colors duration-300 text-[13px]">
-        
-        {/* SIDEBAR */}
         <aside className="w-[220px] fixed h-full bg-white dark:bg-[#111111] border-r border-gray-200 dark:border-[#222] flex flex-col z-20">
-          
-          {/* HEADER */}
           <div className="h-12 flex items-center px-4 border-b border-gray-100 dark:border-[#222]">
             <div className="w-5 h-5 bg-black dark:bg-white rounded flex items-center justify-center text-white dark:text-black font-bold text-[10px] mr-2">AP</div>
             <span className="font-bold text-gray-900 dark:text-white tracking-tight">AstroPanel</span>
           </div>
 
-          {/* USER INFO */}
           <div className="p-3">
             <div className="flex items-center gap-2.5 p-2 rounded-lg bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#2A2A2A]">
               {user.avatar_url ? (
                  <img src={user.avatar_url} className="w-8 h-8 rounded-md object-cover" />
                ) : (
-                 <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-300">{user.name[0]}</div>
+                 <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-300">{user.name?.[0]}</div>
                )}
                <div className="flex-1 min-w-0">
                  <div className="text-xs font-semibold text-gray-900 dark:text-gray-200 truncate">{user.name}</div>
@@ -200,45 +113,31 @@ function App() {
             </div>
           </div>
 
-          {/* MENU */}
           <nav className="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-0.5">
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider">Дашборды</div>
             <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
             <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />
-
-            {/* ТОЛЬКО ДЛЯ АДМИНОВ */}
-            {isAdminAccess && (
-               <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix"  />
-            )}
+            {isAdminAccess && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
             
+            {/* ✅ НОВЫЙ РАЗДЕЛ: БАЗА ЗНАНИЙ (Доступна всем авторизованным) */}
+            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">База знаний</div>
+            <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
+            <SidebarItem icon={Shield} label="Правила" path="/rules" />
+
             {isAdminAccess && (
               <>
                 <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
-                
-                <button 
-                  onClick={() => setIsEmployeesOpen(!isEmployeesOpen)}
-                  className={`
-                    w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium
-                    ${isEmployeesOpen 
-                      ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' 
-                      : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}
-                  `}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Users size={16} />
-                    <span>Сотрудники</span>
-                  </div>
+                <button onClick={() => setIsEmployeesOpen(!isEmployeesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isEmployeesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+                  <div className="flex items-center gap-2.5"><Users size={16} /><span>Сотрудники</span></div>
                   <ChevronRight size={12} className={`transition-transform duration-200 ${isEmployeesOpen ? 'rotate-90' : ''}`} />
                 </button>
-
                 <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isEmployeesOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
                   <SidebarItem icon={Contact} label="Все сотрудники" path="/all-employees" isChild />
                   <SidebarItem icon={Briefcase} label="Отдел Продаж" path="/sales-team" isChild />
                   <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
                   <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
                 </div>
-
                 <SidebarItem icon={Users} label="Эффективность" path="/managers" />
                 <SidebarItem icon={Globe} label="География" path="/geo" />
                 <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />
@@ -246,54 +145,50 @@ function App() {
             )}
           </nav>
 
-          {/* FOOTER */}
           <div className="p-2 border-t border-gray-200 dark:border-[#222]">
             <button onClick={() => setDarkMode(!darkMode)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[6px] text-xs font-medium text-gray-500 dark:text-[#666] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] hover:text-black dark:hover:text-white transition-all">
-              {darkMode ? <Sun size={14} /> : <Moon size={14} />}
-              <span>{darkMode ? 'Светлая' : 'Темная'}</span>
+              {darkMode ? <Sun size={14} /> : <Moon size={14} />}<span>{darkMode ? 'Светлая' : 'Темная'}</span>
             </button>
-            <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[6px] text-xs font-medium text-gray-500 dark:text-[#666] hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600 transition-all">
-              <LogOut size={14} />
-              <span>Выйти</span>
+            <button onClick={logout} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[6px] text-xs font-medium text-gray-500 dark:text-[#666] hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600 transition-all">
+              <LogOut size={14} /><span>Выйти</span>
             </button>
           </div>
         </aside>
 
-        {/* MAIN */}
         <main className="flex-1 ml-[220px]">
           <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between px-6">
              <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
-                {loading ? 'Обновление данных...' : `Данные актуальны (${payments.length})`}
+                {isLoading ? 'Обновление данных...' : `Данные актуальны (${payments.length})`}
              </div>
-             <button onClick={() => loadData(false)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
-               <RefreshCcw size={14} className={loading ? 'animate-spin' : ''} />
+             <button onClick={() => fetchAllData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
+               <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />
              </button>
           </header>
 
           <div className="p-6">
             <Routes>
-              {/* ✅ Передаем currentUser */}
-              <Route path="/" element={<DashboardPage stats={stats} payments={payments} loading={loading} currentUser={user} />} />
-              <Route path="/stats" element={<StatsPage payments={payments} currentUser={user} />} />
-              <Route path="/list" element={<PaymentsPage payments={payments} currentUser={user} />} />            
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/stats" element={<StatsPage />} />
+              <Route path="/list" element={<PaymentsPage />} />            
               
-              {/* ✅ Защищаем админские роуты */}
-              <Route path="/kpi" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><KPIPage /></ProtectedRoute>} />
-              <Route path="/geo" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><GeoPage payments={payments} /></ProtectedRoute>} />
-              <Route path="/managers" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><ManagersPage payments={payments} /></ProtectedRoute>} />
+              <Route path="/kpi" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><KPIPage /></ProtectedRoute>} />
+              <Route path="/geo" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><GeoPage /></ProtectedRoute>} />
+              <Route path="/managers" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><ManagersPage /></ProtectedRoute>} />
+              <Route path="/geo-matrix" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><GeoMatrixPage /></ProtectedRoute>} />
               
-              <Route path="/sales-team" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
-              <Route path="/consultants" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
-              <Route path="/all-employees" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Все сотрудники" excludeRole="C-level" currentUser={user} showAddButton={true} /></ProtectedRoute>} />
-              <Route path="/add-employee" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><AddEmployeePage /></ProtectedRoute>} />
-              <Route path="/edit-employee/:id" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><EditEmployeePage /></ProtectedRoute>} />
-              <Route path="/birthdays" element={<ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}><BirthdaysPage /></ProtectedRoute>} />
+              <Route path="/sales-team" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
+              <Route path="/consultants" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
+              <Route path="/all-employees" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Все сотрудники" excludeRole="C-level" currentUser={user} showAddButton={true} /></ProtectedRoute>} />
+              
+              <Route path="/add-employee" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><AddEmployeePage /></ProtectedRoute>} />
+              <Route path="/edit-employee/:id" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EditEmployeePage /></ProtectedRoute>} />
+              <Route path="/birthdays" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><BirthdaysPage /></ProtectedRoute>} />
+              
+              {/* ✅ НОВЫЕ РОУТЫ (Доступны всем, кто прошел ProtectedRoute - то есть всем авторизованным) */}
+              <Route path="/products" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><ProductsPage /></ProtectedRoute>} />
+              <Route path="/rules" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><RulesPage /></ProtectedRoute>} />
+
               <Route path="*" element={<Navigate to="/" />} />
-              <Route path="/geo-matrix" element={
-    <ProtectedRoute user={user} allowedRoles={['Admin', 'C-level']}>
-        <GeoMatrixPage payments={payments} currentUser={user} />
-    </ProtectedRoute>
-} />
             </Routes>
           </div>
         </main>
