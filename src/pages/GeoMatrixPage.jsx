@@ -58,6 +58,16 @@ const getCurrentMonthRange = () => {
   return [start, end];
 };
 
+// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ЛОКАЛЬНЫХ ДАТ ---
+const getLocalDateKey = (date) => {
+  // Гарантируем, что работаем с объектом Date
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const GeoMatrixPage = () => {
   const { payments } = useAppStore(); // Берем из стора
   
@@ -103,7 +113,8 @@ const GeoMatrixPage = () => {
   const { matrixData, totalsByCountry, totalsByDate, grandTotal } = useMemo(() => {
     const data = {};
     dateList.forEach(date => {
-      const dateKey = date.toISOString().split('T')[0];
+      // ✅ ИСПОЛЬЗУЕМ ЛОКАЛЬНЫЙ КЛЮЧ
+      const dateKey = getLocalDateKey(date);
       data[dateKey] = {};
       countriesList.forEach(country => {
         data[dateKey][country.code] = isDemoMode ? Math.floor(Math.random() * 12) : 0;
@@ -138,7 +149,9 @@ const GeoMatrixPage = () => {
     let total = 0;
 
     countriesList.forEach(c => tCountry[c.code] = 0);
-    dateList.forEach(d => tDate[d.toISOString().split('T')[0]] = 0);
+    
+    // Инициализируем нулями по локальным ключам
+    dateList.forEach(d => tDate[getLocalDateKey(d)] = 0);
 
     Object.entries(data).forEach(([dateKey, geos]) => {
         Object.entries(geos).forEach(([geoCode, count]) => {
@@ -264,7 +277,8 @@ const GeoMatrixPage = () => {
                                 <span className="text-gray-400 font-medium pl-1 text-xs">ГЕО</span>
                             </th>
                             {dateList.map(date => (
-                                <th key={date.toISOString()} className="h-[60px] min-w-[34px] bg-gray-50 dark:bg-[#161616] border-b border-r border-gray-200 dark:border-[#333] p-0 align-bottom group hover:bg-gray-100 dark:hover:bg-[#222] transition-colors relative z-10">
+                                // ✅ ИСПОЛЬЗУЕМ ЛОКАЛЬНЫЙ КЛЮЧ
+                                <th key={getLocalDateKey(date)} className="h-[60px] min-w-[34px] bg-gray-50 dark:bg-[#161616] border-b border-r border-gray-200 dark:border-[#333] p-0 align-bottom group hover:bg-gray-100 dark:hover:bg-[#222] transition-colors relative z-10">
                                     <div className="flex flex-col items-center justify-end pb-2 w-full h-full gap-1">
                                         <span className={`text-[8px] font-bold uppercase px-1 rounded-[2px] mb-1 ${date.getDay()===0||date.getDay()===6 ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10' : 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#222]'}`}>
                                             {date.toLocaleDateString('ru-RU', { weekday: 'short' }).toUpperCase()}
@@ -292,7 +306,8 @@ const GeoMatrixPage = () => {
                                     </div>
                                 </td>
                                 {dateList.map(date => {
-                                    const dateKey = date.toISOString().split('T')[0];
+                                    // ✅ ИСПОЛЬЗУЕМ ЛОКАЛЬНЫЙ КЛЮЧ
+                                    const dateKey = getLocalDateKey(date);
                                     const count = matrixData[dateKey]?.[country.code] || 0;
                                     return (
                                         <td key={`${country.code}-${dateKey}`} onClick={() => handleCellClick(country.code, dateKey, count)} className="p-0 border-b border-r border-gray-100 dark:border-[#222] text-center relative h-8 matrix-cell cursor-pointer-cell">
@@ -313,7 +328,8 @@ const GeoMatrixPage = () => {
                                 </div>
                             </td>
                             {dateList.map(date => {
-                                const dateKey = date.toISOString().split('T')[0];
+                                // ✅ ИСПОЛЬЗУЕМ ЛОКАЛЬНЫЙ КЛЮЧ
+                                const dateKey = getLocalDateKey(date);
                                 const count = totalsByDate[dateKey] || 0;
                                 return (
                                     <td key={`total-${dateKey}`} className="p-0 border-t border-r border-gray-200 dark:border-[#333] text-center relative h-8 bg-gray-50 dark:bg-[#1c1c1c]">
