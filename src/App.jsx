@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X // Иконки базы знаний + Меню
+  BookOpen, Shield, Menu, X, Coins
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient';
@@ -24,6 +24,7 @@ import BirthdaysPage from './pages/BirthdaysPage';
 import GeoMatrixPage from './pages/GeoMatrixPage';
 import ProductsPage from './pages/knowledge/ProductsPage';
 import RulesPage from './pages/knowledge/RulesPage';
+import SalariesPage from './pages/SalariesPage';
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
@@ -53,7 +54,7 @@ function App() {
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const { user, setUser, logout, fetchAllData, payments, isLoading } = useAppStore();
+  const { user, setUser, logout, fetchAllData, isLoading } = useAppStore();
 
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark')
@@ -86,6 +87,7 @@ function App() {
     fetchAllData();
   }
 
+  // Общий доступ для Админов и C-level (для большинства разделов)
   const isAdminAccess = user && ['Admin', 'C-level'].includes(user.role);
 
   if (isAuthChecking) return <div className="min-h-screen bg-[#0A0A0A]" />
@@ -104,7 +106,7 @@ function App() {
 
         <aside className={`w-[220px] fixed inset-y-0 left-0 h-full bg-white dark:bg-[#111111] border-r border-gray-200 dark:border-[#222] flex flex-col z-50 transition-transform duration-300 ease-in-out lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
 
-          {/* HEADER: LOGO + BETA */}
+          {/* HEADER */}
           <div className="h-12 flex items-center px-4 border-b border-gray-100 dark:border-[#222]">
             <div className="w-5 h-5 bg-black dark:bg-white rounded flex items-center justify-center text-white dark:text-black font-bold text-[10px] mr-2">AP</div>
             <span className="font-bold text-gray-900 dark:text-white tracking-tight">AstroPanel</span>
@@ -116,7 +118,7 @@ function App() {
           <div className="p-3">
             <div className="flex items-center gap-2.5 p-2 rounded-lg bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#2A2A2A]">
               {user.avatar_url ? (
-                <img src={user.avatar_url} className="w-8 h-8 rounded-md object-cover" />
+                <img src={user.avatar_url} className="w-8 h-8 rounded-md object-cover" alt="avatar" />
               ) : (
                 <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-300">{user.name?.[0]}</div>
               )}
@@ -133,10 +135,9 @@ function App() {
             <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
             <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />
 
-            {/* География теперь тут (только для админов) */}
             {isAdminAccess && <SidebarItem icon={Globe} label="География" path="/geo" />}
-
             {isAdminAccess && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
+            
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
 
             {/* --- БАЗА ЗНАНИЙ --- */}
@@ -144,10 +145,9 @@ function App() {
             <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
             <SidebarItem icon={Shield} label="Правила" path="/rules" />
 
-            {/* KPI теперь тут (только для админов) */}
             {isAdminAccess && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
 
-            {/* --- ЛЮДИ (Только Админ) --- */}
+            {/* --- ЛЮДИ (Только Админ и C-level видят раздел) --- */}
             {isAdminAccess && (
               <>
                 <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
@@ -160,6 +160,11 @@ function App() {
                   <SidebarItem icon={Briefcase} label="Отдел Продаж" path="/sales-team" isChild />
                   <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
                   <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
+                  
+                  {/* ✅ ЗАРПЛАТЫ: ТОЛЬКО ДЛЯ ADMIN */}
+                  {user.role === 'Admin' && (
+                    <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
+                  )}
                 </div>
                 <SidebarItem icon={Users} label="Эффективность" path="/managers" />
               </>
@@ -186,7 +191,7 @@ function App() {
                 <Menu size={20} />
               </button>
               <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
-                {/* {isLoading ? 'Обновление...' : `Актуально (${payments.length})`} */}
+                {/* Status bar */}
               </div>
             </div>
             <button onClick={() => fetchAllData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
@@ -212,6 +217,9 @@ function App() {
               <Route path="/add-employee" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><AddEmployeePage /></ProtectedRoute>} />
               <Route path="/edit-employee/:id" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EditEmployeePage /></ProtectedRoute>} />
               <Route path="/birthdays" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><BirthdaysPage /></ProtectedRoute>} />
+              
+              {/* ✅ РОУТ ЗАРПЛАТЫ: ТОЛЬКО 'Admin' */}
+              <Route path="/salaries" element={<ProtectedRoute allowedRoles={['Admin']}><SalariesPage /></ProtectedRoute>} />
 
               <Route path="/products" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><ProductsPage /></ProtectedRoute>} />
               <Route path="/rules" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><RulesPage /></ProtectedRoute>} />
@@ -225,4 +233,4 @@ function App() {
   )
 }
 
-export default App
+export default App;

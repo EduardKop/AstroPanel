@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAppStore } from '../store/appStore';
+import { supabase } from '../services/supabaseClient';
 import { 
   Wallet, Trophy, Target, Calendar, 
-  Users, Sparkles, TrendingUp, DollarSign, 
-  Zap, BarChart4, ArrowUpRight
+  Sparkles, TrendingUp, Zap, Edit, Plus, Trash2, X, Save
 } from 'lucide-react';
 
-// Маппинг флагов для красивого отображения
+// Маппинг флагов
 const FLAGS = {
   UA: '🇺🇦', PL: '🇵🇱', IT: '🇮🇹', HR: '🇭🇷',
   BG: '🇧🇬', CZ: '🇨🇿', RO: '🇷🇴', LT: '🇱🇹',
@@ -14,6 +15,23 @@ const FLAGS = {
 };
 
 const KPIPage = () => {
+  const { kpiRates, kpiSettings, user, fetchAllData } = useAppStore();
+  const [isEditOpen, setIsEditOpen] = useState(false);
+
+  // Безопасное получение данных из стора с дефолтными значениями
+  const baseSalary = kpiSettings?.base_salary || 0;
+  
+  // Парсим JSON настройки тиров, если они пришли строкой или объектом
+  const dailyTiers = typeof kpiSettings?.daily_tiers === 'string' 
+    ? JSON.parse(kpiSettings.daily_tiers) 
+    : (kpiSettings?.daily_tiers || []);
+
+  const monthlyTiers = typeof kpiSettings?.monthly_tiers === 'string' 
+    ? JSON.parse(kpiSettings.monthly_tiers) 
+    : (kpiSettings?.monthly_tiers || []);
+
+  const isAdmin = user?.role === 'Admin' || user?.role === 'C-level'; // Доступ к кнопке
+
   return (
     <div className="animate-in fade-in zoom-in duration-300 pb-10 font-sans">
       
@@ -25,14 +43,23 @@ const KPIPage = () => {
             Система Мотивации
           </h2>
           <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 font-medium">
-            Тарифная сетка и бонусы на <span className="text-gray-900 dark:text-white font-bold">Декабрь 2025</span>
+            Актуальная тарифная сетка и бонусы
           </p>
         </div>
+        
+        {/* КНОПКА ИЗМЕНИТЬ (Только для Админа) */}
+        {isAdmin && (
+          <button 
+            onClick={() => setIsEditOpen(true)} 
+            className="flex items-center gap-2 bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-lg text-xs font-bold hover:opacity-80 transition-opacity shadow-sm"
+          >
+            <Edit size={14} /> Изменить KPI
+          </button>
+        )}
       </div>
 
-      {/* 1. HERO BLOCK: BASE SALARY (Tech Style) */}
+      {/* 1. HERO BLOCK: BASE SALARY */}
       <div className="relative overflow-hidden rounded-xl bg-[#111] border border-gray-800 shadow-xl mb-6 group">
-        {/* Background Grid Pattern */}
         <div className="absolute inset-0 opacity-20 pointer-events-none" 
              style={{ backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
         </div>
@@ -52,35 +79,43 @@ const KPIPage = () => {
           </div>
           <div className="flex items-start">
             <span className="text-2xl mt-2 text-gray-500 font-mono mr-1">$</span>
-            <span className="text-6xl font-black text-white tracking-tighter font-mono drop-shadow-lg">350</span>
+            <span className="text-6xl font-black text-white tracking-tighter font-mono drop-shadow-lg">{baseSalary}</span>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* LEFT COLUMN (Wide) */}
+        {/* LEFT COLUMN */}
         <div className="lg:col-span-8 space-y-6">
           
-          {/* ТАРИФЫ (Grid Layout) */}
+          {/* ТАРИФЫ (Динамические из БД) */}
           <div className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-200 dark:border-[#333] flex items-center justify-between bg-gray-50/50 dark:bg-[#161616]">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-purple-500" />
                 <h3 className="text-sm font-bold dark:text-white uppercase tracking-wide">Тарифы за прогноз</h3>
               </div>
-              <span className="text-[10px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-bold uppercase">Basic</span>
+              <span className="text-[10px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-bold uppercase">Dynamic</span>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2">
-              <BonusItem title="Прогноз на 1 год" price="0.70" />
-              <BonusItem title="Прогноз на 5 лет" price="1.30" />
-              <BonusItem title="Общий (1 год)" subtitle="Любовь + Финансы" price="2.80" isHighlight />
-              <BonusItem title="Общий (5 лет)" subtitle="Полный разбор" price="3.30" isHighlight />
+              {kpiRates.map((rate) => (
+                <BonusItem 
+                  key={rate.id}
+                  title={rate.product_name} 
+                  // subtitle={rate.subtitle} 
+                  price={Number(rate.rate).toFixed(2)} 
+                  isHighlight={rate.is_highlight} 
+                />
+              ))}
+              {kpiRates.length === 0 && (
+                <div className="p-6 text-center text-xs text-gray-400 col-span-2">Тарифы не настроены</div>
+              )}
             </div>
           </div>
 
-          {/* КОМАНДНАЯ ПРЕМИЯ (Cards) */}
+          {/* КОМАНДНАЯ ПРЕМИЯ (Статика для визуализации, пока нет логики команд в БД) */}
           <div className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm p-5">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
@@ -93,33 +128,20 @@ const KPIPage = () => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <TeamCard 
-                number="I" 
-                countries={["UA", "PL", "IT", "HR"]}
-                color="border-blue-500/30 bg-blue-500/5 text-blue-400"
-              />
-              <TeamCard 
-                number="II" 
-                countries={["BG", "CZ", "RO", "LT"]}
-                color="border-purple-500/30 bg-purple-500/5 text-purple-400"
-              />
-              <TeamCard 
-                number="III" 
-                countries={["TR", "FR", "PT", "DE"]}
-                color="border-emerald-500/30 bg-emerald-500/5 text-emerald-400"
-              />
+              <TeamCard number="I" countries={["UA", "PL", "IT", "HR"]} color="border-blue-500/30 bg-blue-500/5 text-blue-400" />
+              <TeamCard number="II" countries={["BG", "CZ", "RO", "LT"]} color="border-purple-500/30 bg-purple-500/5 text-purple-400" />
+              <TeamCard number="III" countries={["TR", "FR", "PT", "DE"]} color="border-emerald-500/30 bg-emerald-500/5 text-emerald-400" />
             </div>
             <p className="text-[10px] text-gray-500 mt-3 text-center opacity-70">
               * Бонус начисляется каждому участнику победившей группы по итогам недели
             </p>
           </div>
-
         </div>
 
-        {/* RIGHT COLUMN (Narrow) */}
+        {/* RIGHT COLUMN */}
         <div className="lg:col-span-4 space-y-6">
           
-          {/* ДНЕВНЫЕ ЦЕЛИ */}
+          {/* ДНЕВНЫЕ ЦЕЛИ (Динамические из БД) */}
           <div className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-200 dark:border-[#333] bg-gray-50/50 dark:bg-[#161616] flex items-center gap-2">
               <TrendingUp size={16} className="text-emerald-500" />
@@ -127,17 +149,21 @@ const KPIPage = () => {
             </div>
             
             <div className="p-4 space-y-3">
-              <DailyTier count="12 – 13" reward="5" />
-              <DailyTier count="14 – 15" reward="8" />
-              <DailyTier count="16+" reward="12" isMax />
+              {dailyTiers.map((tier, idx) => (
+                <DailyTier 
+                  key={idx} 
+                  count={`${tier.min}${tier.max > 100 ? '+' : ' – ' + tier.max}`} 
+                  reward={tier.reward} 
+                  isMax={tier.reward >= 10} 
+                />
+              ))}
+              {dailyTiers.length === 0 && <div className="text-xs text-gray-400 text-center">Не настроено</div>}
             </div>
           </div>
 
-          {/* ИТОГИ МЕСЯЦА */}
+          {/* ИТОГИ МЕСЯЦА (Динамические из БД) */}
           <div className="relative overflow-hidden rounded-xl bg-[#09090b] border border-gray-800 shadow-md">
-            {/* Gradient Background */}
             <div className="absolute inset-0 bg-gradient-to-b from-gray-800/50 to-black/80 pointer-events-none"></div>
-            
             <div className="relative z-10 p-5">
               <div className="flex items-center gap-2 mb-5">
                 <Calendar size={16} className="text-blue-400" />
@@ -145,15 +171,32 @@ const KPIPage = () => {
               </div>
 
               <div className="space-y-0">
-                <MonthTier label="< 250 продаж" reward="50" isDim />
-                <MonthTier label="250 - 400 продаж" reward="75" />
-                <MonthTier label="400+ продаж" reward="100" isHighlight />
+                {monthlyTiers.map((tier, idx) => (
+                  <MonthTier 
+                    key={idx} 
+                    label={tier.max > 1000 ? `${tier.min}+ продаж` : `${tier.min} - ${tier.max} продаж`} 
+                    reward={tier.reward} 
+                    isHighlight={tier.reward >= 100}
+                    isDim={tier.reward < 75}
+                  />
+                ))}
+                {monthlyTiers.length === 0 && <div className="text-xs text-gray-500 text-center">Не настроено</div>}
               </div>
             </div>
           </div>
 
         </div>
       </div>
+
+      {/* МОДАЛКА РЕДАКТИРОВАНИЯ */}
+      {isEditOpen && (
+        <EditKPIModal 
+          onClose={() => setIsEditOpen(false)} 
+          onUpdate={fetchAllData} 
+          kpiRates={kpiRates} 
+          kpiSettings={kpiSettings} 
+        />
+      )}
     </div>
   );
 };
@@ -214,7 +257,6 @@ const MonthTier = ({ label, reward, isDim, isHighlight }) => (
   </div>
 );
 
-// ✅ ОБНОВЛЕННАЯ КАРТОЧКА КОМАНДЫ (С ФЛАГАМИ И КОНТРАСТОМ)
 const TeamCard = ({ number, countries, color }) => (
   <div className={`p-4 rounded-lg border ${color} flex flex-col items-center text-center relative overflow-hidden`}>
     <div className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-3">Группа {number}</div>
@@ -231,5 +273,132 @@ const TeamCard = ({ number, countries, color }) => (
     </div>
   </div>
 );
+
+// --- MODAL EDITOR (АДМИНСКАЯ ПАНЕЛЬ) ---
+const EditKPIModal = ({ onClose, onUpdate, kpiRates, kpiSettings }) => {
+    // Локальный стейт для редактирования
+    const [rates, setRates] = useState(kpiRates || []);
+    const [baseSalary, setBaseSalary] = useState(kpiSettings?.base_salary || 0);
+    const [newProduct, setNewProduct] = useState({ name: '', rate: '' });
+    const [isSaving, setIsSaving] = useState(false);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            // 1. Обновляем существующие тарифы
+            for (const r of rates) {
+                await supabase.from('kpi_product_rates').upsert({ 
+                    id: r.id, 
+                    product_name: r.product_name, 
+                    rate: parseFloat(r.rate) 
+                });
+            }
+            // 2. Добавляем новый, если введен
+            if (newProduct.name && newProduct.rate) {
+                await supabase.from('kpi_product_rates').insert({ 
+                    product_name: newProduct.name, 
+                    rate: parseFloat(newProduct.rate) 
+                });
+            }
+            // 3. Обновляем настройки (Оклад)
+            await supabase.from('kpi_settings').upsert({ key: 'base_salary', value: baseSalary });
+
+            await onUpdate(); // Обновляем стор
+            onClose();
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка при сохранении');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if(!window.confirm('Удалить этот тариф?')) return;
+        await supabase.from('kpi_product_rates').delete().eq('id', id);
+        setRates(prev => prev.filter(r => r.id !== id));
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-[#111] w-full max-w-lg rounded-xl border border-gray-200 dark:border-[#333] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                
+                <div className="p-4 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
+                    <h3 className="text-sm font-bold dark:text-white flex items-center gap-2">
+                        <Edit size={16} className="text-blue-500" /> Редактор KPI
+                    </h3>
+                    <button onClick={onClose} className="text-gray-500 hover:text-black dark:hover:text-white"><X size={18}/></button>
+                </div>
+                
+                <div className="p-5 overflow-y-auto custom-scrollbar space-y-6">
+                    {/* Base Salary */}
+                    <div>
+                        <label className="text-[10px] font-bold uppercase text-gray-500 mb-1 block">Базовая ставка ($)</label>
+                        <input 
+                            type="number" 
+                            value={baseSalary} 
+                            onChange={e => setBaseSalary(e.target.value)} 
+                            className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded p-2 text-sm font-bold dark:text-white outline-none focus:border-blue-500 transition-colors" 
+                        />
+                    </div>
+
+                    {/* Product Rates */}
+                    <div>
+                        <label className="text-[10px] font-bold uppercase text-gray-500 mb-2 block">Тарифы продуктов</label>
+                        <div className="space-y-2 bg-gray-50 dark:bg-[#161616] p-3 rounded-lg border border-gray-200 dark:border-[#222]">
+                            {rates.map((r, idx) => (
+                                <div key={r.id} className="flex gap-2 items-center group">
+                                    <input 
+                                        value={r.product_name} 
+                                        onChange={e => {const n=[...rates]; n[idx].product_name=e.target.value; setRates(n)}} 
+                                        className="flex-1 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 dark:text-white outline-none focus:border-blue-500" 
+                                    />
+                                    <span className="text-gray-400 text-xs">$</span>
+                                    <input 
+                                        type="number" 
+                                        value={r.rate} 
+                                        onChange={e => {const n=[...rates]; n[idx].rate=e.target.value; setRates(n)}} 
+                                        className="w-14 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 font-mono font-bold text-right dark:text-white outline-none focus:border-blue-500" 
+                                    />
+                                    <button onClick={() => handleDelete(r.id)} className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12}/></button>
+                                </div>
+                            ))}
+                            
+                            {/* Add New Input */}
+                            <div className="flex gap-2 items-center pt-3 border-t border-dashed border-gray-300 dark:border-[#333] mt-2">
+                                <Plus size={14} className="text-green-500" />
+                                <input 
+                                    placeholder="Название нового продукта..." 
+                                    value={newProduct.name} 
+                                    onChange={e => setNewProduct({...newProduct, name: e.target.value})} 
+                                    className="flex-1 bg-transparent text-xs py-1 dark:text-white outline-none placeholder:text-gray-500" 
+                                />
+                                <span className="text-gray-400 text-xs">$</span>
+                                <input 
+                                    type="number" 
+                                    placeholder="0.00" 
+                                    value={newProduct.rate} 
+                                    onChange={e => setNewProduct({...newProduct, rate: e.target.value})} 
+                                    className="w-14 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 font-mono text-right dark:text-white outline-none focus:border-green-500" 
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t border-gray-200 dark:border-[#333] bg-gray-50/50 dark:bg-[#161616] flex justify-end gap-2">
+                    <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-800 dark:hover:text-white transition-colors">Отмена</button>
+                    <button 
+                        onClick={handleSave} 
+                        disabled={isSaving}
+                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                    >
+                        <Save size={14} /> {isSaving ? 'Сохранение...' : 'Сохранить'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default KPIPage;
