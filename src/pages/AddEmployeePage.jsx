@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
-import { 
-  User, Mail, Phone, MapPin, Briefcase, 
-  UploadCloud, ArrowLeft, Send, Calendar, Save 
+import {
+  User, Mail, Phone, MapPin, Briefcase,
+  UploadCloud, ArrowLeft, Send, Calendar, Save
 } from 'lucide-react';
 
 const ROLES = ['Sales', 'Consultant', 'Admin', 'C-level', 'Manager'];
@@ -11,7 +11,7 @@ const ROLES = ['Sales', 'Consultant', 'Admin', 'C-level', 'Manager'];
 const AddEmployeePage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  
+
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
@@ -65,7 +65,7 @@ const AddEmployeePage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.name || !formData.telegram_id || formData.geo.length === 0 || !avatarFile) {
       alert('Ошибка: Все поля обязательны, включая аватарку и ГЕО!');
       return;
@@ -104,7 +104,7 @@ const AddEmployeePage = () => {
           telegram_username: formData.telegram_username,
           birth_date: formData.birth_date || null,
           geo: formData.geo,
-          avatar_url: avatarUrl, 
+          avatar_url: avatarUrl,
           status: 'active'
         }]);
 
@@ -123,7 +123,7 @@ const AddEmployeePage = () => {
 
   return (
     <div className="animate-in fade-in zoom-in duration-300 max-w-4xl mx-auto pb-10">
-      
+
       <div className="flex items-center gap-4 mb-8">
         <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
           <ArrowLeft className="text-gray-500" />
@@ -135,7 +135,7 @@ const AddEmployeePage = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+
         <div className="lg:col-span-1">
           <div className="bg-white dark:bg-dark-card p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center text-center">
             <div className={`relative w-40 h-40 mb-4 group ${!previewUrl ? 'border-red-200' : ''}`}>
@@ -146,16 +146,16 @@ const AddEmployeePage = () => {
                   <User size={48} className="text-gray-300 dark:text-gray-500" />
                 </div>
               )}
-              
+
               <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 rounded-full cursor-pointer transition-opacity backdrop-blur-sm">
                 <UploadCloud size={24} />
                 <span className="text-xs font-bold ml-2">Загрузить</span>
                 <input type="file" accept="image/jpeg, image/png, image/webp" onChange={handleFileChange} className="hidden" />
               </label>
             </div>
-            
+
             <p className="text-xs text-gray-400">
-              Поддерживаются: JPG, PNG, WEBP<br/>
+              Поддерживаются: JPG, PNG, WEBP<br />
               {!previewUrl && <span className="text-red-400 font-bold">Фото обязательно!</span>}
             </p>
           </div>
@@ -163,7 +163,7 @@ const AddEmployeePage = () => {
 
         <div className="lg:col-span-2">
           <form onSubmit={handleSubmit} className="bg-white dark:bg-dark-card p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-6">
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <InputGroup label="Имя и Фамилия" icon={User}>
                 <input required name="name" value={formData.name} onChange={handleChange} placeholder="Иван Иванов" className="w-full bg-transparent outline-none text-sm dark:text-white" />
@@ -194,23 +194,23 @@ const AddEmployeePage = () => {
                 <Send size={18} />
                 <span className="font-bold text-sm">Настройки Telegram</span>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-gray-500 mb-1 block">Telegram ID (Число) *</label>
                   <input required name="telegram_id" value={formData.telegram_id} onChange={handleChange} placeholder="12345678" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm dark:text-white" />
                 </div>
                 <div>
-                   <label className="text-xs font-bold text-gray-500 mb-1 block">Никнейм (@username)</label>
-                   <input required name="telegram_username" value={formData.telegram_username} onChange={handleChange} placeholder="@username" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm dark:text-white" />
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">Никнейм (@username)</label>
+                  <input required name="telegram_username" value={formData.telegram_username} onChange={handleChange} placeholder="@username" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm dark:text-white" />
                 </div>
               </div>
             </div>
 
             <div className="w-full md:w-1/2">
-               <InputGroup label="Дата рождения" icon={Calendar}>
-                  <input required type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
-               </InputGroup>
+              <InputGroup label="Дата рождения" icon={Calendar}>
+                <input required type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
+              </InputGroup>
             </div>
 
             {/* ✅ 3. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН ИЗ БД */}
@@ -218,7 +218,7 @@ const AddEmployeePage = () => {
               <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2">
                 <MapPin size={14} /> Доступные ГЕО
               </label>
-              
+
               {availableCountries.length === 0 ? (
                 <div className="text-xs text-gray-400">Загрузка стран...</div>
               ) : (
@@ -230,11 +230,10 @@ const AddEmployeePage = () => {
                         key={country.code}
                         type="button"
                         onClick={() => toggleCountry(country.code)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${
-                          isActive 
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30' 
-                          : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30'
+                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                          }`}
                       >
                         <span>{country.emoji}</span>
                         <span>{country.code}</span>
@@ -246,8 +245,8 @@ const AddEmployeePage = () => {
               {formData.geo.length === 0 && <p className="text-[10px] text-red-500">Выберите хотя бы одну страну</p>}
             </div>
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={loading}
               className="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
             >

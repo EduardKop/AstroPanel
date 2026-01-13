@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom'
-import { 
-  LayoutDashboard, Users, Globe, CreditCard, 
-  BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase, 
+import {
+  LayoutDashboard, Users, Globe, CreditCard,
+  BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield // Иконки базы знаний
+  BookOpen, Shield, Menu, X // Иконки базы знаний + Меню
 } from 'lucide-react'
 
-import { supabase } from './services/supabaseClient'; 
+import { supabase } from './services/supabaseClient';
 import { useAppStore } from './store/appStore';
 
 import LoginPage from './pages/LoginPage';
@@ -15,8 +15,8 @@ import PaymentsPage from './pages/PaymentsPage';
 import DashboardPage from './pages/DashboardPage'
 import KPIPage from './pages/KPIPage'
 import GeoPage from './pages/GeoPage';
-import ManagersPage from './pages/ManagersPage'; 
-import StatsPage from './pages/StatsPage'; 
+import ManagersPage from './pages/ManagersPage';
+import StatsPage from './pages/StatsPage';
 import EmployeesPage from './pages/EmployeesPage';
 import AddEmployeePage from './pages/AddEmployeePage';
 import EditEmployeePage from './pages/EditEmployeePage';
@@ -40,7 +40,7 @@ const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) =
 
 const ProtectedRoute = ({ allowedRoles, children }) => {
   const user = useAppStore(state => state.user);
-  if (!user) return <Navigate to="/" />; 
+  if (!user) return <Navigate to="/" />;
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <div className="h-full flex items-center justify-center text-gray-500 text-sm">⛔ Доступ запрещен</div>;
   }
@@ -51,6 +51,7 @@ function App() {
   const [darkMode, setDarkMode] = useState(true)
   const [isEmployeesOpen, setIsEmployeesOpen] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const { user, setUser, logout, fetchAllData, payments, isLoading } = useAppStore();
 
@@ -65,7 +66,7 @@ function App() {
       if (savedUserStr) {
         const parsedUser = JSON.parse(savedUserStr);
         setUser(parsedUser);
-        fetchAllData(); 
+        fetchAllData();
       }
       setIsAuthChecking(false);
     };
@@ -92,9 +93,17 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex bg-[#F5F5F5] dark:bg-[#0A0A0A] font-sans transition-colors duration-300 text-[13px]">
-        <aside className="w-[220px] fixed h-full bg-white dark:bg-[#111111] border-r border-gray-200 dark:border-[#222] flex flex-col z-20">
-          
+      <div className="min-h-screen flex bg-[#F5F5F5] dark:bg-[#0A0A0A] font-sans transition-colors duration-300 text-[13px] overflow-x-hidden">
+        {/* MOBILE OVERLAY */}
+        {isMobileMenuOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+        )}
+
+        <aside className={`w-[220px] fixed inset-y-0 left-0 h-full bg-white dark:bg-[#111111] border-r border-gray-200 dark:border-[#222] flex flex-col z-50 transition-transform duration-300 ease-in-out lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+
           {/* HEADER: LOGO + BETA */}
           <div className="h-12 flex items-center px-4 border-b border-gray-100 dark:border-[#222]">
             <div className="w-5 h-5 bg-black dark:bg-white rounded flex items-center justify-center text-white dark:text-black font-bold text-[10px] mr-2">AP</div>
@@ -107,14 +116,14 @@ function App() {
           <div className="p-3">
             <div className="flex items-center gap-2.5 p-2 rounded-lg bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#2A2A2A]">
               {user.avatar_url ? (
-                 <img src={user.avatar_url} className="w-8 h-8 rounded-md object-cover" />
-               ) : (
-                 <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-300">{user.name?.[0]}</div>
-               )}
-               <div className="flex-1 min-w-0">
-                 <div className="text-xs font-semibold text-gray-900 dark:text-gray-200 truncate">{user.name}</div>
-                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">{user.role}</div>
-               </div>
+                <img src={user.avatar_url} className="w-8 h-8 rounded-md object-cover" />
+              ) : (
+                <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-300">{user.name?.[0]}</div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-gray-900 dark:text-gray-200 truncate">{user.name}</div>
+                <div className="text-[10px] text-gray-500 uppercase tracking-wide">{user.role}</div>
+              </div>
             </div>
           </div>
 
@@ -123,18 +132,18 @@ function App() {
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider">Дашборды</div>
             <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
             <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />
-            
+
             {/* География теперь тут (только для админов) */}
             {isAdminAccess && <SidebarItem icon={Globe} label="География" path="/geo" />}
-            
+
             {isAdminAccess && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
-            
+
             {/* --- БАЗА ЗНАНИЙ --- */}
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">База знаний</div>
             <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
             <SidebarItem icon={Shield} label="Правила" path="/rules" />
-            
+
             {/* KPI теперь тут (только для админов) */}
             {isAdminAccess && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
 
@@ -167,35 +176,43 @@ function App() {
           </div>
         </aside>
 
-        <main className="flex-1 ml-[220px]">
-          <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-40 flex items-center justify-between px-6">
-             <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
-                {isLoading ? 'Обновление данных...' : `Данные актуальны (${payments.length})`}
-             </div>
-             <button onClick={() => fetchAllData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
-               <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />
-             </button>
+        <main className="flex-1 ml-0 lg:ml-[220px] transition-all duration-300">
+          <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-40 flex items-center justify-between px-4 lg:px-6">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="lg:hidden p-1.5 -ml-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#222] rounded-md transition-colors"
+              >
+                <Menu size={20} />
+              </button>
+              <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
+                {isLoading ? 'Обновление...' : `Актуально (${payments.length})`}
+              </div>
+            </div>
+            <button onClick={() => fetchAllData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
+              <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />
+            </button>
           </header>
 
-          <div className="p-6">
+          <div className="p-3 md:p-6">
             <Routes>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/stats" element={<StatsPage />} />
-              <Route path="/list" element={<PaymentsPage />} />            
-              
+              <Route path="/list" element={<PaymentsPage />} />
+
               <Route path="/kpi" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><KPIPage /></ProtectedRoute>} />
               <Route path="/geo" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><GeoPage /></ProtectedRoute>} />
               <Route path="/managers" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><ManagersPage /></ProtectedRoute>} />
               <Route path="/geo-matrix" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><GeoMatrixPage /></ProtectedRoute>} />
-              
+
               <Route path="/sales-team" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
               <Route path="/consultants" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
               <Route path="/all-employees" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Все сотрудники" excludeRole="C-level" currentUser={user} showAddButton={true} /></ProtectedRoute>} />
-              
+
               <Route path="/add-employee" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><AddEmployeePage /></ProtectedRoute>} />
               <Route path="/edit-employee/:id" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EditEmployeePage /></ProtectedRoute>} />
               <Route path="/birthdays" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><BirthdaysPage /></ProtectedRoute>} />
-              
+
               <Route path="/products" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><ProductsPage /></ProtectedRoute>} />
               <Route path="/rules" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><RulesPage /></ProtectedRoute>} />
 

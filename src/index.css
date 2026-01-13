@@ -6,34 +6,44 @@
 body {
   @apply bg-gray-50 text-gray-900 dark:bg-dark-bg dark:text-dark-text transition-colors duration-300;
 }
+
 /* --- Кастомный скроллбар --- */
 @layer utilities {
+
   /* Для Chrome, Safari, Edge, Opera */
   .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;  /* Ширина вертикального скролла */
-    height: 6px; /* Высота горизонтального скролла */
+    width: 6px;
+    /* Ширина вертикального скролла */
+    height: 6px;
+    /* Высота горизонтального скролла */
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent; /* Фон дорожки прозрачный */
+    background: transparent;
+    /* Фон дорожки прозрачный */
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.1); /* Цвет ползунка (почти прозрачный черный) */
-    border-radius: 20px; /* Круглые края */
-    border: 2px solid transparent; /* Отступ внутри, чтобы казался еще тоньше */
+    background-color: rgba(0, 0, 0, 0.1);
+    /* Цвет ползунка (почти прозрачный черный) */
+    border-radius: 20px;
+    /* Круглые края */
+    border: 2px solid transparent;
+    /* Отступ внутри, чтобы казался еще тоньше */
     background-clip: content-box;
   }
 
   .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.2); /* Чуть темнее при наведении на контейнер */
+    background-color: rgba(0, 0, 0, 0.2);
+    /* Чуть темнее при наведении на контейнер */
   }
 
   /* Для темной темы */
   .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.1); /* Почти прозрачный белый */
+    background-color: rgba(255, 255, 255, 0.1);
+    /* Почти прозрачный белый */
   }
-  
+
   .dark .custom-scrollbar:hover::-webkit-scrollbar-thumb {
     background-color: rgba(255, 255, 255, 0.2);
   }
@@ -41,8 +51,10 @@ body {
 
 /* Для Firefox (у него свой синтаксис) */
 .custom-scrollbar {
-  scrollbar-width: thin; /* Тонкий скролл */
-  scrollbar-color: rgba(0, 0, 0, 0.1) transparent; /* Ползунок / Фон */
+  scrollbar-width: thin;
+  /* Тонкий скролл */
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  /* Ползунок / Фон */
 }
 
 .dark .custom-scrollbar {

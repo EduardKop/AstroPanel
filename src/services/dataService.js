@@ -76,7 +76,7 @@ export const updateManagerProfile = async (id, updates) => {
     .from('managers')
     .update(updates)
     .eq('id', id);
-  
+
   if (error) throw error;
   return true;
 };
@@ -91,4 +91,35 @@ export const toggleManagerStatus = async (id, currentStatus) => {
 
   if (error) throw error;
   return newStatus;
+};
+
+// --- 6. ПОЛУЧЕНИЕ ТРАФИКА (KeyCRM) ---
+export const fetchTrafficData = async (startDate, endDate) => {
+  try {
+    // Формируем тело запроса с датами для фильтрации на сервере
+    const body = {
+      dateFrom: startDate,
+      dateTo: endDate
+    };
+
+    // Вызываем Edge Function 'keycrm-stats'
+    // ВАЖНО: Убедись, что ты задеплоил функцию именно с этим именем:
+    // supabase functions deploy keycrm-stats --no-verify-jwt
+    // Если ты оставил имя папки 'umnico-stats', поменяй название ниже.
+    const { data, error } = await supabase.functions.invoke('keycrm-stats', {
+      body: body
+    });
+
+    if (error) {
+      console.error("Ошибка при вызове функции keycrm-stats:", error);
+      return {};
+    }
+
+    // Функция возвращает { data: { "PL": ... }, debug: ... }
+    // Нам нужны только данные
+    return data?.data || {};
+  } catch (err) {
+    console.error("Глобальная ошибка запроса трафика:", err);
+    return {};
+  }
 };
