@@ -3,7 +3,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAppStore } from '../store/appStore'; // ✅ Стор
 import { 
   Calendar, Plus, X, Globe, LayoutGrid, AlertCircle, Trash2, Filter,
-  ArrowDownWideNarrow, ArrowUpNarrowWide, List, DollarSign, User, Activity
+  ArrowDownWideNarrow, ArrowUpNarrowWide, List, DollarSign, User, Activity, Coins
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -60,7 +60,6 @@ const getCurrentMonthRange = () => {
 
 // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ЛОКАЛЬНЫХ ДАТ ---
 const getLocalDateKey = (date) => {
-  // Гарантируем, что работаем с объектом Date
   const d = new Date(date);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -69,7 +68,8 @@ const getLocalDateKey = (date) => {
 };
 
 const GeoMatrixPage = () => {
-  const { payments } = useAppStore(); // Берем из стора
+  // ✅ Достаем trafficStats и метод обновления
+  const { payments, trafficStats, fetchTrafficStats } = useAppStore(); 
   
   const [countriesList, setCountriesList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +93,15 @@ const GeoMatrixPage = () => {
 
   useEffect(() => { fetchCountries(); }, []);
 
+  // ✅ Подгружаем трафик при смене дат (для расчета конверсии в модалке)
+  useEffect(() => {
+    if (fetchTrafficStats) {
+      const isoStart = startDate ? new Date(startDate.getTime()).toISOString() : undefined;
+      const isoEnd = endDate ? new Date(endDate.getTime()).toISOString() : undefined;
+      fetchTrafficStats(isoStart, isoEnd);
+    }
+  }, [fetchTrafficStats, startDate, endDate]);
+
   const dateList = useMemo(() => {
     if (!startDate || !endDate) return [];
     const list = [];
@@ -100,9 +109,7 @@ const GeoMatrixPage = () => {
     const start = new Date(startDate);
     start.setHours(0,0,0,0);
     
-    // ✅ ИСПРАВЛЕНА ОШИБКА "d is not defined"
     let d = new Date(start); 
-    
     while (d <= current) {
       list.push(new Date(d));
       d.setDate(d.getDate() + 1);
@@ -113,7 +120,6 @@ const GeoMatrixPage = () => {
   const { matrixData, totalsByCountry, totalsByDate, grandTotal } = useMemo(() => {
     const data = {};
     dateList.forEach(date => {
-      // ✅ ИСПОЛЬЗУЕМ ЛОКАЛЬНЫЙ КЛЮЧ
       const dateKey = getLocalDateKey(date);
       data[dateKey] = {};
       countriesList.forEach(country => {
@@ -124,12 +130,12 @@ const GeoMatrixPage = () => {
     if (!isDemoMode) {
       payments.forEach(p => {
         if (!p.transactionDate) return;
+        // Фильтры
         if (filters.product && p.product !== filters.product) return;
         if (filters.type && p.type !== filters.type) return;
 
         let pDate;
         try {
-            // Безопасный парсинг даты
             pDate = typeof p.transactionDate === 'string' 
                 ? p.transactionDate.split(/[T ]/)[0] 
                 : new Date(p.transactionDate).toISOString().split('T')[0];
@@ -149,8 +155,6 @@ const GeoMatrixPage = () => {
     let total = 0;
 
     countriesList.forEach(c => tCountry[c.code] = 0);
-    
-    // Инициализируем нулями по локальным ключам
     dateList.forEach(d => tDate[getLocalDateKey(d)] = 0);
 
     Object.entries(data).forEach(([dateKey, geos]) => {
@@ -179,7 +183,9 @@ const GeoMatrixPage = () => {
 
   const resetFilters = () => setFilters({ product: '', type: '' });
 
+  // ✅ ОБНОВЛЕННЫЙ КЛИК ПО ЯЧЕЙКЕ
   const handleCellClick = (countryCode, dateKey, count) => {
+    // 1. Фильтруем транзакции для этой ячейки
     const cellTransactions = payments.filter(p => {
        if (!p.transactionDate) return false;
        let pDate;
@@ -189,6 +195,7 @@ const GeoMatrixPage = () => {
                 : new Date(p.transactionDate).toISOString().split('T')[0];
        } catch (e) { return false; }
        
+       // Важно: Применяем те же фильтры, что и в матрице
        if (filters.product && p.product !== filters.product) return false;
        if (filters.type && p.type !== filters.type) return false;
 
@@ -197,12 +204,21 @@ const GeoMatrixPage = () => {
 
     const countryInfo = countriesList.find(c => c.code === countryCode);
 
+    // 2. Достаем трафик (заявки) из стора для конкретной ячейки
+    let cellTraffic = 0;
+    if (trafficStats && trafficStats[countryCode] && trafficStats[countryCode][dateKey]) {
+        const val = trafficStats[countryCode][dateKey];
+        // val может быть объектом {all, direct} или числом
+        cellTraffic = typeof val === 'object' ? (val.all || 0) : (Number(val) || 0);
+    }
+
     setSelectedCell({
         countryCode,
         countryName: countryInfo?.name || countryCode,
         countryEmoji: countryInfo?.emoji,
         dateKey,
-        count,
+        count, // Количество продаж
+        traffic: cellTraffic, // Количество заявок
         transactions: cellTransactions
     });
   };
@@ -277,7 +293,6 @@ const GeoMatrixPage = () => {
                                 <span className="text-gray-400 font-medium pl-1 text-xs">ГЕО</span>
                             </th>
                             {dateList.map(date => (
-                                // ✅ ИСПОЛЬЗУЕМ ЛОКАЛЬНЫЙ КЛЮЧ
                                 <th key={getLocalDateKey(date)} className="h-[60px] min-w-[34px] bg-gray-50 dark:bg-[#161616] border-b border-r border-gray-200 dark:border-[#333] p-0 align-bottom group hover:bg-gray-100 dark:hover:bg-[#222] transition-colors relative z-10">
                                     <div className="flex flex-col items-center justify-end pb-2 w-full h-full gap-1">
                                         <span className={`text-[8px] font-bold uppercase px-1 rounded-[2px] mb-1 ${date.getDay()===0||date.getDay()===6 ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10' : 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-[#222]'}`}>
@@ -306,7 +321,6 @@ const GeoMatrixPage = () => {
                                     </div>
                                 </td>
                                 {dateList.map(date => {
-                                    // ✅ ИСПОЛЬЗУЕМ ЛОКАЛЬНЫЙ КЛЮЧ
                                     const dateKey = getLocalDateKey(date);
                                     const count = matrixData[dateKey]?.[country.code] || 0;
                                     return (
@@ -328,7 +342,6 @@ const GeoMatrixPage = () => {
                                 </div>
                             </td>
                             {dateList.map(date => {
-                                // ✅ ИСПОЛЬЗУЕМ ЛОКАЛЬНЫЙ КЛЮЧ
                                 const dateKey = getLocalDateKey(date);
                                 const count = totalsByDate[dateKey] || 0;
                                 return (
@@ -350,30 +363,31 @@ const GeoMatrixPage = () => {
   );
 };
 
-// --- DRILL DOWN MODAL ---
+// --- DRILL DOWN MODAL (ИСПРАВЛЕН) ---
 const DrillDownModal = ({ selectedCell, onClose }) => {
     if (!selectedCell) return null;
 
-    const { countryCode, countryName, countryEmoji, dateKey, count, transactions } = selectedCell;
-    const trafficCount = 100; 
-    const conversionRate = trafficCount > 0 ? ((count / trafficCount) * 100).toFixed(2) : 0;
+    // Получаем переданные данные, включая реальный трафик (заявки)
+    const { countryCode, countryName, countryEmoji, dateKey, count, traffic, transactions } = selectedCell;
     
-    // Берем имя менеджера из нормализованного поля
+    // Считаем конверсию: Продажи (count) / Заявки (traffic)
+    const conversionRate = traffic > 0 ? ((count / traffic) * 100).toFixed(2) : 0;
+    
+    // Менеджер
     const managerName = transactions.length > 0 ? (transactions[0].manager || 'Не назначен') : "Не назначен";
 
+    // Суммы
     const totalAmountEUR = transactions.reduce((sum, t) => sum + (Number(t.amountEUR) || 0), 0);
+    // ✅ Сумма Local теперь считается по amountLocal
     const totalAmountOriginal = transactions.reduce((sum, t) => sum + (Number(t.amountLocal) || 0), 0);
 
     const formattedDate = new Date(dateKey).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
 
-    // Безопасное получение времени
     const getTimeString = (dateStr) => {
         if (!dateStr) return '--:--';
         try {
             const parts = dateStr.split(/[T ]/);
-            if (parts.length > 1) {
-                return parts[1].slice(0, 5);
-            }
+            if (parts.length > 1) return parts[1].slice(0, 5);
             return '--:--';
         } catch (e) { return '--:--'; }
     };
@@ -393,10 +407,12 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
                 </div>
                 <div className="p-5 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
+                        {/* Конверсия */}
                         <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/20">
                             <div className="text-[10px] text-blue-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><Activity size={10} /> Конверсия</div>
                             <div className="text-xl font-black text-gray-900 dark:text-white">{conversionRate}%</div>
-                            <div className="text-[10px] text-gray-400 mt-1">{count} продаж / {trafficCount} кликов</div>
+                            {/* ✅ Исправлено: продаж / заявок */}
+                            <div className="text-[10px] text-gray-400 mt-1">{count} продаж / {traffic} заявок</div>
                         </div>
                         <div className="p-3 bg-purple-50 dark:bg-purple-900/10 rounded-lg border border-purple-100 dark:border-purple-900/20">
                             <div className="text-[10px] text-purple-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><User size={10} /> Менеджер</div>
@@ -411,8 +427,11 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
                         </div>
                         <div className="w-px h-8 bg-gray-200 dark:bg-[#333]"></div>
                         <div className="text-right">
+                            {/* ✅ Убран знак доллара, добавлена иконка Coins */}
                             <div className="text-[10px] text-gray-400 uppercase font-bold mb-0.5">Сумма (Local)</div>
-                            <div className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-1 justify-end"><DollarSign size={14} className="text-gray-400"/> {totalAmountOriginal.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</div>
+                            <div className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-1 justify-end">
+                                <Coins size={14} className="text-gray-400"/> {totalAmountOriginal.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}
+                            </div>
                         </div>
                     </div>
                     {transactions.length > 0 && (
@@ -425,7 +444,10 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
                                         <span className="font-bold dark:text-white flex-1 truncate px-2">{t.product || 'Не указан'}</span>
                                         <div className="text-right">
                                             <div className="font-mono font-bold">€{Number(t.amountEUR).toFixed(0)}</div>
-                                            <div className="text-[9px] text-gray-400">{Number(t.amountLocal).toFixed(0)} loc</div>
+                                            {/* ✅ Исправлено NaN: выводим число, если есть amountLocal */}
+                                            <div className="text-[9px] text-gray-400">
+                                                {t.amountLocal ? Number(t.amountLocal).toFixed(0) : '0'} loc
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -438,7 +460,7 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
     );
 };
 
-// ... GeoManagerModal (оставляем без изменений)
+// ... GeoManagerModal без изменений ...
 const GeoManagerModal = ({ isOpen, onClose, countriesList, onUpdate }) => {
   const [newGeoCode, setNewGeoCode] = useState('');
   const [activeTab, setActiveTab] = useState('list');

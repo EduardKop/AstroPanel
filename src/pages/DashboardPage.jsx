@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
 import {
-  Filter, Calendar, RotateCcw, XCircle,
+  Filter, RotateCcw, XCircle,
   Users, DollarSign, Percent, CreditCard, LayoutDashboard,
-  Activity, Trophy, Globe, Layers, MessageCircle, MessageSquare
+  Activity, Trophy, Globe, Layers, MessageCircle, MessageSquare, Calendar as CalendarIcon, Coins
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -21,9 +22,9 @@ const getFlag = (code) => FLAGS[code] || '🏳️';
 
 const getCRColor = (val) => {
   const num = parseFloat(val);
-  if (num >= 10) return 'text-emerald-500';
-  if (num >= 5) return 'text-amber-500';
-  return 'text-rose-500';
+  if (num >= 10) return 'text-emerald-600 dark:text-emerald-400';
+  if (num >= 5) return 'text-amber-600 dark:text-amber-400';
+  return 'text-rose-600 dark:text-rose-400';
 };
 
 const getPaymentBadgeStyle = (type) => {
@@ -35,6 +36,13 @@ const getPaymentBadgeStyle = (type) => {
   return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20';
 };
 
+const getRankEmoji = (index) => {
+  if (index === 0) return '🥇';
+  if (index === 1) return '🥈';
+  if (index === 2) return '🥉';
+  return <span className="text-gray-400 text-[10px] font-mono">#{index + 1}</span>;
+}
+
 const getLastWeekRange = () => {
   const end = new Date();
   const start = new Date();
@@ -43,16 +51,16 @@ const getLastWeekRange = () => {
 };
 
 const DenseSelect = ({ label, value, options, onChange }) => (
-  <div className="relative group w-full sm:w-auto min-w-0 flex-1 sm:flex-none">
+  <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[100px]">
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-2.5 sm:py-2 pl-3 pr-8 rounded-[8px] sm:rounded-[6px] text-sm font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer truncate"
+      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer truncate"
     >
       <option value="">{label}</option>
       {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
     </select>
-    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={14} /></div>
+    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
   </div>
 );
 
@@ -61,12 +69,15 @@ const DashboardPage = () => {
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
+  
   const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all' });
 
-  // ✅ Загружаем статистику (из таблицы leads) при изменении дат
+  const hasActiveFilters = useMemo(() => {
+    return !!(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all');
+  }, [filters]);
+
   useEffect(() => {
     if (fetchTrafficStats) {
-      // Передаем даты в ISO формате, чтобы запрос в Supabase сработал корректно
       const isoStart = startDate ? new Date(startDate.setHours(0, 0, 0, 0)).toISOString() : undefined;
       const isoEnd = endDate ? new Date(endDate.setHours(23, 59, 59, 999)).toISOString() : undefined;
       fetchTrafficStats(isoStart, isoEnd);
@@ -89,14 +100,13 @@ const DashboardPage = () => {
     };
   }, [payments]);
 
-  // Фильтрация платежей (Supabase)
   const filteredData = useMemo(() => {
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
       const d = new Date(item.transactionDate);
 
-      if (startDate && d < new Date(startDate.setHours(0, 0, 0, 0))) return false;
-      if (endDate && d > new Date(endDate.setHours(23, 59, 59, 999))) return false;
+      if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return false;
+      if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return false;
 
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
@@ -113,40 +123,26 @@ const DashboardPage = () => {
     return data.sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate));
   }, [payments, startDate, endDate, filters, isRestrictedUser, currentUser]);
 
-  // --- ГЛАВНЫЙ БЛОК: ПОДСЧЕТ ТРАФИКА (из store/leads) ---
   const stats = useMemo(() => {
     const totalEur = filteredData.reduce((sum, item) => sum + (item.amountEUR || 0), 0);
     const count = filteredData.length;
-
     let traffic = 0;
 
-    // trafficStats приходит в формате: { "PL": { "2026-01-12": { direct: 5, comments: 2, all: 7 } }, "DE": ... }
     if (trafficStats && Object.keys(trafficStats).length > 0) {
-
       const countTrafficForGeo = (geo) => {
         const geoData = trafficStats[geo];
         if (!geoData) return 0;
-
         let sum = 0;
-
         Object.entries(geoData).forEach(([dateStr, val]) => {
           const d = new Date(dateStr);
+          if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return;
+          if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return;
 
-          // Проверяем фильтр даты на клиенте (дополнительно)
-          if (startDate && d < new Date(startDate.setHours(0, 0, 0, 0))) return;
-          if (endDate && d > new Date(endDate.setHours(23, 59, 59, 999))) return;
-
-          // ✅ ЛОГИКА ВЫБОРА ИСТОЧНИКА (Direct / Comments / All)
           if (typeof val === 'object' && val !== null) {
-            if (filters.source === 'all') {
-              sum += (val.all || 0);
-            } else if (filters.source === 'direct') {
-              sum += (val.direct || 0);
-            } else if (filters.source === 'comments') {
-              sum += (val.comments || 0);
-            }
+            if (filters.source === 'all') sum += (val.all || 0);
+            else if (filters.source === 'direct') sum += (val.direct || 0);
+            else if (filters.source === 'comments') sum += (val.comments || 0);
           } else {
-            // Фоллбэк
             sum += (Number(val) || 0);
           }
         });
@@ -156,15 +152,11 @@ const DashboardPage = () => {
       if (filters.country) {
         traffic = countTrafficForGeo(filters.country);
       } else {
-        // Суммируем по всем странам, которые есть в trafficStats
         traffic = Object.keys(trafficStats).reduce((acc, geo) => acc + countTrafficForGeo(geo), 0);
       }
     }
 
-    const conversion = traffic > 0
-      ? ((count / traffic) * 100).toFixed(2)
-      : "0.00";
-
+    const conversion = traffic > 0 ? ((count / traffic) * 100).toFixed(2) : "0.00";
     return { traffic, conversion, totalEur: totalEur.toFixed(2), count };
   }, [filteredData, trafficStats, filters.country, filters.source, startDate, endDate]);
 
@@ -175,7 +167,7 @@ const DashboardPage = () => {
 
     return {
       ltc: {
-        cr: "12.4",
+        cr: stats.conversion,
         active: activeMgrs,
         sales: salesCount,
         depositSum: totalSum
@@ -187,9 +179,8 @@ const DashboardPage = () => {
         depositSum: (totalSum * 0.4).toFixed(2)
       }
     };
-  }, [filteredData, stats.totalEur, isRestrictedUser]);
+  }, [filteredData, stats.totalEur, stats.conversion, isRestrictedUser]);
 
-  // ГРАФИК ПРОДАЖ (Динамика)
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
@@ -219,12 +210,32 @@ const DashboardPage = () => {
       statsByGeo[code].count += 1;
       statsByGeo[code].sum += (p.amountEUR || 0);
     });
+
     return Object.entries(statsByGeo).map(([code, data]) => {
-      const mockTraffic = data.count * 12; // Пока моковые данные для CR в топе стран, т.к. трафик не привязан жестко к продажам в этом массиве
-      const mockCR = ((data.count / mockTraffic) * 100).toFixed(1);
-      return { code, salesCount: data.count, salesSum: data.sum, traffic: mockTraffic, cr: mockCR };
+      let realTraffic = 0;
+      if (trafficStats && trafficStats[code]) {
+        Object.entries(trafficStats[code]).forEach(([dateStr, val]) => {
+          const d = new Date(dateStr);
+          if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return;
+          if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return;
+          const num = typeof val === 'object' ? (val.all || 0) : (Number(val) || 0);
+          realTraffic += num;
+        });
+      }
+
+      const cr = realTraffic > 0 
+        ? ((data.count / realTraffic) * 100).toFixed(1) 
+        : "0.0";
+
+      return { 
+        code, 
+        salesCount: data.count, 
+        salesSum: data.sum, 
+        traffic: realTraffic, 
+        cr: cr 
+      };
     }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 5);
-  }, [filteredData]);
+  }, [filteredData, trafficStats, startDate, endDate]);
 
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const resetFilters = () => setFilters({ manager: '', country: '', product: '', type: '', source: 'all' });
@@ -233,70 +244,47 @@ const DashboardPage = () => {
     <div className="pb-10 transition-colors duration-200 w-full max-w-full overflow-x-hidden">
 
       {/* HEADER + FILTERS */}
-      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-2 border-b border-transparent transition-colors duration-200">
-
-        <div className="flex justify-between items-center mb-2 md:mb-4">
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent transition-colors duration-200 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 mb-1 xl:mb-0">
           <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
             <LayoutDashboard size={18} className="text-blue-600 dark:text-blue-500 shrink-0" />
             <span className="truncate">Панель отдела продаж</span>
           </h2>
         </div>
 
-        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full min-w-0">
-
-          <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[8px] sm:rounded-[6px] px-3 py-2 sm:py-1 shadow-sm w-full sm:w-auto justify-between min-w-0">
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto xl:justify-end">
+          <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm w-full sm:w-auto min-w-[200px] justify-between h-[34px]">
             <div className="flex items-center flex-1 min-w-0 w-full">
-              <Calendar size={16} className="text-gray-400 mr-2 shrink-0" />
+              <CalendarIcon size={12} className="text-gray-400 mr-2 shrink-0" />
               <DatePicker
-                selectsRange={true} startDate={startDate} endDate={endDate} onChange={(u) => setDateRange(u)}
+                selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
                 dateFormat="dd.MM.yyyy" placeholderText="Период"
-                wrapperClassName="w-full min-w-0"
-                className="bg-transparent text-sm font-medium dark:text-white outline-none w-full cursor-pointer text-center min-w-0"
-                popperPlacement="bottom-center"
+                className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center min-w-0"
+                popperPlacement="bottom-end"
               />
             </div>
-            <button onClick={resetDateRange} className="ml-2 text-gray-400 hover:text-black dark:hover:text-white shrink-0 p-1"><RotateCcw size={14} /></button>
+          </div>
+          <button onClick={resetDateRange} className="hidden sm:block text-gray-400 hover:text-black dark:hover:text-white p-1"><RotateCcw size={14} /></button>
+
+          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full sm:w-auto">
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`flex-1 sm:flex-none px-3 sm:px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`flex-1 sm:flex-none px-3 sm:px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} /> Direct</button>
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`flex-1 sm:flex-none px-3 sm:px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} /> Comm</button>
           </div>
 
-          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-1 rounded-[8px] sm:rounded-[6px] w-full sm:w-auto min-w-0">
-            <button
-              onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))}
-              className={`flex-1 sm:flex-none px-3 py-1.5 rounded-[6px] sm:rounded-[4px] text-xs font-bold transition-all ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-            >
-              Все
-            </button>
-            <button
-              onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))}
-              className={`flex-1 sm:flex-none px-3 py-1.5 rounded-[6px] sm:rounded-[4px] text-xs font-bold transition-all flex items-center justify-center gap-1 ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-            >
-              <MessageCircle size={12} /> Direct
-            </button>
-            <button
-              onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))}
-              className={`flex-1 sm:flex-none px-3 py-1.5 rounded-[6px] sm:rounded-[4px] text-xs font-bold transition-all flex items-center justify-center gap-1 ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-            >
-              <MessageSquare size={12} /> Comm
-            </button>
+          <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+            {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
+            <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
+            <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+            <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
           </div>
 
-          {!isRestrictedUser && (
-            <DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />
-          )}
-
-          <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-          <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
-          <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
-
-          {(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all') && (
-            <button onClick={resetFilters} className="p-2.5 sm:p-1.5 bg-red-500/10 text-red-500 rounded-[8px] sm:rounded-[6px] hover:bg-red-500/20 flex justify-center items-center w-full sm:w-auto font-medium text-xs sm:text-sm shrink-0">
-              <XCircle size={16} className="mr-1 sm:mr-0" /> <span className="sm:hidden">Сбросить фильтры</span>
-            </button>
-          )}
+          <button onClick={resetFilters} disabled={!hasActiveFilters} className={`shrink-0 p-1.5 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 flex justify-center items-center h-[34px] w-[34px] transition-opacity duration-200 ${hasActiveFilters ? 'opacity-100 cursor-pointer' : 'opacity-0 cursor-default pointer-events-none'}`}><XCircle size={14} /></button>
         </div>
       </div>
 
       <div className="grid grid-cols-12 gap-3 md:gap-4 mb-6 mt-4 w-full min-w-0">
-
+        
         {/* 1. ГЛАВНЫЙ БЛОК */}
         <div className="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0">
           <div className="absolute inset-0 bg-white dark:bg-[#0F0F11] transition-colors duration-200"></div>
@@ -328,19 +316,8 @@ const DashboardPage = () => {
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="date" hide />
-                    <RechartsTooltip
-                      contentStyle={{ backgroundColor: '#111', borderColor: '#333', fontSize: '12px', color: '#fff' }}
-                      itemStyle={{ color: '#fff' }}
-                      cursor={{ stroke: '#555', strokeWidth: 1 }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="count"
-                      stroke="#3B82F6"
-                      fillOpacity={1}
-                      fill="url(#colorCount)"
-                      strokeWidth={2}
-                    />
+                    <RechartsTooltip contentStyle={{ backgroundColor: '#111', borderColor: '#333', fontSize: '12px', color: '#fff' }} itemStyle={{ color: '#fff' }} cursor={{ stroke: '#555', strokeWidth: 1 }} />
+                    <Area type="monotone" dataKey="count" stroke="#3B82F6" fillOpacity={1} fill="url(#colorCount)" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -350,49 +327,36 @@ const DashboardPage = () => {
 
         {/* 2. KPI CARDS */}
         <div className="col-span-12 md:col-span-6 lg:col-span-3 xl:col-span-4 flex flex-col gap-3 min-w-0">
-          <ProductCard
-            title="LTC"
-            subtitle="Конверсия в оплату"
-            mainValue={kpiData.ltc.cr}
-            mainType="percent"
-            data={[
-              { label: 'Активных менеджеров', val: kpiData.ltc.active },
-              { label: 'Всего продаж', val: kpiData.ltc.sales },
-              { label: 'Сумма депозитов', val: `€${kpiData.ltc.depositSum}` }
-            ]}
-          />
-          <ProductCard
-            title="Консультанты"
-            subtitle="Повторные депозиты"
-            mainValue={kpiData.consultants.cr}
-            mainType="percent"
-            data={[
-              { label: 'Активных менеджеров', val: kpiData.consultants.active },
-              { label: 'Всего продаж', val: kpiData.consultants.sales },
-              { label: 'Сумма депозитов', val: `€${kpiData.consultants.depositSum}` }
-            ]}
-          />
+          <ProductCard title="LTC" subtitle="Конверсия в оплату" mainValue={kpiData.ltc.cr} mainType="percent" data={[{ label: 'Активных менеджеров', val: kpiData.ltc.active }, { label: 'Всего продаж', val: kpiData.ltc.sales }, { label: 'Сумма депозитов', val: `€${kpiData.ltc.depositSum}` }]} />
+          <ProductCard title="Консультанты" subtitle="Повторные депозиты" mainValue={kpiData.consultants.cr} mainType="percent" data={[{ label: 'Активных менеджеров', val: kpiData.consultants.active }, { label: 'Всего продаж', val: kpiData.consultants.sales }, { label: 'Сумма депозитов', val: `€${kpiData.consultants.depositSum}` }]} />
         </div>
 
         {/* 3. LEADERBOARDS */}
         <div className="col-span-12 md:col-span-6 lg:col-span-4 flex flex-col gap-3 min-w-0">
-
+          
           {/* Top Managers */}
           <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
-            <div className="px-4 py-2.5 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
               <div className="flex items-center gap-2 min-w-0">
                 <Trophy size={14} className="text-amber-500 shrink-0" />
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ менеджеры</span>
               </div>
             </div>
-            <div className="p-0">
+            {/* Сделали отступы компактнее (p-2) */}
+            <div className="p-2 space-y-1">
               {topManagers.map((mgr, i) => (
-                <div key={mgr.name} className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-[#222] last:border-0 hover:bg-gray-50 dark:hover:bg-[#1A1A1A]">
-                  <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-                    <span className={`text-[10px] w-4 font-bold shrink-0 ${i === 0 ? 'text-amber-500' : 'text-gray-400'}`}>{i + 1}</span>
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{mgr.name}</span>
+                // Compact Row Item (py-2 mb-1)
+                <div key={mgr.name} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
+                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate leading-none">{mgr.name}</span>
                   </div>
-                  <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap ml-2">€{mgr.sum.toFixed(0)}</span>
+                  
+                  {/* Single Line Data: Count -> Sum */}
+                  <div className="flex items-center gap-3 text-right">
+                    <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{mgr.count} Lead</span>
+                    <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[60px]">€{mgr.sum.toFixed(0)}</span>
+                  </div>
                 </div>
               ))}
               {topManagers.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
@@ -401,23 +365,31 @@ const DashboardPage = () => {
 
           {/* Top Geo */}
           <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
-            <div className="px-4 py-2.5 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
               <div className="flex items-center gap-2 min-w-0">
                 <Globe size={14} className="text-blue-500 shrink-0" />
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ ГЕО</span>
               </div>
             </div>
-            <div className="p-0">
+            {/* Сделали отступы компактнее (p-2) */}
+            <div className="p-2 space-y-1">
               {topCountries.map((geo, i) => (
-                <div key={geo.code} className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-[#222] last:border-0 hover:bg-gray-50 dark:hover:bg-[#1A1A1A]">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm shrink-0">{getFlag(geo.code)}</span>
-                    <span className="text-xs font-bold text-gray-700 dark:text-gray-200 truncate">{geo.code}</span>
-                    <span className="text-[10px] text-gray-400 whitespace-nowrap">({geo.salesCount})</span>
+                // Compact Row Item (py-2 mb-1)
+                <div key={geo.code} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
+                    <div className="flex items-center gap-1.5 leading-none">
+                        <span className="text-base">{getFlag(geo.code)}</span>
+                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{geo.code}</span>
+                    </div>
                   </div>
-                  <span className={`text-xs font-mono font-bold ${getCRColor(geo.cr)} whitespace-nowrap ml-2`}>
-                    CR: {geo.cr}%
-                  </span>
+                  
+                  {/* Single Line Data: Count -> Sum -> CR */}
+                  <div className="flex items-center gap-3 text-right">
+                    <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{geo.salesCount} Lead</span>
+                    <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[50px]">€{geo.salesSum.toFixed(0)}</span>
+                    <span className={`text-[10px] font-bold w-[35px] text-right ${getCRColor(geo.cr)}`}>{geo.cr}%</span>
+                  </div>
                 </div>
               ))}
               {topCountries.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
@@ -442,13 +414,14 @@ const DashboardPage = () => {
                 <th className="px-4 py-2">Менеджер</th>
                 <th className="px-4 py-2">ГЕО</th>
                 <th className="px-4 py-2">Метод</th>
-                <th className="px-4 py-2">Сумма</th>
+                <th className="px-4 py-2 text-right">Сумма (Loc)</th>
+                <th className="px-4 py-2 text-right">Сумма (EUR)</th>
                 <th className="px-4 py-2 text-right">Статус</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
               {isLoading ? (
-                <tr><td colSpan="7" className="px-4 py-6 text-center text-xs">Загрузка...</td></tr>
+                <tr><td colSpan="8" className="px-4 py-6 text-center text-xs">Загрузка...</td></tr>
               ) : filteredData.slice(0, 10).map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
                   <td className="px-4 py-2 font-mono text-[10px] text-gray-400" title={p.id}>
@@ -470,14 +443,17 @@ const DashboardPage = () => {
                       {p.type || 'Other'}
                     </span>
                   </td>
-                  <td className="px-4 py-2 font-mono font-bold text-gray-900 dark:text-white">€{p.amountEUR}</td>
+                  <td className="px-4 py-2 text-right font-bold text-gray-700 dark:text-gray-300">
+                    {p.amountLocal ? p.amountLocal.toLocaleString() : '-'}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono font-bold text-gray-900 dark:text-white">€{p.amountEUR}</td>
                   <td className="px-4 py-2 text-right">
                     <span className="text-emerald-500 text-[10px] font-bold uppercase">{p.status}</span>
                   </td>
                 </tr>
               ))}
               {!isLoading && filteredData.length === 0 && (
-                <tr><td colSpan="7" className="px-4 py-6 text-center text-xs">Нет данных</td></tr>
+                <tr><td colSpan="8" className="px-4 py-6 text-center text-xs">Нет данных</td></tr>
               )}
             </tbody>
           </table>

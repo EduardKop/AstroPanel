@@ -12,16 +12,20 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.87.3",
     "axios": "^1.6.0",
-    "clsx": "^2.1.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.300.0",
+    "primeicons": "^7.0.0",
+    "primereact": "^10.9.7",
     "react": "^18.2.0",
     "react-datepicker": "^9.0.0",
+    "react-day-picker": "^9.13.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.10.1",
     "recharts": "^3.6.0",
-    "tailwind-merge": "^2.2.0",
+    "tailwind-merge": "^2.6.0",
     "zustand": "^5.0.9"
   },
   "devDependencies": {

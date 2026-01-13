@@ -54,7 +54,6 @@ export const useAppStore = create((set, get) => ({
       if (leadsData) {
         leadsData.forEach(lead => {
           // Магия: берем код страны из базы данных (через карту)
-          // Если ID канала нет в базе, помечаем как 'Other' или 'PL' (на твой выбор)
           const countryCode = map[lead.channel_id] || 'Other';
 
           const dateStr = lead.created_at.split('T')[0];
@@ -124,7 +123,6 @@ export const useAppStore = create((set, get) => ({
 
       if (leadsData) {
         leadsData.forEach(lead => {
-          // И тут используем нашу карту, которую только что загрузили
           const countryCode = newChannelsMap[lead.channel_id] || 'Other';
           const dateStr = lead.created_at.split('T')[0];
 
@@ -149,7 +147,12 @@ export const useAppStore = create((set, get) => ({
           ...item,
           id: item.id,
           transactionDate: rawDate,
+          
+          // --- ВОТ ТУТ МЫ ИСПРАВИЛИ ---
           amountEUR: Number(item.amount_eur) || 0,
+          amountLocal: Number(item.amount_local) || 0, // <--- Добавили явное поле для фронта
+          // ----------------------------
+          
           amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
           manager: managersMap[item.manager_id] || 'Не назначен',
           managerId: item.manager_id,
@@ -183,9 +186,7 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'managers' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_products' }, () => get().fetchAllData(true))
-      // Если ты добавишь новый канал в таблицу, сайт обновится
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, () => get().fetchAllData(true))
-      // Если придет новый лид
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => get().fetchAllData(true))
       .subscribe();
 

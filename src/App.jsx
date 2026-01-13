@@ -186,7 +186,7 @@ function App() {
                 <Menu size={20} />
               </button>
               <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
-                {isLoading ? 'Обновление...' : `Актуально (${payments.length})`}
+                {/* {isLoading ? 'Обновление...' : `Актуально (${payments.length})`} */}
               </div>
             </div>
             <button onClick={() => fetchAllData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">

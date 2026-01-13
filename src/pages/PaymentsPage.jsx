@@ -1,12 +1,27 @@
 import React, { useState, useMemo } from 'react';
-import { useAppStore } from '../store/appStore'; // ✅ Подключаем Store
+import { useAppStore } from '../store/appStore';
 import { 
-  Filter, ChevronLeft, ChevronRight, Calendar, 
-  XCircle, RotateCcw, ArrowUpDown 
+  Filter, ChevronLeft, ChevronRight, Calendar as CalendarIcon, 
+  XCircle, RotateCcw, ArrowUpDown, LayoutList 
 } from 'lucide-react';
 import PaymentsTable from '../components/PaymentsTable';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+
+// Адаптивный компонент селекта (как на Гео и Дашборде)
+const DenseSelect = ({ label, value, options, onChange }) => (
+  <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[120px]">
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer truncate"
+    >
+      <option value="">{label}: Все</option>
+      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+    </select>
+    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
+  </div>
+);
 
 const getLastWeekRange = () => {
   const end = new Date();
@@ -15,24 +30,8 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
-const SelectFilter = ({ label, value, options, onChange }) => (
-  <div className="relative">
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-300 dark:border-[#333] text-gray-900 dark:text-gray-200 py-2 pl-3 pr-8 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer"
-    >
-      <option value="">{label}: Все</option>
-      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-    </select>
-    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-      <Filter size={12} />
-    </div>
-  </div>
-);
-
 const PaymentsPage = () => {
-  // ✅ 1. БЕРЕМ ДАННЫЕ ИЗ СТОРА
+  // 1. Данные из стора
   const { payments, user: currentUser, isLoading } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
@@ -43,13 +42,18 @@ const PaymentsPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
 
+  // Проверка активности фильтров (для кнопки сброса)
+  const hasActiveFilters = useMemo(() => {
+    return !!(filters.manager || filters.country || filters.product || filters.type);
+  }, [filters]);
+
   // Права доступа
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
 
-  // Уникальные значения
+  // Уникальные значения для фильтров
   const uniqueValues = useMemo(() => {
     const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
     return {
@@ -63,33 +67,28 @@ const PaymentsPage = () => {
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const toggleSort = () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
 
-  // ГЛАВНАЯ ЛОГИКА ФИЛЬТРАЦИИ
+  // --- ЛОГИКА ФИЛЬТРАЦИИ ---
   const processedData = useMemo(() => {
     let data = payments.filter(item => {
-      // 1. Фильтр по роли
+      // 1. Роль
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
       } else {
         if (filters.manager && item.manager !== filters.manager) return false;
       }
 
-      // 2. Фильтр по дате (Безопасный парсинг)
+      // 2. Дата
       if (!item.transactionDate) return false;
-      
       const itemDate = new Date(item.transactionDate);
-      const itemDay = new Date(itemDate);
-      itemDay.setHours(0, 0, 0, 0);
-
-      if (startDate) {
-        const startDay = new Date(startDate);
-        startDay.setHours(0, 0, 0, 0);
-        if (itemDay < startDay) return false;
-      }
       
+      // Сравниваем только даты, игнорируя время
+      if (startDate) {
+        const startDay = new Date(startDate); startDay.setHours(0,0,0,0);
+        if (itemDate < startDay) return false;
+      }
       if (endDate) {
-        const endDay = new Date(endDate);
-        endDay.setHours(0, 0, 0, 0);
-        if (itemDay > endDay) return false;
+        const endDay = new Date(endDate); endDay.setHours(23,59,59,999);
+        if (itemDate > endDay) return false;
       }
 
       // 3. Остальные фильтры
@@ -123,66 +122,69 @@ const PaymentsPage = () => {
   };
 
   return (
-    <div className="animate-in fade-in zoom-in duration-300 pb-10">
+    <div className="animate-in fade-in zoom-in duration-300 pb-10 w-full max-w-full overflow-x-hidden">
       
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+      {/* HEADER & FILTERS */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-4 gap-3">
+        
+        {/* Заголовок */}
         <div>
-          <h2 className="text-lg font-bold dark:text-white tracking-tight">Список оплат</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+          <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2">
+             <LayoutList size={18} className="text-blue-500" /> Список оплат
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 text-[10px] mt-0.5">
             Показано {paginatedData.length} из {processedData.length} записей
           </p>
         </div>
         
-        <div className="flex gap-2">
+        {/* Правая часть: Фильтры */}
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto xl:justify-end">
+            
+            {/* Кнопка сортировки */}
             <button 
               onClick={toggleSort} 
-              className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#111] border border-gray-300 dark:border-[#333] rounded-[6px] text-xs font-medium hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors text-gray-700 dark:text-gray-200"
+              className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] text-[10px] font-bold hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors text-gray-700 dark:text-gray-200 h-[34px]"
             >
-                <ArrowUpDown size={14} />
+                <ArrowUpDown size={12} />
                 {sortOrder === 'desc' ? 'Сначала новые' : 'Сначала старые'}
             </button>
 
-            {(filters.manager || filters.country || filters.product || filters.type) && (
+            {/* Календарь */}
+            <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm w-full sm:w-auto min-w-[200px] justify-between h-[34px]">
+               <div className="flex items-center flex-1 min-w-0 w-full">
+                 <CalendarIcon size={12} className="text-gray-400 mr-2 shrink-0" />
+                 <DatePicker
+                    selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
+                    dateFormat="dd.MM.yyyy" placeholderText="Период"
+                    className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center min-w-0"
+                    popperPlacement="bottom-end"
+                 />
+               </div>
+            </div>
+            <button onClick={resetDateRange} className="hidden sm:block text-gray-400 hover:text-black dark:hover:text-white p-1"><RotateCcw size={14}/></button>
+
+            {/* Селекты */}
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+              {!isRestrictedUser && (
+                <DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => { setFilters(prev => ({ ...prev, manager: val })); setCurrentPage(1); }} />
+              )}
+              <DenseSelect label="ГЕО" value={filters.country} options={uniqueValues.countries} onChange={(val) => { setFilters(prev => ({ ...prev, country: val })); setCurrentPage(1); }} />
+              <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => { setFilters(prev => ({ ...prev, product: val })); setCurrentPage(1); }} />
+              <DenseSelect label="Тип" value={filters.type} options={uniqueValues.types} onChange={(val) => { setFilters(prev => ({ ...prev, type: val })); setCurrentPage(1); }} />
+            </div>
+
+            {/* Кнопка сброса (статичная) */}
             <button 
               onClick={resetFilters} 
-              className="flex items-center gap-2 text-xs text-red-500 hover:text-red-400 transition-colors font-medium px-3 py-1.5 bg-red-500/10 rounded-[6px]"
+              disabled={!hasActiveFilters}
+              className={`shrink-0 p-1.5 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 flex justify-center items-center h-[34px] w-[34px] transition-opacity duration-200 ${hasActiveFilters ? 'opacity-100 cursor-pointer' : 'opacity-0 cursor-default pointer-events-none'}`}
             >
-                <XCircle size={14} /> Сбросить
+              <XCircle size={14} />
             </button>
-            )}
         </div>
       </div>
 
-      {/* Панель фильтров */}
-      <div className="bg-white dark:bg-[#111] p-4 rounded-lg border border-gray-200 dark:border-[#333] shadow-sm mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
-          
-          <div className="lg:col-span-2 flex items-center bg-white dark:bg-[#111] border border-gray-300 dark:border-[#333] rounded-[6px] px-2 py-1">
-             <div className="px-2 text-gray-400 pointer-events-none"><Calendar size={14} /></div>
-             <div className="relative flex-1">
-                <DatePicker
-                    selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
-                    dateFormat="dd.MM.yyyy" placeholderText="Выберите период"
-                    className="bg-transparent text-xs font-medium text-gray-900 dark:text-white outline-none w-full py-1 cursor-pointer text-center"
-                    onKeyDown={(e) => e.preventDefault()}
-                />
-             </div>
-             <button onClick={resetDateRange} className="p-1 hover:bg-gray-100 dark:hover:bg-[#222] rounded text-gray-400 transition-colors">
-                <RotateCcw size={12} />
-             </button>
-          </div>
-
-          {!isRestrictedUser && (
-            <SelectFilter label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => { setFilters(prev => ({ ...prev, manager: val })); setCurrentPage(1); }} />
-          )}
-
-          <SelectFilter label="ГЕО" value={filters.country} options={uniqueValues.countries} onChange={(val) => { setFilters(prev => ({ ...prev, country: val })); setCurrentPage(1); }} />
-          <SelectFilter label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => { setFilters(prev => ({ ...prev, product: val })); setCurrentPage(1); }} />
-          <SelectFilter label="Тип" value={filters.type} options={uniqueValues.types} onChange={(val) => { setFilters(prev => ({ ...prev, type: val })); setCurrentPage(1); }} />
-        </div>
-      </div>
-
+      {/* Таблица */}
       <PaymentsTable payments={paginatedData} loading={isLoading} />
 
       {/* Пагинация */}
