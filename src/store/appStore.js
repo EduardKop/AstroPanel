@@ -9,14 +9,14 @@ export const useAppStore = create((set, get) => ({
   products: [],
   rules: [],
   
-  // ✅ НОВОЕ: Данные для зарплат
-  kpiRates: [],     // Тарифы за продукты
-  kpiSettings: {},  // Оклад, настройки бонусов
+  // Данные для зарплат
+  kpiRates: [],     
+  kpiSettings: {},  
 
-  // Справочник каналов: { "aa48...": "PL", "bb21...": "DE" }
+  // Справочник каналов
   channelsMap: {},
 
-  // Данные трафика: { "PL": { "2026-01-13": { direct: 5, comments: 2, all: 7 } } }
+  // Данные трафика
   trafficStats: {},
 
   stats: { totalEur: 0, count: 0 },
@@ -25,10 +25,8 @@ export const useAppStore = create((set, get) => ({
 
   // --- ACTIONS ---
 
-  // 1. Установка пользователя
   setUser: (user) => set({ user }),
 
-  // 2. Логаут
   logout: async () => {
     await supabase.auth.signOut();
     localStorage.removeItem('astroUser');
@@ -39,17 +37,17 @@ export const useAppStore = create((set, get) => ({
       products: [], 
       rules: [], 
       trafficStats: {}, 
-      kpiRates: [], // Сброс
-      kpiSettings: {}, // Сброс
+      kpiRates: [], 
+      kpiSettings: {}, 
       stats: { totalEur: 0, count: 0 } 
     });
   },
 
-  // 3. ФУНКЦИЯ ЗАГРУЗКИ ТРАФИКА
   fetchTrafficStats: async (dateFrom, dateTo) => {
     try {
       const map = get().channelsMap;
 
+      // Загружаем данные для графика (здесь фильтр по дате нужен для оптимизации графика)
       let query = supabase
         .from('leads')
         .select('created_at, is_comment, channel_id');
@@ -88,7 +86,6 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  // 4. ГЛАВНАЯ ФУНКЦИЯ ЗАГРУЗКИ (При старте)
   fetchAllData: async (forceUpdate = false) => {
     if (get().isLoading && !forceUpdate) return;
 
@@ -110,34 +107,44 @@ export const useAppStore = create((set, get) => ({
       const managersMap = {};
       managersData?.forEach(m => managersMap[m.id] = m.name);
 
-      // В. Оплаты, Продукты (База знаний), Правила
+      // В. Оплаты, Продукты, Правила
       const { data: paymentsData } = await supabase.from('payments').select('*').order('transaction_date', { ascending: false });
       const { data: productsData } = await supabase.from('knowledge_products').select('*');
       const { data: rulesData } = await supabase.from('knowledge_rules').select('*');
 
-      // ✅ Г. НОВОЕ: Загружаем KPI (Тарифы и Настройки)
+      // Г. KPI
       const { data: kpiRatesData } = await supabase.from('kpi_product_rates').select('*').order('rate', { ascending: true });
       const { data: kpiSettingsData } = await supabase.from('kpi_settings').select('*');
-      
-      // Превращаем настройки из массива [{key: 'base', value: 100}] в объект {base: 100}
       const kpiSettingsMap = {};
       if (kpiSettingsData) {
         kpiSettingsData.forEach(s => kpiSettingsMap[s.key] = s.value);
       }
 
-      // Д. Трафик (30 дней)
-      const today = new Date();
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(today.getDate() - 30);
-
+      // Д. Трафик и Источники (LEADS)
+      // Загружаем wazzup_chat_id для связки с никнеймом, и убираем лимит по времени,
+      // чтобы найти источник даже для старых оплат
       const { data: leadsData } = await supabase
         .from('leads')
-        .select('created_at, is_comment, channel_id')
-        .gte('created_at', thirtyDaysAgo.toISOString());
+        .select('created_at, is_comment, channel_id, wazzup_chat_id');
 
+      // 1. Создаем карту источников: nickname -> 'comments' | 'direct'
+      const leadsSourceMap = {};
+      
+      // 2. Создаем статистику трафика (для дэшборда)
       let trafficResult = {};
+
       if (leadsData) {
         leadsData.forEach(lead => {
+          // --- Логика маппинга источника ---
+          if (lead.wazzup_chat_id) {
+            // Нормализуем никнейм: убираем @, пробелы, приводим к нижнему регистру
+            const normNick = lead.wazzup_chat_id.replace(/[@\s]/g, '').toLowerCase();
+            // Если такой ник уже есть, и новый это коммент - перезаписываем (или наоборот, зависит от логики)
+            // Сейчас просто сохраняем тип последнего/единственного лида
+            leadsSourceMap[normNick] = lead.is_comment ? 'comments' : 'direct';
+          }
+
+          // --- Логика статистики трафика ---
           const countryCode = newChannelsMap[lead.channel_id] || 'Other';
           const dateStr = lead.created_at.split('T')[0];
 
@@ -151,9 +158,30 @@ export const useAppStore = create((set, get) => ({
         });
       }
 
-      // Е. Форматируем платежи
+      // Е. Форматируем платежи и добавляем SOURCE
       const formattedPayments = (paymentsData || []).map(item => {
         const rawDate = item.transaction_date || item.created_at;
+        
+        // Определяем источник по никнейму
+        let source = 'unknown'; // По умолчанию
+        if (item.crm_link) {
+            // Берем ник из crm_link (там может быть @nick или ссылка)
+            // Пытаемся вытащить чистое имя
+            let cleanNick = item.crm_link.toLowerCase();
+            // Если это ссылка инсты, вырезаем ник
+            const match = cleanNick.match(/instagram\.com\/([^/?#]+)/);
+            if (match) {
+                cleanNick = match[1];
+            }
+            // Убираем @ и мусор
+            cleanNick = cleanNick.replace(/[@\s\/]/g, '');
+            
+            // Ищем в карте лидов
+            if (leadsSourceMap[cleanNick]) {
+                source = leadsSourceMap[cleanNick];
+            }
+        }
+
         return {
           ...item,
           id: item.id,
@@ -164,7 +192,8 @@ export const useAppStore = create((set, get) => ({
           manager: managersMap[item.manager_id] || 'Не назначен',
           managerId: item.manager_id,
           type: item.payment_type || 'Other',
-          status: item.status || 'pending'
+          status: item.status || 'pending',
+          source: source // ✅ Добавили поле source ('direct', 'comments', 'unknown')
         };
       });
 
@@ -175,8 +204,8 @@ export const useAppStore = create((set, get) => ({
         managers: managersData || [],
         products: productsData || [],
         rules: rulesData || [],
-        kpiRates: kpiRatesData || [],       // ✅ Сохраняем тарифы
-        kpiSettings: kpiSettingsMap || {},  // ✅ Сохраняем настройки
+        kpiRates: kpiRatesData || [],       
+        kpiSettings: kpiSettingsMap || {},  
         trafficStats: trafficResult,
         stats: { totalEur: total.toFixed(2), count: formattedPayments.length },
         isLoading: false,
@@ -189,7 +218,6 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  // 5. Подписка на Realtime
   subscribeToRealtime: () => {
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => get().fetchAllData(true))
@@ -197,7 +225,6 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_products' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => get().fetchAllData(true))
-      // ✅ НОВОЕ: Слушаем изменения в KPI
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_product_rates' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_settings' }, () => get().fetchAllData(true))
       .subscribe();

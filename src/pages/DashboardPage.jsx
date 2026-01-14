@@ -118,6 +118,12 @@ const DashboardPage = () => {
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
 
+      // ✅ ФИЛЬТРАЦИЯ ПО ИСТОЧНИКУ (DIRECT / COMMENTS)
+      // Поле item.source ('direct' | 'comments' | 'unknown') заполняется в store/appStore.js
+      if (filters.source !== 'all') {
+        if (item.source !== filters.source) return false;
+      }
+
       return true;
     });
     return data.sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate));
@@ -139,10 +145,12 @@ const DashboardPage = () => {
           if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return;
 
           if (typeof val === 'object' && val !== null) {
+            // Подсчет трафика в зависимости от выбранного фильтра
             if (filters.source === 'all') sum += (val.all || 0);
             else if (filters.source === 'direct') sum += (val.direct || 0);
             else if (filters.source === 'comments') sum += (val.comments || 0);
           } else {
+            // Фоллбэк для старого формата данных (просто число)
             sum += (Number(val) || 0);
           }
         });
@@ -218,8 +226,15 @@ const DashboardPage = () => {
           const d = new Date(dateStr);
           if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return;
           if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return;
-          const num = typeof val === 'object' ? (val.all || 0) : (Number(val) || 0);
-          realTraffic += num;
+          
+          // Трафик для стран тоже фильтруем по источнику, чтобы CR был корректным
+          if (typeof val === 'object' && val !== null) {
+            if (filters.source === 'all') realTraffic += (val.all || 0);
+            else if (filters.source === 'direct') realTraffic += (val.direct || 0);
+            else if (filters.source === 'comments') realTraffic += (val.comments || 0);
+          } else {
+            realTraffic += (Number(val) || 0);
+          }
         });
       }
 
@@ -235,7 +250,7 @@ const DashboardPage = () => {
         cr: cr 
       };
     }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 5);
-  }, [filteredData, trafficStats, startDate, endDate]);
+  }, [filteredData, trafficStats, startDate, endDate, filters.source]);
 
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const resetFilters = () => setFilters({ manager: '', country: '', product: '', type: '', source: 'all' });
