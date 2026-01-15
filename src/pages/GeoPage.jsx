@@ -32,6 +32,16 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
+// ХЕЛПЕР: Превращает объект Date в строку "YYYY-MM-DD"
+// Важно использовать локальные методы (getFullYear и т.д.), так как DatePicker возвращает локальное время 00:00
+const toYMD = (date) => {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const GeoPage = () => {
   const { payments, trafficStats, fetchTrafficStats } = useAppStore();
 
@@ -63,14 +73,21 @@ const GeoPage = () => {
     types: [...new Set(payments.map(p => p.type).filter(Boolean))].sort()
   }), [payments]);
 
-  // Основная логика
+  // Основная логика (RAW MODE)
   const geoStats = useMemo(() => {
+    // 1. Подготовка границ дат в строковом формате
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
+    // 2. Фильтрация платежей
     const filteredPayments = payments.filter(item => {
       if (!item.transactionDate) return false;
-      const transDate = new Date(item.transactionDate);
       
-      if (startDate && transDate < new Date(startDate.setHours(0,0,0,0))) return false;
-      if (endDate && transDate > new Date(endDate.setHours(23,59,59,999))) return false;
+      // Берем дату из базы как строку "YYYY-MM-DD"
+      const dbDateStr = item.transactionDate.slice(0, 10);
+
+      // Строгое сравнение строк
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
       if (filters.manager && item.manager !== filters.manager) return false;
       if (filters.product && item.product !== filters.product) return false;
@@ -79,6 +96,7 @@ const GeoPage = () => {
       return true;
     });
 
+    // 3. Агрегация по странам
     const statsByGeo = {};
     filteredPayments.forEach(p => {
       const code = p.country || 'Unknown';
@@ -89,14 +107,15 @@ const GeoPage = () => {
       statsByGeo[code].sumLocal += (p.amountLocal || 0);
     });
 
+    // 4. Добавление трафика и расчет конверсии
     return Object.entries(statsByGeo).map(([code, data]) => {
       
       let realTraffic = 0;
       if (trafficStats && trafficStats[code]) {
         Object.entries(trafficStats[code]).forEach(([dateStr, val]) => {
-          const d = new Date(dateStr);
-          if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return;
-          if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return;
+          // dateStr уже в формате YYYY-MM-DD, сравниваем напрямую со строками границ
+          if (dateStr < startStr || dateStr > endStr) return;
+          
           const num = typeof val === 'object' ? (val.all || 0) : (Number(val) || 0);
           realTraffic += num;
         });

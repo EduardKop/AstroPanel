@@ -30,6 +30,15 @@ const getCurrentMonthRange = () => {
   return [start, end];
 };
 
+// ХЕЛПЕР: Дату в YYYY-MM-DD (локально)
+const toYMD = (date) => {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const StatsPage = () => {
   const { payments, user: currentUser } = useAppStore();
   const [dateRange, setDateRange] = useState(getLastWeekRange());
@@ -41,33 +50,49 @@ const StatsPage = () => {
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
 
+  // --- ФИЛЬТРАЦИЯ (RAW MODE) ---
   const filteredData = useMemo(() => {
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
-      const transDate = new Date(item.transactionDate);
-      if (startDate && transDate < new Date(startDate.setHours(0,0,0,0))) return false;
-      if (endDate && transDate > new Date(endDate.setHours(23,59,59,999))) return false;
+      
+      // Берем дату из базы как строку "YYYY-MM-DD"
+      const dbDateStr = item.transactionDate.slice(0, 10);
+
+      // Строгое сравнение строк
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
+
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
       }
       return true;
     });
-    return data.sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
+    
+    // Сортировка (строковая)
+    return data.sort((a, b) => (a.transactionDate || '').localeCompare(b.transactionDate || ''));
   }, [payments, startDate, endDate, isRestrictedUser, currentUser]);
 
+  // --- ГРУППИРОВКА ДЛЯ ГРАФИКОВ ---
   const prepareData = (dataKey, sourceData) => {
     const grouped = {};
     const allKeys = new Set();
+    
     sourceData.forEach(item => {
-      const date = new Date(item.transactionDate).toISOString().split('T')[0];
+      // Ключ группировки - "YYYY-MM-DD" из базы (без сдвигов времени)
+      const dateKey = item.transactionDate.slice(0, 10); 
       const key = item[dataKey] || 'Unknown';
       allKeys.add(key);
-      if (!grouped[date]) grouped[date] = { date };
-      if (!grouped[date][key]) grouped[date][key] = 0;
-      grouped[date][key] += 1;
+
+      if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey };
+      if (!grouped[dateKey][key]) grouped[dateKey][key] = 0;
+      grouped[dateKey][key] += 1;
     });
+
     return {
-      chartData: Object.values(grouped).sort((a, b) => new Date(a.date) - new Date(b.date)),
+      // Сортируем по дате (строке)
+      chartData: Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date)),
       keys: Array.from(allKeys)
     };
   };
@@ -80,7 +105,7 @@ const StatsPage = () => {
   return (
     <div className="animate-in fade-in zoom-in duration-300 pb-10">
       
-      {/* ✅ STICKY HEADER */}
+      {/* HEADER */}
       <div className="sticky top-0 z-30 -mt-6 -mx-6 px-6 py-4 bg-[#F5F5F5] dark:bg-[#0A0A0A] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 border-b border-transparent transition-colors duration-200">
         <div>
             <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
@@ -123,29 +148,34 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
   const [startDate, endDate] = dateRange;
 
   const filteredData = useMemo(() => {
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
     let data = rawPayments.filter(item => {
       if (!item.transactionDate) return false;
-      const d = new Date(item.transactionDate);
-      if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return false;
-      if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return false;
+      const dbDateStr = item.transactionDate.slice(0, 10);
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
       return true;
     });
-    return data.sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
+    return data.sort((a, b) => (a.transactionDate || '').localeCompare(b.transactionDate || ''));
   }, [rawPayments, startDate, endDate]);
 
   const prepared = useMemo(() => {
     const grouped = {};
     const allKeys = new Set();
+    
     filteredData.forEach(item => {
-      const date = new Date(item.transactionDate).toISOString().split('T')[0];
+      const dateKey = item.transactionDate.slice(0, 10);
       const key = item[chartKey] || 'Unknown';
       allKeys.add(key);
-      if (!grouped[date]) grouped[date] = { date };
-      if (!grouped[date][key]) grouped[date][key] = 0;
-      grouped[date][key] += 1;
+
+      if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey };
+      if (!grouped[dateKey][key]) grouped[dateKey][key] = 0;
+      grouped[dateKey][key] += 1;
     });
+
     return {
-      chartData: Object.values(grouped).sort((a, b) => new Date(a.date) - new Date(b.date)),
+      chartData: Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date)),
       keys: Array.from(allKeys)
     };
   }, [filteredData, chartKey]);

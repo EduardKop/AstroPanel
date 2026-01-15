@@ -8,7 +8,7 @@ import PaymentsTable from '../components/PaymentsTable';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// Адаптивный компонент селекта (как на Гео и Дашборде)
+// --- КОМПОНЕНТЫ ---
 const DenseSelect = ({ label, value, options, onChange }) => (
   <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[120px]">
     <select
@@ -30,8 +30,16 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
+// ХЕЛПЕР: Превращает объект Date из календаря в строку "YYYY-MM-DD"
+const toYMD = (date) => {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const PaymentsPage = () => {
-  // 1. Данные из стора
   const { payments, user: currentUser, isLoading } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
@@ -42,18 +50,15 @@ const PaymentsPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
 
-  // Проверка активности фильтров (для кнопки сброса)
   const hasActiveFilters = useMemo(() => {
     return !!(filters.manager || filters.country || filters.product || filters.type);
   }, [filters]);
 
-  // Права доступа
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
 
-  // Уникальные значения для фильтров
   const uniqueValues = useMemo(() => {
     const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
     return {
@@ -67,8 +72,12 @@ const PaymentsPage = () => {
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const toggleSort = () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
 
-  // --- ЛОГИКА ФИЛЬТРАЦИИ ---
+  // --- ЛОГИКА ФИЛЬТРАЦИИ (RAW MODE) ---
   const processedData = useMemo(() => {
+    // Превращаем выбранные в календаре даты в строки "2026-01-15"
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
     let data = payments.filter(item => {
       // 1. Роль
       if (isRestrictedUser) {
@@ -77,19 +86,14 @@ const PaymentsPage = () => {
         if (filters.manager && item.manager !== filters.manager) return false;
       }
 
-      // 2. Дата
+      // 2. Дата (Строгое сравнение строк)
       if (!item.transactionDate) return false;
-      const itemDate = new Date(item.transactionDate);
       
-      // Сравниваем только даты, игнорируя время
-      if (startDate) {
-        const startDay = new Date(startDate); startDay.setHours(0,0,0,0);
-        if (itemDate < startDay) return false;
-      }
-      if (endDate) {
-        const endDay = new Date(endDate); endDay.setHours(23,59,59,999);
-        if (itemDate > endDay) return false;
-      }
+      // Берем дату из базы (например "2026-01-15T14:30:00") и отрезаем время -> "2026-01-15"
+      const dbDateStr = item.transactionDate.slice(0, 10);
+      
+      // Сравниваем строки лексикографически (работает для формата YYYY-MM-DD)
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
       // 3. Остальные фильтры
       if (filters.country && item.country !== filters.country) return false;
@@ -99,17 +103,16 @@ const PaymentsPage = () => {
       return true;
     });
 
-    // Сортировка
+    // Сортировка (тоже строковая, так надежнее)
     data.sort((a, b) => {
-      const dateA = new Date(a.transactionDate);
-      const dateB = new Date(b.transactionDate);
-      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      const valA = a.transactionDate || '';
+      const valB = b.transactionDate || '';
+      return sortOrder === 'desc' ? valB.localeCompare(valA) : valA.localeCompare(valB);
     });
 
     return data;
   }, [payments, startDate, endDate, filters, sortOrder, isRestrictedUser, currentUser]);
 
-  // Пагинация
   const totalPages = Math.ceil(processedData.length / itemsPerPage);
   const paginatedData = processedData.slice(
     (currentPage - 1) * itemsPerPage,
@@ -140,7 +143,6 @@ const PaymentsPage = () => {
         {/* Правая часть: Фильтры */}
         <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto xl:justify-end">
             
-            {/* Кнопка сортировки */}
             <button 
               onClick={toggleSort} 
               className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] text-[10px] font-bold hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors text-gray-700 dark:text-gray-200 h-[34px]"
@@ -149,7 +151,6 @@ const PaymentsPage = () => {
                 {sortOrder === 'desc' ? 'Сначала новые' : 'Сначала старые'}
             </button>
 
-            {/* Календарь */}
             <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm w-full sm:w-auto min-w-[200px] justify-between h-[34px]">
                <div className="flex items-center flex-1 min-w-0 w-full">
                  <CalendarIcon size={12} className="text-gray-400 mr-2 shrink-0" />
@@ -163,7 +164,6 @@ const PaymentsPage = () => {
             </div>
             <button onClick={resetDateRange} className="hidden sm:block text-gray-400 hover:text-black dark:hover:text-white p-1"><RotateCcw size={14}/></button>
 
-            {/* Селекты */}
             <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
               {!isRestrictedUser && (
                 <DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => { setFilters(prev => ({ ...prev, manager: val })); setCurrentPage(1); }} />
@@ -173,7 +173,6 @@ const PaymentsPage = () => {
               <DenseSelect label="Тип" value={filters.type} options={uniqueValues.types} onChange={(val) => { setFilters(prev => ({ ...prev, type: val })); setCurrentPage(1); }} />
             </div>
 
-            {/* Кнопка сброса (статичная) */}
             <button 
               onClick={resetFilters} 
               disabled={!hasActiveFilters}
