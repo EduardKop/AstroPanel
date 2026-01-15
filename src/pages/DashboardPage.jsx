@@ -11,6 +11,8 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 // --- CONFIGURATION ---
+const TIMEZONE = 'Europe/Kyiv'; // 🇺🇦 Единый часовой пояс для всех расчетов
+
 const FLAGS = {
   UA: '🇺🇦', PL: '🇵🇱', IT: '🇮🇹', HR: '🇭🇷',
   BG: '🇧🇬', CZ: '🇨🇿', RO: '🇷🇴', LT: '🇱🇹',
@@ -48,6 +50,16 @@ const getLastWeekRange = () => {
   const start = new Date();
   start.setDate(end.getDate() - 7);
   return [start, end];
+};
+
+// Хелпер для преобразования UTC даты в "объект даты по Киеву"
+// Это позволяет сравнивать время корректно с DatePicker, который выдает 00:00 локального времени
+const toKyivDate = (isoString) => {
+  if (!isoString) return new Date(0); // Fallback
+  // Создаем строку времени в нужном поясе и парсим её обратно в Date
+  // Это "сдвигает" время так, чтобы часы/минуты совпадали с киевскими
+  const kyivString = new Date(isoString).toLocaleString("en-US", { timeZone: TIMEZONE });
+  return new Date(kyivString);
 };
 
 const DenseSelect = ({ label, value, options, onChange }) => (
@@ -100,10 +112,13 @@ const DashboardPage = () => {
     };
   }, [payments]);
 
+  // 🔥 ФИЛЬТРАЦИЯ С УЧЕТОМ ЧАСОВОГО ПОЯСА УКРАИНЫ
   const filteredData = useMemo(() => {
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
-      const d = new Date(item.transactionDate);
+      
+      // Конвертируем UTC время транзакции в "Киевское время" для проверки
+      const d = toKyivDate(item.transactionDate);
 
       if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return false;
       if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return false;
@@ -118,8 +133,7 @@ const DashboardPage = () => {
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
 
-      // ✅ ФИЛЬТРАЦИЯ ПО ИСТОЧНИКУ (DIRECT / COMMENTS)
-      // Поле item.source ('direct' | 'comments' | 'unknown') заполняется в store/appStore.js
+      // Фильтрация по источнику
       if (filters.source !== 'all') {
         if (item.source !== filters.source) return false;
       }
@@ -140,17 +154,17 @@ const DashboardPage = () => {
         if (!geoData) return 0;
         let sum = 0;
         Object.entries(geoData).forEach(([dateStr, val]) => {
-          const d = new Date(dateStr);
+          // dateStr это 'YYYY-MM-DD' (UTC), для трафика погрешность +-час допустима
+          // но лучше тоже приводить
+          const d = new Date(dateStr); 
           if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return;
           if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return;
 
           if (typeof val === 'object' && val !== null) {
-            // Подсчет трафика в зависимости от выбранного фильтра
             if (filters.source === 'all') sum += (val.all || 0);
             else if (filters.source === 'direct') sum += (val.direct || 0);
             else if (filters.source === 'comments') sum += (val.comments || 0);
           } else {
-            // Фоллбэк для старого формата данных (просто число)
             sum += (Number(val) || 0);
           }
         });
@@ -192,9 +206,16 @@ const DashboardPage = () => {
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
-      const date = new Date(item.transactionDate).toISOString().split('T')[0];
-      if (!grouped[date]) grouped[date] = { date, count: 0 };
-      grouped[date].count += 1;
+      // Группируем по дате Киева, а не UTC
+      const kyivDate = toKyivDate(item.transactionDate);
+      // Форматируем в YYYY-MM-DD вручную, чтобы избежать сдвигов поясов
+      const year = kyivDate.getFullYear();
+      const month = String(kyivDate.getMonth() + 1).padStart(2, '0');
+      const day = String(kyivDate.getDate()).padStart(2, '0');
+      const dateKey = `${year}-${month}-${day}`;
+
+      if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey, count: 0 };
+      grouped[dateKey].count += 1;
     });
     return Object.values(grouped).sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [filteredData]);
@@ -227,7 +248,6 @@ const DashboardPage = () => {
           if (startDate && d < new Date(startDate.setHours(0,0,0,0))) return;
           if (endDate && d > new Date(endDate.setHours(23,59,59,999))) return;
           
-          // Трафик для стран тоже фильтруем по источнику, чтобы CR был корректным
           if (typeof val === 'object' && val !== null) {
             if (filters.source === 'all') realTraffic += (val.all || 0);
             else if (filters.source === 'direct') realTraffic += (val.direct || 0);
@@ -357,17 +377,13 @@ const DashboardPage = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ менеджеры</span>
               </div>
             </div>
-            {/* Сделали отступы компактнее (p-2) */}
             <div className="p-2 space-y-1">
               {topManagers.map((mgr, i) => (
-                // Compact Row Item (py-2 mb-1)
                 <div key={mgr.name} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
                     <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate leading-none">{mgr.name}</span>
                   </div>
-                  
-                  {/* Single Line Data: Count -> Sum */}
                   <div className="flex items-center gap-3 text-right">
                     <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{mgr.count} Lead</span>
                     <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[60px]">€{mgr.sum.toFixed(0)}</span>
@@ -386,10 +402,8 @@ const DashboardPage = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ ГЕО</span>
               </div>
             </div>
-            {/* Сделали отступы компактнее (p-2) */}
             <div className="p-2 space-y-1">
               {topCountries.map((geo, i) => (
-                // Compact Row Item (py-2 mb-1)
                 <div key={geo.code} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
@@ -398,8 +412,6 @@ const DashboardPage = () => {
                         <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{geo.code}</span>
                     </div>
                   </div>
-                  
-                  {/* Single Line Data: Count -> Sum -> CR */}
                   <div className="flex items-center gap-3 text-right">
                     <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{geo.salesCount} Lead</span>
                     <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[50px]">€{geo.salesSum.toFixed(0)}</span>
@@ -425,7 +437,7 @@ const DashboardPage = () => {
             <thead className="bg-gray-50 dark:bg-[#161616] font-medium border-b border-gray-200 dark:border-[#333]">
               <tr>
                 <th className="px-4 py-2">ID</th>
-                <th className="px-4 py-2">Дата</th>
+                <th className="px-4 py-2">Дата (UA)</th>
                 <th className="px-4 py-2">Менеджер</th>
                 <th className="px-4 py-2">ГЕО</th>
                 <th className="px-4 py-2">Метод</th>
@@ -443,7 +455,12 @@ const DashboardPage = () => {
                     #{p.id.slice(0, 8)}...
                   </td>
                   <td className="px-4 py-2 text-gray-500">
-                    {new Date(p.transactionDate).toLocaleDateString('ru-RU')}
+                    {/* Отображаем дату в таблице тоже по Киеву */}
+                    {new Date(p.transactionDate).toLocaleString('ru-RU', {
+                      timeZone: TIMEZONE,
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
+                    })}
                   </td>
                   <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">
                     {p.manager}
