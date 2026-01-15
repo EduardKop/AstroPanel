@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useAppStore } from '../store/appStore'; // ✅ Store
+import React, { useState, useMemo, useEffect } from 'react';
+import { useAppStore } from '../store/appStore';
 import { 
   Filter, Calendar, RotateCcw, XCircle, 
   ArrowUpDown, Globe, ShoppingCart, DollarSign, 
@@ -8,7 +8,7 @@ import {
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// Компактный фильтр
+// --- КОМПОНЕНТЫ ---
 const SelectFilter = ({ label, value, options, onChange }) => (
   <div className="relative group">
     <select
@@ -23,16 +23,30 @@ const SelectFilter = ({ label, value, options, onChange }) => (
   </div>
 );
 
-const ManagersPage = () => {
-  // ✅ 1. Берем данные из стора
-  const { payments } = useAppStore();
+const getLastWeekRange = () => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 7);
+  return [start, end];
+};
 
-  const [dateRange, setDateRange] = useState([new Date(new Date().setDate(new Date().getDate() - 7)), new Date()]);
+// Хелпер для дат (Raw Mode)
+const toYMD = (date) => {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const ManagersPage = () => {
+  const { payments, kpiRates, kpiSettings } = useAppStore();
+
+  const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
   const [filters, setFilters] = useState({ country: '', product: '', type: '' });
   const [sortConfig, setSortConfig] = useState({ key: 'salesCount', direction: 'desc' });
 
-  // Уникальные значения для фильтров
   const uniqueValues = useMemo(() => {
     const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
     return {
@@ -43,60 +57,79 @@ const ManagersPage = () => {
   }, [payments]);
 
   const resetFilters = () => setFilters({ country: '', product: '', type: '' });
-  const resetDateRange = () => setDateRange([new Date(new Date().setDate(new Date().getDate() - 7)), new Date()]);
+  const resetDateRange = () => setDateRange(getLastWeekRange());
 
   // Основная логика
   const managersStats = useMemo(() => {
-    // 1. Фильтрация
+    // 1. Фильтрация (Raw Mode)
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
     const filtered = payments.filter(item => {
-      // Безопасная проверка даты
       if (!item.transactionDate) return false;
-      const transDate = new Date(item.transactionDate);
+      const dbDateStr = item.transactionDate.slice(0, 10);
       
-      if (startDate && transDate < new Date(startDate.setHours(0,0,0,0))) return false;
-      if (endDate && transDate > new Date(endDate.setHours(23,59,59,999))) return false;
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
       if (filters.country && item.country !== filters.country) return false;
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
       return true;
     });
 
-    // 2. Группировка
+    // 2. Группировка по менеджерам
     const statsByName = {};
     filtered.forEach(p => {
-      const name = p.manager || 'Неизвестно'; // manager уже имя (из Store)
+      const name = p.manager || 'Неизвестно';
       if (!statsByName[name]) {
-        statsByName[name] = { count: 0, sum: 0, countries: new Set() };
+        statsByName[name] = { 
+          count: 0, 
+          sum: 0, 
+          countries: new Set(),
+          salaryBonus: 0 // Бонусная часть ЗП
+        };
       }
       statsByName[name].count += 1;
-      statsByName[name].sum += (p.amountEUR || 0); // amountEUR уже число
+      statsByName[name].sum += (p.amountEUR || 0);
       if (p.country) statsByName[name].countries.add(p.country);
+
+      // Расчет бонуса за продажу (если есть тарифы)
+      // Ищем тариф для продукта
+      const rateObj = kpiRates.find(r => 
+        p.product.toLowerCase().includes(r.product_name.toLowerCase())
+      );
+      // Если нашли — берем rate, иначе дефолт (например 5 евро)
+      const bonus = rateObj ? rateObj.rate : 0; 
+      statsByName[name].salaryBonus += bonus;
     });
 
-    // 3. Формирование списка + Mock данные
+    // 3. Формирование списка
     return Object.entries(statsByName).map(([name, data]) => {
-      // Mock данные для примера (т.к. их нет в payments)
-      const mockCR = (Math.random() * (15 - 3) + 3).toFixed(1);
-      const mockShifts = Math.floor(Math.random() * 5) + 2;
-      const mockSalary = (300 + (data.sum * 0.05)).toFixed(0);
-      const role = data.count > 10 ? 'Senior Sales' : 'Sales Manager';
+      // Примерный расчет ЗП: Оклад (из настроек или 500) + Бонусы
+      const baseSalary = Number(kpiSettings?.base_salary || 0);
+      // Если фильтр по дате меньше месяца, пропорционально уменьшаем оклад для отображения "за период"
+      // (Это условность, можно убрать)
+      const totalSalary = baseSalary + data.salaryBonus;
+
+      // Пока у нас нет трафика по менеджерам, CR ставим 0 или скрываем
+      // Чтобы не показывать фейк
+      const cr = 0; 
 
       return {
         name,
-        role,
-        shifts: mockShifts,
+        role: data.count > 20 ? 'Top Manager' : 'Manager',
+        shifts: '-', // Смены пока не трекаем
         geoDisplay: Array.from(data.countries).slice(0, 3).join(', ') + (data.countries.size > 3 ? '...' : ''),
         salesCount: data.count,
         salesSum: data.sum,
-        cr: parseFloat(mockCR),
-        salary: parseInt(mockSalary)
+        cr: cr,
+        salary: totalSalary
       };
     }).sort((a, b) => {
       if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
       if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [payments, startDate, endDate, filters, sortConfig]);
+  }, [payments, startDate, endDate, filters, sortConfig, kpiRates, kpiSettings]);
 
   const requestSort = (key) => setSortConfig({ key, direction: sortConfig.key === key && sortConfig.direction === 'desc' ? 'asc' : 'desc' });
   const SortIcon = ({ col }) => sortConfig.key === col ? <ArrowUpDown size={10} className={`ml-1 ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ArrowUpDown size={10} className="ml-1 opacity-20" />;
@@ -108,7 +141,7 @@ const ManagersPage = () => {
       <div className="flex flex-col md:flex-row items-end justify-between mb-4 gap-3">
         <div>
            <h2 className="text-lg font-bold dark:text-white text-gray-900 tracking-tight flex items-center gap-2">
-             <Briefcase size={18} className="text-blue-500" /> Эффективность
+             <Briefcase size={18} className="text-blue-500" /> Эффективность менеджеров
            </h2>
         </div>
         
@@ -144,10 +177,11 @@ const ManagersPage = () => {
                 </th>
                 <th className="px-4 py-2 hidden sm:table-cell"><div className="flex items-center gap-1"><Briefcase size={10}/> Роль</div></th>
                 <th className="px-4 py-2"><div className="flex items-center gap-1"><Globe size={10}/> ГЕО</div></th>
-                <th className="px-4 py-2 text-center hidden sm:table-cell"><div className="flex items-center justify-center gap-1"><Clock size={10}/> Смены</div></th>
-                <th className="px-4 py-2 text-center cursor-pointer hover:text-black dark:hover:text-white" onClick={() => requestSort('cr')}>
+                {/* Скрываем смены и CR пока нет реальных данных */}
+                {/* <th className="px-4 py-2 text-center hidden sm:table-cell"><div className="flex items-center justify-center gap-1"><Clock size={10}/> Смены</div></th> */}
+                {/* <th className="px-4 py-2 text-center cursor-pointer hover:text-black dark:hover:text-white" onClick={() => requestSort('cr')}>
                   <div className="flex items-center justify-center gap-1"><Percent size={10}/> CR <SortIcon col="cr"/></div>
-                </th>
+                </th> */}
                 <th className="px-4 py-2 text-center cursor-pointer hover:text-black dark:hover:text-white" onClick={() => requestSort('salesCount')}>
                   <div className="flex items-center justify-center gap-1"><ShoppingCart size={10}/> Продаж <SortIcon col="salesCount"/></div>
                 </th>
@@ -155,7 +189,7 @@ const ManagersPage = () => {
                   <div className="flex items-center justify-end gap-1"><DollarSign size={10}/> Оборот <SortIcon col="salesSum"/></div>
                 </th>
                 <th className="px-4 py-2 text-right cursor-pointer hover:text-black dark:hover:text-white" onClick={() => requestSort('salary')}>
-                  <div className="flex items-center justify-end gap-1"><Wallet size={10}/> ЗП (est) <SortIcon col="salary"/></div>
+                  <div className="flex items-center justify-end gap-1"><Wallet size={10}/> ЗП (Бонус) <SortIcon col="salary"/></div>
                 </th>
               </tr>
             </thead>
@@ -164,11 +198,6 @@ const ManagersPage = () => {
                 <tr><td colSpan="8" className="px-4 py-8 text-center">Нет данных</td></tr>
               ) : (
                 managersStats.map((mgr) => {
-                  let crColorClass = 'text-gray-500';
-                  if (mgr.cr >= 10) crColorClass = 'text-emerald-500 font-bold';
-                  else if (mgr.cr >= 5) crColorClass = 'text-amber-500 font-medium';
-                  else crColorClass = 'text-red-500';
-
                   return (
                     <tr key={mgr.name} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group">
                       
@@ -191,15 +220,9 @@ const ManagersPage = () => {
                         {mgr.geoDisplay || '-'}
                       </td>
 
-                      <td className="px-4 py-2 text-center font-mono hidden sm:table-cell">
-                        {mgr.shifts}
-                      </td>
-
-                      <td className="px-4 py-2 text-center">
-                        <span className={`text-xs font-mono ${crColorClass}`}>
-                          {mgr.cr}%
-                        </span>
-                      </td>
+                      {/* Скрываем пока нет данных */}
+                      {/* <td className="px-4 py-2 text-center font-mono hidden sm:table-cell">{mgr.shifts}</td> */}
+                      {/* <td className="px-4 py-2 text-center"><span className="text-xs font-mono text-gray-400">-</span></td> */}
 
                       <td className="px-4 py-2 text-center">
                         <span className="inline-block min-w-[24px] text-center font-mono font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-[#222] rounded px-1 py-0.5 text-[11px]">
@@ -213,7 +236,7 @@ const ManagersPage = () => {
 
                       <td className="px-4 py-2 text-right">
                         <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                          € {mgr.salary}
+                          € {mgr.salary.toFixed(0)}
                         </span>
                       </td>
 
