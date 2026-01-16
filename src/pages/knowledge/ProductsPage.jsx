@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { supabase } from '../../services/supabaseClient';
-import { 
-  BookOpen, Star, Heart, Zap, Search, ChevronRight, X, 
-  Trash2, Globe, CheckCircle2, Users, DollarSign, Plus, Edit3, Save, Loader2 
+import {
+  BookOpen, Star, Heart, Zap, Search, ChevronRight, X,
+  Trash2, Globe, CheckCircle2, Users, DollarSign, Plus, Edit3, Save, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -25,8 +25,8 @@ const ProductsPage = () => {
 
   const isAdmin = user && ['Admin', 'C-level'].includes(user.role);
 
-  const filteredProducts = products.filter(p => 
-    p.title.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredProducts = products.filter(p =>
+    p.title.toLowerCase().includes(search.toLowerCase()) ||
     p.short_description?.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -47,7 +47,7 @@ const ProductsPage = () => {
 
   return (
     <div className="animate-in fade-in zoom-in duration-300 pb-10">
-      
+
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
         <div>
@@ -61,18 +61,18 @@ const ProductsPage = () => {
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="relative flex-1 md:w-64">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Поиск продукта..." 
+            <input
+              type="text"
+              placeholder="Поиск продукта..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-purple-500 dark:text-white transition-colors"
             />
           </div>
-          
+
           {/* Кнопка добавления (Только Админ) */}
           {isAdmin && (
-            <button 
+            <button
               onClick={() => handleOpenEditor(null)}
               className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-lg shadow-purple-500/20"
             >
@@ -85,7 +85,7 @@ const ProductsPage = () => {
       {/* GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {filteredProducts.map(product => (
-          <div 
+          <div
             key={product.id}
             onClick={() => setSelectedProduct(product)}
             className="group bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] hover:border-purple-400 dark:hover:border-purple-600 rounded-xl p-5 cursor-pointer shadow-sm hover:shadow-md transition-all duration-200 relative overflow-hidden"
@@ -94,18 +94,18 @@ const ProductsPage = () => {
               <div className="p-3 bg-gray-50 dark:bg-[#1A1A1A] rounded-xl border border-gray-100 dark:border-[#222]">
                 {ICONS[product.icon] || ICONS.Star}
               </div>
-              
+
               {/* Действия Админа */}
               {isAdmin && (
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
+                  <button
                     onClick={(e) => handleOpenEditor(product, e)}
                     className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
                     title="Редактировать"
                   >
                     <Edit3 size={16} />
                   </button>
-                  <button 
+                  <button
                     onClick={(e) => handleDelete(product.id, e)}
                     className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                     title="Удалить"
@@ -115,7 +115,7 @@ const ProductsPage = () => {
                 </div>
               )}
             </div>
-            
+
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
               {product.title}
             </h3>
@@ -128,7 +128,7 @@ const ProductsPage = () => {
             </div>
           </div>
         ))}
-        
+
         {filteredProducts.length === 0 && (
           <div className="col-span-full py-10 text-center text-gray-400 text-sm">
             Продукты не найдены
@@ -139,9 +139,9 @@ const ProductsPage = () => {
       {/* MODAL: PROMO VIEW */}
       <AnimatePresence>
         {selectedProduct && (
-          <ProductViewModal 
-            product={selectedProduct} 
-            onClose={() => setSelectedProduct(null)} 
+          <ProductViewModal
+            product={selectedProduct}
+            onClose={() => setSelectedProduct(null)}
           />
         )}
       </AnimatePresence>
@@ -149,13 +149,13 @@ const ProductsPage = () => {
       {/* MODAL: EDITOR */}
       <AnimatePresence>
         {isEditorOpen && (
-          <ProductEditorModal 
-            product={editingProduct} 
+          <ProductEditorModal
+            product={editingProduct}
             onClose={() => setIsEditorOpen(false)}
             onSave={() => {
               setIsEditorOpen(false);
               fetchAllData(true);
-            }} 
+            }}
           />
         )}
       </AnimatePresence>
@@ -169,7 +169,7 @@ const ProductViewModal = ({ product, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -197,7 +197,7 @@ const ProductViewModal = ({ product, onClose }) => {
           {/* 1. ЧТО ЭТО */}
           <section>
             <h3 className="text-sm font-bold uppercase text-purple-600 dark:text-purple-400 tracking-wider mb-3 flex items-center gap-2">
-              <BookOpen size={16}/> О продукте
+              <BookOpen size={16} /> О продукте
             </h3>
             <div className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm whitespace-pre-wrap">
               {content.what_is_it}
@@ -218,7 +218,7 @@ const ProductViewModal = ({ product, onClose }) => {
           <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
               <h3 className="text-sm font-bold uppercase text-blue-600 dark:text-blue-400 tracking-wider mb-3 flex items-center gap-2">
-                <Users size={16}/> Целевая аудитория
+                <Users size={16} /> Целевая аудитория
               </h3>
               <ul className="space-y-2">
                 {content.for_whom?.map((item, idx) => (
@@ -231,7 +231,7 @@ const ProductViewModal = ({ product, onClose }) => {
             </div>
             <div>
               <h3 className="text-sm font-bold uppercase text-emerald-600 dark:text-emerald-400 tracking-wider mb-3 flex items-center gap-2">
-                <Star size={16}/> Ценность
+                <Star size={16} /> Ценность
               </h3>
               <ul className="space-y-2">
                 {content.value?.map((item, idx) => (
@@ -247,7 +247,7 @@ const ProductViewModal = ({ product, onClose }) => {
           {/* 3. ПРОЦЕСС */}
           <section className="bg-gray-50 dark:bg-[#161616] p-5 rounded-xl border border-gray-200 dark:border-[#333]">
             <h3 className="text-sm font-bold uppercase text-orange-600 dark:text-orange-400 tracking-wider mb-3 flex items-center gap-2">
-              <Zap size={16}/> Процесс продажи
+              <Zap size={16} /> Процесс продажи
             </h3>
             <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
               {content.sales_process}
@@ -257,13 +257,13 @@ const ProductViewModal = ({ product, onClose }) => {
           {/* 4. ЦЕНЫ */}
           <section>
             <h3 className="text-sm font-bold uppercase text-gray-900 dark:text-white tracking-wider mb-4 flex items-center gap-2">
-              <DollarSign size={16} className="text-green-500"/> Прайс-лист по ГЕО
+              <DollarSign size={16} className="text-green-500" /> Прайс-лист по ГЕО
             </h3>
             <div className="overflow-hidden border border-gray-200 dark:border-[#333] rounded-lg">
               <table className="w-full text-sm text-left">
                 <thead className="bg-gray-100 dark:bg-[#222] text-xs uppercase font-bold text-gray-500 dark:text-gray-400">
                   <tr>
-                    <th className="px-4 py-3"><Globe size={14} className="inline mr-1"/> ГЕО</th>
+                    <th className="px-4 py-3"><Globe size={14} className="inline mr-1" /> ГЕО</th>
                     <th className="px-4 py-3">Прайс 1</th>
                     <th className="px-4 py-3">Прайс 2</th>
                   </tr>
@@ -295,7 +295,7 @@ const ProductViewModal = ({ product, onClose }) => {
 // --- КОМПОНЕНТ РЕДАКТОРА (ADD / EDIT) ---
 const ProductEditorModal = ({ product, onClose, onSave }) => {
   const [loading, setLoading] = useState(false);
-  
+
   // Инициализация формы (если product передан - заполняем, иначе пусто)
   const [form, setForm] = useState({
     title: product?.title || '',
@@ -316,9 +316,9 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
 
   // Управление ценами
   const addPriceRow = () => {
-    setForm(prev => ({ 
-      ...prev, 
-      pricing: [...prev.pricing, { geo: '', price1: '', price5: '' }] 
+    setForm(prev => ({
+      ...prev,
+      pricing: [...prev.pricing, { geo: '', price1: '', price5: '' }]
     }));
   };
 
@@ -378,7 +378,7 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         onClick={(e) => e.stopPropagation()}
@@ -392,7 +392,7 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
-          
+
           {/* MAIN INFO */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -451,7 +451,7 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
           <div className="bg-gray-50 dark:bg-[#1A1A1A] p-4 rounded-xl border border-gray-200 dark:border-[#333]">
             <div className="flex justify-between items-center mb-2">
               <label className="block text-xs font-bold text-green-500 uppercase tracking-wider">Прайс-лист</label>
-              <button type="button" onClick={addPriceRow} className="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 flex items-center gap-1"><Plus size={12}/> Добавить строку</button>
+              <button type="button" onClick={addPriceRow} className="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 flex items-center gap-1"><Plus size={12} /> Добавить строку</button>
             </div>
             <div className="space-y-2">
               {form.pricing.map((row, idx) => (
@@ -459,7 +459,7 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
                   <input value={row.geo} onChange={(e) => updatePriceRow(idx, 'geo', e.target.value)} placeholder="ГЕО (Страна)" className="flex-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-sm dark:text-white" />
                   <input value={row.price1} onChange={(e) => updatePriceRow(idx, 'price1', e.target.value)} placeholder="Цена 1" className="w-24 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-sm dark:text-white" />
                   <input value={row.price5} onChange={(e) => updatePriceRow(idx, 'price5', e.target.value)} placeholder="Цена 2" className="w-24 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-sm dark:text-white" />
-                  <button type="button" onClick={() => removePriceRow(idx)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
+                  <button type="button" onClick={() => removePriceRow(idx)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button>
                 </div>
               ))}
               {form.pricing.length === 0 && <div className="text-xs text-gray-400 text-center py-2">Нет цен</div>}
@@ -474,8 +474,8 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
         </form>
 
         <div className="p-6 border-t border-gray-100 dark:border-[#222] bg-gray-50 dark:bg-[#111]">
-          <button 
-            onClick={handleSubmit} 
+          <button
+            onClick={handleSubmit}
             disabled={loading}
             className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
           >
