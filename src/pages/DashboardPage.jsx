@@ -170,6 +170,7 @@ const DashboardPage = () => {
             if (filters.source === 'all') sum += (val.all || 0);
             else if (filters.source === 'direct') sum += (val.direct || 0);
             else if (filters.source === 'comments') sum += (val.comments || 0);
+            else if (filters.source === 'whatsapp') sum += (val.whatsapp || 0);
           } else {
             sum += (Number(val) || 0);
           }
@@ -189,7 +190,7 @@ const DashboardPage = () => {
   }, [filteredData, trafficStats, filters.country, filters.source, startDate, endDate]);
 
   // ✅ РАСЧЕТ KPI ПО ИСТОЧНИКАМ
-  // Direct, Comments, WhatsApp
+  // Direct, Comments, WhatsApp - всегда показывает полные данные
   const kpiData = useMemo(() => {
     let direct = { count: 0, sum: 0, activeMgrs: new Set() };
     let comments = { count: 0, sum: 0, activeMgrs: new Set() };
@@ -389,28 +390,30 @@ const DashboardPage = () => {
           </div>
         </div>
 
-        {/* 2. KPI CARDS (DIRECT / COMMENTS) */}
+        {/* 2. KPI CARDS (First Dynamic, Second Static) */}
         <div className="col-span-12 md:col-span-6 lg:col-span-3 xl:col-span-4 flex flex-col gap-3 min-w-0">
 
           <ProductCard
             title="Отдел Продаж"
             subtitle="Первые продажи"
-            mainValue={kpiData.direct.sales}
+            mainValue={filters.source === 'whatsapp' ? kpiData.whatsapp.sales : filters.source === 'comments' ? 0 : filters.source === 'all' ? (kpiData.direct.sales + kpiData.whatsapp.sales) : kpiData.direct.sales}
             mainType="count"
             data={[
-              { label: 'Активных менеджеров', val: kpiData.direct.active },
-              { label: 'Сумма депозитов', val: `€${kpiData.direct.depositSum}` }
+              { label: 'Активных менеджеров', val: filters.source === 'whatsapp' ? kpiData.whatsapp.active : filters.source === 'comments' ? 0 : filters.source === 'all' ? (kpiData.direct.active + kpiData.whatsapp.active) : kpiData.direct.active },
+              { label: 'Сумма депозитов', val: filters.source === 'whatsapp' ? `€${kpiData.whatsapp.depositSum}` : filters.source === 'comments' ? '€0.00' : filters.source === 'all' ? `€${(Number(kpiData.direct.depositSum) + Number(kpiData.whatsapp.depositSum)).toFixed(2)}` : `€${kpiData.direct.depositSum}` },
+              { label: 'Средний чек', val: filters.source === 'whatsapp' ? `€${kpiData.whatsapp.sales > 0 ? (Number(kpiData.whatsapp.depositSum) / kpiData.whatsapp.sales).toFixed(2) : '0.00'}` : filters.source === 'comments' ? '€0.00' : filters.source === 'all' ? `€${(kpiData.direct.sales + kpiData.whatsapp.sales) > 0 ? ((Number(kpiData.direct.depositSum) + Number(kpiData.whatsapp.depositSum)) / (kpiData.direct.sales + kpiData.whatsapp.sales)).toFixed(2) : '0.00'}` : `€${kpiData.direct.sales > 0 ? (Number(kpiData.direct.depositSum) / kpiData.direct.sales).toFixed(2) : '0.00'}` }
             ]}
           />
 
           <ProductCard
             title="Консультанты"
             subtitle="Продажи с Консультаций"
-            mainValue={kpiData.comments.sales}
+            mainValue={(filters.source === 'comments' || filters.source === 'all') ? kpiData.comments.sales : 0}
             mainType="count"
             data={[
-              { label: 'Активных менеджеров', val: kpiData.comments.active },
-              { label: 'Сумма депозитов', val: `€${kpiData.comments.depositSum}` }
+              { label: 'Активных менеджеров', val: (filters.source === 'comments' || filters.source === 'all') ? kpiData.comments.active : 0 },
+              { label: 'Сумма депозитов', val: (filters.source === 'comments' || filters.source === 'all') ? `€${kpiData.comments.depositSum}` : '€0.00' },
+              { label: 'Средний чек', val: (filters.source === 'comments' || filters.source === 'all') ? `€${kpiData.comments.sales > 0 ? (Number(kpiData.comments.depositSum) / kpiData.comments.sales).toFixed(2) : '0.00'}` : '€0.00' }
             ]}
           />
 
