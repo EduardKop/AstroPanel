@@ -1,6 +1,30 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabaseClient';
 
+// Хелпер для очистки никнейма (для сравнения)
+const normalizeNick = (raw) => {
+  if (!raw) return '';
+  let clean = String(raw).toLowerCase().trim();
+
+  // Если это ссылка, берем последнюю часть
+  if (clean.includes('instagram.com')) {
+    const match = clean.match(/instagram\.com\/([^/?#]+)/);
+    if (match) clean = match[1];
+  }
+
+  // Убираем @, пробелы, слэши, точки в конце
+  clean = clean.replace(/[@\s\/]/g, '');
+
+  // Убираем точки в конце (например, "nick." -> "nick")
+  clean = clean.replace(/\.+$/g, '');
+
+  // Убираем множественные подчеркивания (например, "__nick__" -> "nick")
+  // НО сохраняем одиночные подчеркивания внутри никнейма
+  clean = clean.replace(/^_+|_+$/g, ''); // убираем _ в начале и конце
+
+  return clean.trim();
+};
+
 export const useAppStore = create((set, get) => ({
   // --- STATE ---
   user: null,
@@ -8,10 +32,10 @@ export const useAppStore = create((set, get) => ({
   managers: [],
   products: [],
   rules: [],
-  
+
   // Данные для зарплат
-  kpiRates: [],     
-  kpiSettings: {},  
+  kpiRates: [],
+  kpiSettings: {},
 
   // Справочник каналов
   channelsMap: {},
@@ -30,16 +54,16 @@ export const useAppStore = create((set, get) => ({
   logout: async () => {
     await supabase.auth.signOut();
     localStorage.removeItem('astroUser');
-    set({ 
-      user: null, 
-      payments: [], 
-      managers: [], 
-      products: [], 
-      rules: [], 
-      trafficStats: {}, 
-      kpiRates: [], 
-      kpiSettings: {}, 
-      stats: { totalEur: 0, count: 0 } 
+    set({
+      user: null,
+      payments: [],
+      managers: [],
+      products: [],
+      rules: [],
+      trafficStats: {},
+      kpiRates: [],
+      kpiSettings: {},
+      stats: { totalEur: 0, count: 0 }
     });
   },
 
@@ -47,7 +71,7 @@ export const useAppStore = create((set, get) => ({
     try {
       const map = get().channelsMap;
 
-      // Загружаем данные для графика (здесь фильтр по дате нужен для оптимизации графика)
+      // Загружаем данные для графика
       let query = supabase
         .from('leads')
         .select('created_at, is_comment, channel_id');
@@ -63,6 +87,7 @@ export const useAppStore = create((set, get) => ({
       if (leadsData) {
         leadsData.forEach(lead => {
           const countryCode = map[lead.channel_id] || 'Other';
+          // Берем дату как строку YYYY-MM-DD
           const dateStr = lead.created_at.split('T')[0];
 
           if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
@@ -97,7 +122,7 @@ export const useAppStore = create((set, get) => ({
       const newChannelsMap = {};
       if (channelsData) {
         channelsData.forEach(ch => {
-          newChannelsMap[ch.wazzup_id] = ch.country_code; 
+          newChannelsMap[ch.wazzup_id] = ch.country_code;
         });
       }
       set({ channelsMap: newChannelsMap });
@@ -121,27 +146,39 @@ export const useAppStore = create((set, get) => ({
       }
 
       // Д. Трафик и Источники (LEADS)
-      // Загружаем wazzup_chat_id для связки с никнеймом, и убираем лимит по времени,
-      // чтобы найти источник даже для старых оплат
-      const { data: leadsData } = await supabase
+      // Берем wazzup_chat_id для связки
+      // ⚠️ ВАЖНО: По умолчанию Supabase возвращает только 1000 записей!
+      // Используем .range() чтобы получить до 10000 записей
+      const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
-        .select('created_at, is_comment, channel_id, wazzup_chat_id');
+        .select('created_at, is_comment, channel_id, wazzup_chat_id')
+        .order('created_at', { ascending: false }) // Сначала новые
+        .range(0, 9999); // Загружаем до 10000 лидов
+
+      if (leadsError) {
+        console.error('❌ Error loading leads:', leadsError);
+      }
 
       // 1. Создаем карту источников: nickname -> 'comments' | 'direct'
       const leadsSourceMap = {};
-      
-      // 2. Создаем статистику трафика (для дэшборда)
+
+      // 2. Статистика трафика (для init загрузки, чтобы не ждать fetchTrafficStats)
       let trafficResult = {};
 
       if (leadsData) {
         leadsData.forEach(lead => {
           // --- Логика маппинга источника ---
           if (lead.wazzup_chat_id) {
-            // Нормализуем никнейм: убираем @, пробелы, приводим к нижнему регистру
-            const normNick = lead.wazzup_chat_id.replace(/[@\s]/g, '').toLowerCase();
-            // Если такой ник уже есть, и новый это коммент - перезаписываем (или наоборот, зависит от логики)
-            // Сейчас просто сохраняем тип последнего/единственного лида
-            leadsSourceMap[normNick] = lead.is_comment ? 'comments' : 'direct';
+            const normNick = normalizeNick(lead.wazzup_chat_id);
+
+            if (normNick) {
+              // Если есть дубликаты, приоритет у 'comments' (если человек писал и там и там)
+              // Либо просто перезаписываем последним. 
+              // Для надежности: если уже записано comments, не меняем на direct
+              if (leadsSourceMap[normNick] !== 'comments') {
+                leadsSourceMap[normNick] = lead.is_comment ? 'comments' : 'direct';
+              }
+            }
           }
 
           // --- Логика статистики трафика ---
@@ -161,25 +198,29 @@ export const useAppStore = create((set, get) => ({
       // Е. Форматируем платежи и добавляем SOURCE
       const formattedPayments = (paymentsData || []).map(item => {
         const rawDate = item.transaction_date || item.created_at;
-        
+
         // Определяем источник по никнейму
-        let source = 'unknown'; // По умолчанию
+        let source = 'direct'; // Default fallback
+
         if (item.crm_link) {
-            // Берем ник из crm_link (там может быть @nick или ссылка)
-            // Пытаемся вытащить чистое имя
-            let cleanNick = item.crm_link.toLowerCase();
-            // Если это ссылка инсты, вырезаем ник
-            const match = cleanNick.match(/instagram\.com\/([^/?#]+)/);
-            if (match) {
-                cleanNick = match[1];
-            }
-            // Убираем @ и мусор
-            cleanNick = cleanNick.replace(/[@\s\/]/g, '');
-            
-            // Ищем в карте лидов
+          const cleanNick = normalizeNick(item.crm_link);
+
+          // Проверяем, является ли crm_link телефонным номером
+          // Телефон: только цифры (может быть с + в начале)
+          const isPhoneNumber = /^[\d+\s()-]+$/.test(item.crm_link.trim());
+
+          if (isPhoneNumber) {
+            // Это WhatsApp контакт (телефонный номер)
+            source = 'whatsapp';
+          } else {
+            // Пытаемся найти в карте лидов (Instagram)
             if (leadsSourceMap[cleanNick]) {
-                source = leadsSourceMap[cleanNick];
+              source = leadsSourceMap[cleanNick]; // 'direct' или 'comments'
+            } else {
+              // Не нашли в leads и это не телефон - unknown
+              source = 'unknown';
             }
+          }
         }
 
         return {
@@ -187,13 +228,13 @@ export const useAppStore = create((set, get) => ({
           id: item.id,
           transactionDate: rawDate,
           amountEUR: Number(item.amount_eur) || 0,
-          amountLocal: Number(item.amount_local) || 0, 
+          amountLocal: Number(item.amount_local) || 0,
           amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
           manager: managersMap[item.manager_id] || 'Не назначен',
           managerId: item.manager_id,
           type: item.payment_type || 'Other',
           status: item.status || 'pending',
-          source: source // ✅ Добавили поле source ('direct', 'comments', 'unknown')
+          source: source // 'direct', 'comments', 'whatsapp', 'unknown'
         };
       });
 
@@ -204,8 +245,8 @@ export const useAppStore = create((set, get) => ({
         managers: managersData || [],
         products: productsData || [],
         rules: rulesData || [],
-        kpiRates: kpiRatesData || [],       
-        kpiSettings: kpiSettingsMap || {},  
+        kpiRates: kpiRatesData || [],
+        kpiSettings: kpiSettingsMap || {},
         trafficStats: trafficResult,
         stats: { totalEur: total.toFixed(2), count: formattedPayments.length },
         isLoading: false,

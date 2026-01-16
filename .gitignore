@@ -57,3 +57,14 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Supabase temp files
+supabase/.temp/
+
+# Debug and temporary documentation
+FIX_SUMMARY.md
+debug_sources.js
+check_payment.js
+test_normalize.js
+export_leads_nicknames.js
+*.json.bak

@@ -3,14 +3,16 @@ import { useAppStore } from '../store/appStore';
 import {
   Filter, RotateCcw, XCircle,
   Users, DollarSign, Percent, CreditCard, LayoutDashboard,
-  Activity, Trophy, Globe, Layers, MessageCircle, MessageSquare, Calendar as CalendarIcon, Coins
+  Activity, Trophy, Globe, Layers, MessageCircle, MessageSquare, Phone, Calendar as CalendarIcon
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// --- CONFIGURATION ---
+// --- КОНФИГУРАЦИЯ ---
+const TIMEZONE = 'Europe/Kyiv';
+
 const FLAGS = {
   UA: '🇺🇦', PL: '🇵🇱', IT: '🇮🇹', HR: '🇭🇷',
   BG: '🇧🇬', CZ: '🇨🇿', RO: '🇷🇴', LT: '🇱🇹',
@@ -50,8 +52,7 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
-// 🛠️ ХЕЛПЕР: Превращает объект Date в строку "YYYY-MM-DD"
-// Используем локальные методы getFullYear и т.д., так как DatePicker выдает локальное время 00:00
+// ХЕЛПЕР ДЛЯ ВРЕМЕНИ (Raw Mode)
 const toYMD = (date) => {
   if (!date) return '';
   const y = date.getFullYear();
@@ -75,16 +76,23 @@ const DenseSelect = ({ label, value, options, onChange }) => (
 );
 
 const DashboardPage = () => {
-  const { payments, user: currentUser, isLoading, trafficStats, fetchTrafficStats } = useAppStore();
+  const { payments, user: currentUser, isLoading, trafficStats, fetchTrafficStats, fetchAllData } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
-  
+
   const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all' });
 
   const hasActiveFilters = useMemo(() => {
     return !!(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all');
   }, [filters]);
+
+  // 🔄 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ДАННЫХ ПРИ МОНТИРОВАНИИ
+  useEffect(() => {
+    if (fetchAllData) {
+      fetchAllData(true); // force update
+    }
+  }, [fetchAllData]);
 
   useEffect(() => {
     if (fetchTrafficStats) {
@@ -110,29 +118,23 @@ const DashboardPage = () => {
     };
   }, [payments]);
 
-  // 🔥 ФИЛЬТРАЦИЯ СТРОГО ПО СТРОКАМ (БЕЗ TIMEZONE SHIFT)
+  // 🔥 RAW ФИЛЬТРАЦИЯ
   const filteredData = useMemo(() => {
-    // 1. Подготавливаем строки границ фильтра
     const startStr = startDate ? toYMD(startDate) : '0000-00-00';
     const endStr = endDate ? toYMD(endDate) : '9999-99-99';
 
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
-      
-      // Берем дату из базы как есть: "2026-01-15T14:29..." -> "2026-01-15"
       const dbDateStr = item.transactionDate.slice(0, 10);
 
-      // Сравнение строк (лексикографическое), работает корректно для формата ISO
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
-      // Фильтр по роли
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
       } else {
         if (filters.manager && item.manager !== filters.manager) return false;
       }
 
-      // Остальные фильтры
       if (filters.country && item.country !== filters.country) return false;
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
@@ -144,8 +146,7 @@ const DashboardPage = () => {
 
       return true;
     });
-    
-    // Сортировка (строковая тоже подойдет, но для надежности оставим Date - тут это только порядок)
+
     return data.sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate));
   }, [payments, startDate, endDate, filters, isRestrictedUser, currentUser]);
 
@@ -163,7 +164,6 @@ const DashboardPage = () => {
         if (!geoData) return 0;
         let sum = 0;
         Object.entries(geoData).forEach(([dateStr, val]) => {
-          // dateStr в трафике уже лежит как "YYYY-MM-DD", сравниваем напрямую
           if (dateStr < startStr || dateStr > endStr) return;
 
           if (typeof val === 'object' && val !== null) {
@@ -188,33 +188,53 @@ const DashboardPage = () => {
     return { traffic, conversion, totalEur: totalEur.toFixed(2), count };
   }, [filteredData, trafficStats, filters.country, filters.source, startDate, endDate]);
 
+  // ✅ РАСЧЕТ KPI ПО ИСТОЧНИКАМ
+  // Direct, Comments, WhatsApp
   const kpiData = useMemo(() => {
-    const salesCount = filteredData.length;
-    const activeMgrs = new Set(filteredData.map(p => p.manager)).size || (isRestrictedUser ? 1 : 0);
-    const totalSum = stats.totalEur;
+    let direct = { count: 0, sum: 0, activeMgrs: new Set() };
+    let comments = { count: 0, sum: 0, activeMgrs: new Set() };
+    let whatsapp = { count: 0, sum: 0, activeMgrs: new Set() };
+
+    filteredData.forEach(item => {
+      if (item.source === 'comments') {
+        comments.count++;
+        comments.sum += (item.amountEUR || 0);
+        comments.activeMgrs.add(item.manager);
+      } else if (item.source === 'whatsapp') {
+        whatsapp.count++;
+        whatsapp.sum += (item.amountEUR || 0);
+        whatsapp.activeMgrs.add(item.manager);
+      } else if (item.source === 'direct') {
+        direct.count++;
+        direct.sum += (item.amountEUR || 0);
+        direct.activeMgrs.add(item.manager);
+      }
+      // unknown игнорируем в KPI
+    });
 
     return {
-      ltc: {
-        cr: stats.conversion,
-        active: activeMgrs,
-        sales: salesCount,
-        depositSum: totalSum
+      direct: {
+        active: direct.activeMgrs.size,
+        sales: direct.count,
+        depositSum: direct.sum.toFixed(2)
       },
-      consultants: {
-        cr: "4.2",
-        active: Math.max(1, Math.floor(activeMgrs / 2)),
-        sales: Math.floor(salesCount * 0.3),
-        depositSum: (totalSum * 0.4).toFixed(2)
+      comments: {
+        active: comments.activeMgrs.size,
+        sales: comments.count,
+        depositSum: comments.sum.toFixed(2)
+      },
+      whatsapp: {
+        active: whatsapp.activeMgrs.size,
+        sales: whatsapp.count,
+        depositSum: whatsapp.sum.toFixed(2)
       }
     };
-  }, [filteredData, stats.totalEur, stats.conversion, isRestrictedUser]);
+  }, [filteredData]);
 
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
-      // Группировка тоже строго по строке из базы
       const dateKey = item.transactionDate.slice(0, 10); // "YYYY-MM-DD"
-
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey, count: 0 };
       grouped[dateKey].count += 1;
     });
@@ -248,9 +268,7 @@ const DashboardPage = () => {
         const endStr = endDate ? toYMD(endDate) : '9999-99-99';
 
         Object.entries(trafficStats[code]).forEach(([dateStr, val]) => {
-          // Строгое сравнение
           if (dateStr < startStr || dateStr > endStr) return;
-          
           if (typeof val === 'object' && val !== null) {
             if (filters.source === 'all') realTraffic += (val.all || 0);
             else if (filters.source === 'direct') realTraffic += (val.direct || 0);
@@ -261,16 +279,16 @@ const DashboardPage = () => {
         });
       }
 
-      const cr = realTraffic > 0 
-        ? ((data.count / realTraffic) * 100).toFixed(1) 
+      const cr = realTraffic > 0
+        ? ((data.count / realTraffic) * 100).toFixed(1)
         : "0.0";
 
-      return { 
-        code, 
-        salesCount: data.count, 
-        salesSum: data.sum, 
-        traffic: realTraffic, 
-        cr: cr 
+      return {
+        code,
+        salesCount: data.count,
+        salesSum: data.sum,
+        traffic: realTraffic,
+        cr: cr
       };
     }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 5);
   }, [filteredData, trafficStats, startDate, endDate, filters.source]);
@@ -282,47 +300,55 @@ const DashboardPage = () => {
     <div className="pb-10 transition-colors duration-200 w-full max-w-full overflow-x-hidden">
 
       {/* HEADER + FILTERS */}
-      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent transition-colors duration-200 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 mb-1 xl:mb-0">
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent transition-colors duration-200 flex flex-col gap-3">
+
+        {/* Заголовок */}
+        <div className="flex items-center gap-2">
           <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
             <LayoutDashboard size={18} className="text-blue-600 dark:text-blue-500 shrink-0" />
             <span className="truncate">Панель отдела продаж</span>
           </h2>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto xl:justify-end">
-          <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm w-full sm:w-auto min-w-[200px] justify-between h-[34px]">
-            <div className="flex items-center flex-1 min-w-0 w-full">
-              <CalendarIcon size={12} className="text-gray-400 mr-2 shrink-0" />
-              <DatePicker
-                selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
-                dateFormat="dd.MM.yyyy" placeholderText="Период"
-                className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center min-w-0"
-                popperPlacement="bottom-end"
-              />
-            </div>
-          </div>
-          <button onClick={resetDateRange} className="hidden sm:block text-gray-400 hover:text-black dark:hover:text-white p-1"><RotateCcw size={14} /></button>
+        {/* Все фильтры в один ряд */}
+        <div className="flex flex-wrap items-center gap-2 justify-between">
 
-          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full sm:w-auto">
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`flex-1 sm:flex-none px-3 sm:px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`flex-1 sm:flex-none px-3 sm:px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} /> Direct</button>
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`flex-1 sm:flex-none px-3 sm:px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} /> Comm</button>
+          {/* Левая часть: Кнопки источников */}
+          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
           </div>
 
-          <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
+          {/* Правая часть: Фильтры + Календарь */}
+          <div className="flex flex-wrap items-center gap-2">
             {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
             <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
             <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
             <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
-          </div>
+            <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm h-[34px]">
+              <CalendarIcon size={12} className="text-gray-400 mr-2 shrink-0" />
+              <div className="relative flex-1">
+                <DatePicker
+                  selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
+                  dateFormat="dd.MM.yyyy" placeholderText="Период"
+                  className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center"
+                  popperPlacement="bottom-end"
+                />
+              </div>
+              <button onClick={resetDateRange} className="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 transition-colors">
+                <RotateCcw size={12} />
+              </button>
+            </div>
 
-          <button onClick={resetFilters} disabled={!hasActiveFilters} className={`shrink-0 p-1.5 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 flex justify-center items-center h-[34px] w-[34px] transition-opacity duration-200 ${hasActiveFilters ? 'opacity-100 cursor-pointer' : 'opacity-0 cursor-default pointer-events-none'}`}><XCircle size={14} /></button>
+            <button onClick={resetFilters} disabled={!hasActiveFilters} className={`shrink-0 p-1.5 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 flex justify-center items-center h-[34px] w-[34px] transition-opacity duration-200 ${hasActiveFilters ? 'opacity-100 cursor-pointer' : 'opacity-0 cursor-default pointer-events-none'}`}><XCircle size={14} /></button>
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-12 gap-3 md:gap-4 mb-6 mt-4 w-full min-w-0">
-        
+
         {/* 1. ГЛАВНЫЙ БЛОК */}
         <div className="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0">
           <div className="absolute inset-0 bg-white dark:bg-[#0F0F11] transition-colors duration-200"></div>
@@ -363,15 +389,47 @@ const DashboardPage = () => {
           </div>
         </div>
 
-        {/* 2. KPI CARDS */}
+        {/* 2. KPI CARDS (DIRECT / COMMENTS) */}
         <div className="col-span-12 md:col-span-6 lg:col-span-3 xl:col-span-4 flex flex-col gap-3 min-w-0">
-          <ProductCard title="LTC" subtitle="Конверсия в оплату" mainValue={kpiData.ltc.cr} mainType="percent" data={[{ label: 'Активных менеджеров', val: kpiData.ltc.active }, { label: 'Всего продаж', val: kpiData.ltc.sales }, { label: 'Сумма депозитов', val: `€${kpiData.ltc.depositSum}` }]} />
-          <ProductCard title="Консультанты" subtitle="Повторные депозиты" mainValue={kpiData.consultants.cr} mainType="percent" data={[{ label: 'Активных менеджеров', val: kpiData.consultants.active }, { label: 'Всего продаж', val: kpiData.consultants.sales }, { label: 'Сумма депозитов', val: `€${kpiData.consultants.depositSum}` }]} />
+
+          <ProductCard
+            title="Отдел Продаж"
+            subtitle="Первые продажи"
+            mainValue={kpiData.direct.sales}
+            mainType="count"
+            data={[
+              { label: 'Активных менеджеров', val: kpiData.direct.active },
+              { label: 'Сумма депозитов', val: `€${kpiData.direct.depositSum}` }
+            ]}
+          />
+
+          <ProductCard
+            title="Консультанты"
+            subtitle="Продажи с Консультаций"
+            mainValue={kpiData.comments.sales}
+            mainType="count"
+            data={[
+              { label: 'Активных менеджеров', val: kpiData.comments.active },
+              { label: 'Сумма депозитов', val: `€${kpiData.comments.depositSum}` }
+            ]}
+          />
+
+          <ProductCard
+            title="WhatsApp"
+            subtitle="Продажи через WhatsApp"
+            mainValue={kpiData.whatsapp.sales}
+            mainType="count"
+            data={[
+              { label: 'Активных менеджеров', val: kpiData.whatsapp.active },
+              { label: 'Сумма депозитов', val: `€${kpiData.whatsapp.depositSum}` }
+            ]}
+          />
+
         </div>
 
         {/* 3. LEADERBOARDS */}
         <div className="col-span-12 md:col-span-6 lg:col-span-4 flex flex-col gap-3 min-w-0">
-          
+
           {/* Top Managers */}
           <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
             <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
@@ -380,17 +438,13 @@ const DashboardPage = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ менеджеры</span>
               </div>
             </div>
-            {/* Сделали отступы компактнее (p-2) */}
             <div className="p-2 space-y-1">
               {topManagers.map((mgr, i) => (
-                // Compact Row Item (py-2 mb-1)
                 <div key={mgr.name} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
                     <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate leading-none">{mgr.name}</span>
                   </div>
-                  
-                  {/* Single Line Data: Count -> Sum */}
                   <div className="flex items-center gap-3 text-right">
                     <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{mgr.count} Lead</span>
                     <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[60px]">€{mgr.sum.toFixed(0)}</span>
@@ -409,20 +463,17 @@ const DashboardPage = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ ГЕО</span>
               </div>
             </div>
-            {/* Сделали отступы компактнее (p-2) */}
             <div className="p-2 space-y-1">
               {topCountries.map((geo, i) => (
-                // Compact Row Item (py-2 mb-1)
                 <div key={geo.code} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
                     <div className="flex items-center gap-1.5 leading-none">
-                        <span className="text-base">{getFlag(geo.code)}</span>
-                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{geo.code}</span>
+                      <span className="text-base">{getFlag(geo.code)}</span>
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{geo.code}</span>
                     </div>
                   </div>
-                  
-                  {/* Single Line Data: Count -> Sum -> CR */}
+
                   <div className="flex items-center gap-3 text-right">
                     <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{geo.salesCount} Lead</span>
                     <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[50px]">€{geo.salesSum.toFixed(0)}</span>
@@ -466,7 +517,7 @@ const DashboardPage = () => {
                     #{p.id.slice(0, 8)}...
                   </td>
                   <td className="px-4 py-2 text-gray-500 font-mono">
-                    {/* Показываем "чистое" время из базы (UTC) без сдвигов */}
+                    {/* Raw time */}
                     {p.transactionDate ? p.transactionDate.substring(0, 16).replace('T', ' ') : '-'}
                   </td>
                   <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">
