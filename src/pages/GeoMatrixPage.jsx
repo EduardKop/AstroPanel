@@ -32,6 +32,7 @@ const STATIC_GEO_LOOKUP = {
     KZ: { name: 'Казахстан', emoji: '🇰🇿' },
 };
 
+
 const HEAT_COLORS = [
     'bg-transparent',
     'bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400',
