@@ -414,17 +414,6 @@ const DashboardPage = () => {
             ]}
           />
 
-          <ProductCard
-            title="WhatsApp"
-            subtitle="Продажи через WhatsApp"
-            mainValue={kpiData.whatsapp.sales}
-            mainType="count"
-            data={[
-              { label: 'Активных менеджеров', val: kpiData.whatsapp.active },
-              { label: 'Сумма депозитов', val: `€${kpiData.whatsapp.depositSum}` }
-            ]}
-          />
-
         </div>
 
         {/* 3. LEADERBOARDS */}
