@@ -1,19 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
-import { 
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { Calendar, BarChart2, PieChart, RotateCcw, Maximize2, X } from 'lucide-react';
+import { Calendar as CalendarIcon, BarChart2, PieChart, RotateCcw, Maximize2, X, Filter, LayoutDashboard, MessageCircle, MessageSquare, Phone } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 const THEME_COLORS = [
-  { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] }, 
-  { main: '#EC4899', gradient: ['#EC4899', '#F472B6'] }, 
-  { main: '#10B981', gradient: ['#10B981', '#34D399'] }, 
-  { main: '#F59E0B', gradient: ['#F59E0B', '#FBBF24'] }, 
-  { main: '#8B5CF6', gradient: ['#8B5CF6', '#A78BFA'] }, 
-  { main: '#06B6D4', gradient: ['#06B6D4', '#22D3EE'] }, 
+  { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] },
+  { main: '#EC4899', gradient: ['#EC4899', '#F472B6'] },
+  { main: '#10B981', gradient: ['#10B981', '#34D399'] },
+  { main: '#F59E0B', gradient: ['#F59E0B', '#FBBF24'] },
+  { main: '#8B5CF6', gradient: ['#8B5CF6', '#A78BFA'] },
+  { main: '#06B6D4', gradient: ['#06B6D4', '#22D3EE'] },
 ];
 
 const getLastWeekRange = () => {
@@ -26,7 +26,7 @@ const getLastWeekRange = () => {
 const getCurrentMonthRange = () => {
   const date = new Date();
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0); 
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
   return [start, end];
 };
 
@@ -39,16 +39,41 @@ const toYMD = (date) => {
   return `${y}-${m}-${d}`;
 };
 
+const DenseSelect = ({ label, value, options, onChange }) => (
+  <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[100px]">
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer truncate"
+    >
+      <option value="">{label}</option>
+      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+    </select>
+    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
+  </div>
+);
+
 const StatsPage = () => {
   const { payments, user: currentUser } = useAppStore();
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
   const [expandedChart, setExpandedChart] = useState(null);
+  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all' });
 
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
+
+  const uniqueValues = useMemo(() => {
+    const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
+    return {
+      managers: getUnique('manager'),
+      countries: getUnique('country'),
+      products: getUnique('product'),
+      types: getUnique('type')
+    };
+  }, [payments]);
 
   // --- ФИЛЬТРАЦИЯ (RAW MODE) ---
   const filteredData = useMemo(() => {
@@ -57,7 +82,7 @@ const StatsPage = () => {
 
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
-      
+
       // Берем дату из базы как строку "YYYY-MM-DD"
       const dbDateStr = item.transactionDate.slice(0, 10);
 
@@ -66,22 +91,31 @@ const StatsPage = () => {
 
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
+      } else {
+        if (filters.manager && item.manager !== filters.manager) return false;
       }
+
+      if (filters.country && item.country !== filters.country) return false;
+      if (filters.product && item.product !== filters.product) return false;
+      if (filters.type && item.type !== filters.type) return false;
+
+      if (filters.source !== 'all' && item.source !== filters.source) return false;
+
       return true;
     });
-    
+
     // Сортировка (строковая)
     return data.sort((a, b) => (a.transactionDate || '').localeCompare(b.transactionDate || ''));
-  }, [payments, startDate, endDate, isRestrictedUser, currentUser]);
+  }, [payments, startDate, endDate, isRestrictedUser, currentUser, filters]);
 
   // --- ГРУППИРОВКА ДЛЯ ГРАФИКОВ ---
   const prepareData = (dataKey, sourceData) => {
     const grouped = {};
     const allKeys = new Set();
-    
+
     sourceData.forEach(item => {
       // Ключ группировки - "YYYY-MM-DD" из базы (без сдвигов времени)
-      const dateKey = item.transactionDate.slice(0, 10); 
+      const dateKey = item.transactionDate.slice(0, 10);
       const key = item[dataKey] || 'Unknown';
       allKeys.add(key);
 
@@ -102,30 +136,65 @@ const StatsPage = () => {
   const typeData = useMemo(() => prepareData('type', filteredData), [filteredData]);
   const managerData = useMemo(() => prepareData('manager', filteredData), [filteredData]);
 
+  const resetDateRange = () => setDateRange(getLastWeekRange());
+  const resetFilters = () => setFilters({ manager: '', country: '', product: '', type: '', source: 'all' });
+
   return (
-    <div className="animate-in fade-in zoom-in duration-300 pb-10">
-      
-      {/* HEADER */}
-      <div className="sticky top-0 z-30 -mt-6 -mx-6 px-6 py-4 bg-[#F5F5F5] dark:bg-[#0A0A0A] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 border-b border-transparent transition-colors duration-200">
-        <div>
-            <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
-              <BarChart2 size={20} className="text-blue-500"/> Аналитика трендов
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">Визуализация данных продаж</p>
+    <div className="pb-10 transition-colors duration-200 w-full max-w-full overflow-x-hidden">
+
+      {/* HEADER + FILTERS */}
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent transition-colors duration-200 flex flex-col gap-3">
+
+        {/* Заголовок */}
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
+            <LayoutDashboard size={18} className="text-blue-600 dark:text-blue-500 shrink-0" />
+            <span className="truncate">Аналитика трендов</span>
+          </h2>
         </div>
-        
-        <div className="flex items-center bg-white dark:bg-[#111] border border-gray-300 dark:border-[#333] rounded-[6px] px-3 py-1.5 shadow-sm min-w-[240px]">
-             <div className="text-gray-400 pointer-events-none mr-2"><Calendar size={14} /></div>
-             <div className="relative flex-1">
+
+        {/* Все фильтры в один ряд */}
+        <div className="flex flex-wrap items-center gap-2 justify-between">
+
+          {/* Левая часть: Кнопки источников */}
+          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
+            <button onClick={() => setFilters(prev => ({ ...prev, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
+          </div>
+
+          {/* Правая часть: Фильтры + Календарь */}
+          <div className="flex flex-wrap items-center gap-2">
+            {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
+            <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
+            <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+            <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
+
+            <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm h-[34px]">
+              <CalendarIcon size={12} className="text-gray-400 mr-2 shrink-0" />
+              <div className="relative flex-1">
                 <DatePicker
-                    selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
-                    dateFormat="dd.MM.yyyy" placeholderText="Период"
-                    className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center"
+                  selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
+                  dateFormat="dd.MM.yyyy" placeholderText="Период"
+                  className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center"
+                  popperPlacement="bottom-end"
                 />
-             </div>
-             <button onClick={() => setDateRange(getLastWeekRange())} className="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 transition-colors">
-                <RotateCcw size={12} />
-             </button>
+              </div>
+              <button onClick={resetDateRange} className="ml-2 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                <RotateCcw size={12} className="text-gray-400" />
+              </button>
+            </div>
+
+            {/* Global Reset */}
+            <button
+              onClick={resetFilters}
+              className="bg-gray-200 dark:bg-[#1A1A1A] hover:bg-gray-300 dark:hover:bg-[#333] text-gray-500 dark:text-gray-400 p-1.5 rounded-[6px] transition-colors h-[34px] w-[34px] flex items-center justify-center"
+              title="Сбросить фильтры"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -163,7 +232,7 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
   const prepared = useMemo(() => {
     const grouped = {};
     const allKeys = new Set();
-    
+
     filteredData.forEach(item => {
       const dateKey = item.transactionDate.slice(0, 10);
       const key = item[chartKey] || 'Unknown';
@@ -193,35 +262,35 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center bg-gray-50 dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2">
-                <Calendar size={16} className="text-gray-400 mr-2"/>
-                <DatePicker selectsRange={true} startDate={startDate} endDate={endDate} onChange={(u) => setDateRange(u)} dateFormat="dd.MM.yyyy" placeholderText="Период" className="bg-transparent text-sm font-medium dark:text-white outline-none w-48 cursor-pointer text-center"/>
+              <CalendarIcon size={16} className="text-gray-400 mr-2" />
+              <DatePicker selectsRange={true} startDate={startDate} endDate={endDate} onChange={(u) => setDateRange(u)} dateFormat="dd.MM.yyyy" placeholderText="Период" className="bg-transparent text-sm font-medium dark:text-white outline-none w-48 cursor-pointer text-center" />
             </div>
             <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-[#222] rounded-full text-gray-500 transition-colors"><X size={24} /></button>
           </div>
         </div>
         <div className="flex-1 p-6 min-h-0">
-           <ResponsiveContainer width="100%" height="100%">
-              {isBar ? (
-                <BarChart data={prepared.chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                   <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} vertical={false} />
-                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, {day:'2-digit', month:'2-digit'})} />
-                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} />
-                   <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
-                   <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                   {prepared.keys.map((key, index) => <Bar key={key} dataKey={key} fill={THEME_COLORS[index % THEME_COLORS.length].main} radius={[4, 4, 0, 0]} stackId="a" />)}
-                </BarChart>
-              ) : (
-                <AreaChart data={prepared.chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                   <defs>{prepared.keys.map((key, index) => { const color = THEME_COLORS[index % THEME_COLORS.length]; return (<linearGradient key={key} id={`grad-modal-${key}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color.main} stopOpacity={0.4}/><stop offset="100%" stopColor={color.main} stopOpacity={0}/></linearGradient>); })}</defs>
-                   <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} vertical={false} />
-                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, {day:'2-digit', month:'2-digit'})} />
-                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} />
-                   <Tooltip content={<CustomTooltip />} />
-                   <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                   {prepared.keys.map((key, index) => <Area key={key} type="monotone" dataKey={key} stroke={THEME_COLORS[index % THEME_COLORS.length].main} fill={`url(#grad-modal-${key})`} strokeWidth={3} activeDot={{ r: 6 }} />)}
-                </AreaChart>
-              )}
-           </ResponsiveContainer>
+          <ResponsiveContainer width="100%" height="100%">
+            {isBar ? (
+              <BarChart data={prepared.chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} vertical={false} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                {prepared.keys.map((key, index) => <Bar key={key} dataKey={key} fill={THEME_COLORS[index % THEME_COLORS.length].main} radius={[4, 4, 0, 0]} stackId="a" />)}
+              </BarChart>
+            ) : (
+              <AreaChart data={prepared.chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                <defs>{prepared.keys.map((key, index) => { const color = THEME_COLORS[index % THEME_COLORS.length]; return (<linearGradient key={key} id={`grad-modal-${key}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color.main} stopOpacity={0.4} /><stop offset="100%" stopColor={color.main} stopOpacity={0} /></linearGradient>); })}</defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} vertical={false} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 12 }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                {prepared.keys.map((key, index) => <Area key={key} type="monotone" dataKey={key} stroke={THEME_COLORS[index % THEME_COLORS.length].main} fill={`url(#grad-modal-${key})`} strokeWidth={3} activeDot={{ r: 6 }} />)}
+              </AreaChart>
+            )}
+          </ResponsiveContainer>
         </div>
       </div>
     </div>
@@ -235,7 +304,7 @@ const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
       <div className="mb-6 z-10 relative flex justify-between items-start cursor-pointer" onClick={onExpand} title="Нажмите, чтобы развернуть детальную статистику">
         <div>
           <h3 className="text-sm font-bold dark:text-white flex items-center gap-2 group-hover:text-blue-500 transition-colors">
-            {type === 'area' ? <BarChart2 size={14} className="text-blue-500"/> : <PieChart size={14} className="text-pink-500"/>}
+            {type === 'area' ? <BarChart2 size={14} className="text-blue-500" /> : <PieChart size={14} className="text-pink-500" />}
             {title}
           </h3>
           <p className="text-[10px] text-gray-500 mt-0.5">{subtitle}</p>
@@ -247,9 +316,9 @@ const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
           <ResponsiveContainer width="100%" height="100%">
             {type === 'area' ? (
               <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>{keys.map((key, index) => { const color = THEME_COLORS[index % THEME_COLORS.length]; return (<linearGradient key={key} id={`grad-${key}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color.main} stopOpacity={0.4}/><stop offset="100%" stopColor={color.main} stopOpacity={0}/></linearGradient>); })}</defs>
+                <defs>{keys.map((key, index) => { const color = THEME_COLORS[index % THEME_COLORS.length]; return (<linearGradient key={key} id={`grad-${key}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color.main} stopOpacity={0.4} /><stop offset="100%" stopColor={color.main} stopOpacity={0} /></linearGradient>); })}</defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} vertical={false} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, {day:'2-digit', month:'2-digit'})} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#555', strokeWidth: 1, strokeDasharray: '3 3' }} />
                 {keys.map((key, index) => <Area key={key} type="monotone" dataKey={key} stroke={THEME_COLORS[index % THEME_COLORS.length].main} fill={`url(#grad-${key})`} strokeWidth={2} isAnimationActive={false} />)}
@@ -257,7 +326,7 @@ const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
             ) : (
               <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} vertical={false} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, {day:'2-digit', month:'2-digit'})} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} tickMargin={10} tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
                 {keys.map((key, index) => <Bar key={key} dataKey={key} fill={THEME_COLORS[index % THEME_COLORS.length].main} radius={[4, 4, 0, 0]} stackId="a" barSize={20} isAnimationActive={false} />)}
