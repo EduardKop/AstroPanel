@@ -1,7 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
-import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, RefreshCcw } from 'lucide-react';
+import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, Users2 } from 'lucide-react';
+import AdvancedScheduleModal from '../components/AdvancedScheduleModal';
+import MultiGeoModal from '../components/MultiGeoModal';
+import ScheduleStats from '../components/ScheduleStats';
+import AutoFillModal from '../components/AutoFillModal';
 
 // --- GEO COLORS & CODES ---
 const GEO_PALETTE = {
@@ -26,9 +30,15 @@ const SchedulePage = () => {
     const isAdmin = user && ['Admin', 'C-level'].includes(user.role);
 
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [isDemo, setIsDemo] = useState(false); // Real data by default
-    const [isEditing, setIsEditing] = useState(false); // Edit mode
+    const [isEditing, setIsEditing] = useState(false); // Edit mode (single GEO)
+    const [isMultiGeoEditing, setIsMultiGeoEditing] = useState(false); // Multi-GEO edit mode
+    const [showAdvancedModal, setShowAdvancedModal] = useState(false);  // Advanced settings modal
+    const [showMultiGeoModal, setShowMultiGeoModal] = useState(false); // Multi-GEO modal
+    const [showAutoFillModal, setShowAutoFillModal] = useState(false); // Auto-fill modal
+    const [selectedManagerForAutoFill, setSelectedManagerForAutoFill] = useState(null); // Manager to fill
+    const [selectedCell, setSelectedCell] = useState(null); // { managerId, date, currentGeos }
     const [scheduleState, setScheduleState] = useState(schedules || []); // Local state for optimistic UI
+    const [refreshKey, setRefreshKey] = useState(0); // Force refresh trigger
 
     // --- DATE HELPERS ---
     const daysInMonth = useMemo(() => {
@@ -60,6 +70,26 @@ const SchedulePage = () => {
         return map;
     }, [countries]);
 
+    // Get GEO config (color/label) with dynamic fallback
+    const getGeoConfig = (code) => {
+        if (!code) return null;
+        // Check static palette first
+        if (GEO_PALETTE[code]) return GEO_PALETTE[code];
+
+        // Generate consistent dynamic color from code
+        let hash = 0;
+        for (let i = 0; i < code.length; i++) {
+            hash = code.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash % 360);
+        const color = `hsl(${hue}, 70%, 50%)`;
+
+        return {
+            color,
+            label: code.substring(0, 3)
+        };
+    };
+
     // Create schedule map: manager_id -> date -> geo_code (for real data)
     const scheduleMap = useMemo(() => {
         const map = {};
@@ -79,7 +109,6 @@ const SchedulePage = () => {
     // Load schedules for current month (optimized)
     useEffect(() => {
         const loadMonthSchedules = async () => {
-            if (isDemo) return;
 
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth() + 1;
@@ -121,71 +150,39 @@ const SchedulePage = () => {
         };
 
         loadMonthSchedules();
-    }, [currentDate, isDemo]);
+    }, [currentDate]);
 
-    // --- DEMO DATA ---
-    const demoManagers = useMemo(() => {
-        const GEO_KEYS = Object.keys(GEO_PALETTE);
-        const mockNames = [
-            'Юра @yurissoo',
-            'Игорь @gonigorr',
-            'Анна @Annet6996',
-            'Алина @alinaserheeva',
-            'Виктория @vika',
-            'Ольга @helka',
-            'Денис @beetle',
-            'Светлана @sveta',
-            'Ксения @ksenia'
-        ];
-
-        return mockNames.map((name, idx) => {
-            const geo = GEO_KEYS[idx % GEO_KEYS.length];
-            const shifts = {};
-
-            daysInMonth.forEach(day => {
-                const dateKey = day.toISOString().split('T')[0];
-                if (Math.random() > 0.3) {
-                    shifts[dateKey] = geo; // Same geo for all shifts
-                }
-            });
-
-            return {
-                id: `demo-${idx}`,
-                name,
-                geo,
-                shifts
-            };
-        });
-    }, [daysInMonth]);
-
-    // Prepare rows (demo or real)
     const scheduleData = useMemo(() => {
-        if (isDemo) {
-            return demoManagers;
-        }
+        // Filter managers by show_in_schedule field
+        const visibleManagers = (managers || []).filter(m => m.show_in_schedule !== false);
 
-        return (managers || []).map(manager => {
+        return visibleManagers.map(manager => {
             const managerSchedules = scheduleMap[manager.id] || {};
 
-            const shifts = {};
-            daysInMonth.forEach(day => {
-                const dateKey = day.toISOString().split('T')[0];
-                shifts[dateKey] = managerSchedules[dateKey] || null;
-            });
+            const shifts = daysInMonth.reduce((acc, day) => {
+                const year = day.getFullYear();
+                const month = String(day.getMonth() + 1).padStart(2, '0');
+                const dayNum = String(day.getDate()).padStart(2, '0');
+                const dateKey = `${year}-${month}-${dayNum}`;
+                acc[dateKey] = managerSchedules[dateKey] || null;
+                return acc;
+            }, {});
 
-            // Handle geo as array (take first element)
-            const managerGeo = Array.isArray(manager.geo) && manager.geo.length > 0
-                ? manager.geo[0]
-                : manager.geo;
+            // Handle geo as array - keep all GEOs
+            const managerGeos = Array.isArray(manager.geo)
+                ? manager.geo
+                : (manager.geo ? [manager.geo] : []);
+            const primaryGeo = managerGeos[0] || null;
 
             return {
                 id: manager.id,
                 name: manager.name,
-                geo: managerGeo,
+                geo: primaryGeo,        // For compatibility with toggleShift
+                geos: managerGeos,      // All manager GEOs
                 shifts
             };
         });
-    }, [isDemo, demoManagers, managers, scheduleMap, daysInMonth]);
+    }, [managers, scheduleMap, daysInMonth, refreshKey]);
 
     const prevMonth = () => {
         setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -195,50 +192,35 @@ const SchedulePage = () => {
         setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
     };
 
-    // Toggle shift in edit mode
+    // Toggle shift in edit mode (simple add/remove)
     const toggleShift = async (managerId, dateKey, managerGeo) => {
-        if (!isEditing || isDemo) return; // Only in edit mode and real data
-
-        console.log('Toggle shift:', { managerId, dateKey, managerGeo }); // DEBUG
+        if (!isEditing) return;
 
         try {
-            // Check if shift exists in DB (not just local state)
             const { data: existingInDB, error: checkError } = await supabase
                 .from('schedules')
                 .select('*')
                 .eq('manager_id', managerId)
                 .eq('date', dateKey)
-                .maybeSingle(); // Returns null if not found, doesn't throw
+                .maybeSingle();
 
-            if (checkError) {
-                console.error('Check error:', checkError);
-                throw checkError;
-            }
-
-            console.log('Existing in DB:', existingInDB); // DEBUG
+            if (checkError) throw checkError;
 
             if (existingInDB) {
                 // Remove shift
-                console.log('Deleting shift...'); // DEBUG
                 const { error } = await supabase
                     .from('schedules')
                     .delete()
                     .eq('manager_id', managerId)
                     .eq('date', dateKey);
 
-                if (error) {
-                    console.error('Delete error:', error); // DEBUG
-                    throw error;
-                }
+                if (error) throw error;
 
-                console.log('Shift deleted successfully'); // DEBUG
-                // Update local state
                 setScheduleState(prev => prev.filter(
                     s => !(s.manager_id === managerId && s.date === dateKey)
                 ));
             } else {
-                // Add shift (use upsert to prevent duplicates)
-                console.log('Adding shift...', { managerId, dateKey, geo_code: managerGeo }); // DEBUG
+                // Add shift with single GEO
                 const { data, error } = await supabase
                     .from('schedules')
                     .upsert({
@@ -246,18 +228,13 @@ const SchedulePage = () => {
                         date: dateKey,
                         geo_code: managerGeo
                     }, {
-                        onConflict: 'manager_id,date' // Handle conflicts on unique constraint
+                        onConflict: 'manager_id,date'
                     })
                     .select()
                     .single();
 
-                if (error) {
-                    console.error('Insert error:', error); // DEBUG
-                    throw error;
-                }
+                if (error) throw error;
 
-                console.log('Shift added successfully:', data); // DEBUG
-                // Update local state - replace if exists, add if not
                 setScheduleState(prev => {
                     const filtered = prev.filter(
                         s => !(s.manager_id === managerId && s.date === dateKey)
@@ -267,19 +244,196 @@ const SchedulePage = () => {
             }
         } catch (error) {
             console.error('Error toggling shift:', error);
-            console.error('Error details:', JSON.stringify(error, null, 2)); // DEBUG
-            alert(`Ошибка при изменении смены: ${error.message || 'Unknown error'}`);
+            alert(`Ошибка: ${error.message || 'Unknown error'}`);
+        }
+    };
+
+    // Handle multi-GEO cell click
+    const handleMultiGeoClick = (managerId, dateKey, currentGeos) => {
+        if (!isMultiGeoEditing) return;
+        setSelectedCell({ managerId, dateKey, currentGeos });
+        setShowMultiGeoModal(true);
+    };
+
+    // Save multi-GEO
+    const handleSaveMultiGeo = async (geos) => {
+        if (!selectedCell || geos.length !== 2) return;
+
+        try {
+            const { managerId, dateKey } = selectedCell;
+            const geoCode = `${geos[0]},${geos[1]}`;
+
+            const { data, error } = await supabase
+                .from('schedules')
+                .upsert({
+                    manager_id: managerId,
+                    date: dateKey,
+                    geo_code: geoCode
+                }, {
+                    onConflict: 'manager_id,date'
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Close modal
+            setShowMultiGeoModal(false);
+            setSelectedCell(null);
+
+            // Force reload all schedules from DB
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth() + 1;
+            const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+            const lastDay = new Date(year, month, 0).getDate();
+            const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+
+            const { data: updatedSchedules, error: fetchError } = await supabase
+                .from('schedules')
+                .select('*')
+                .gte('date', startDate)
+                .lte('date', endDate);
+
+            if (fetchError) throw fetchError;
+
+            // Update local state - this will trigger useMemo recalculation
+            setScheduleState(updatedSchedules || []);
+
+            // Force re-render to ensure UI updates
+            setRefreshKey(prev => prev + 1);
+        } catch (error) {
+            console.error('Error saving multi-GEO:', error);
+            alert(`Ошибка: ${error.message}`);
+        }
+    };
+    // --- AUTO FILL ---
+    const handleAutoFill = async ({ startDate, pattern, geos, clear }) => {
+        try {
+            if (!selectedManagerForAutoFill) return;
+            const manager = managers.find(m => m.id === selectedManagerForAutoFill);
+            if (!manager) return;
+
+            // Determine date range
+            const start = new Date(startDate);
+            const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0); // End of current view month
+            const monthStartStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+            const monthEndStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+
+            // --- CLEAR LOGIC ---
+            if (clear) {
+                if (!window.confirm(`Вы уверены, что хотите очистить график менеджера ${manager.name} с ${startDate}?`)) return;
+
+                console.log(`🗑️ Clearing schedule for ${manager.name} from ${startDate} to ${monthEndStr}`);
+
+                const { error } = await supabase
+                    .from('schedules')
+                    .delete()
+                    .eq('manager_id', manager.id)
+                    .gte('date', monthStartStr)
+                    .lte('date', monthEndStr);
+
+                if (error) throw error;
+
+                // Refresh
+                const { fetchAllData } = useAppStore.getState();
+                fetchAllData(true);
+                setRefreshKey(prev => prev + 1);
+                return;
+            }
+
+            // Determine GEO to use
+            let geoCode = null;
+            if (isMultiGeoEditing) {
+                // Multi mode: use selected pair
+                if (geos && geos.length === 2) {
+                    geoCode = `${geos[0]},${geos[1]}`;
+                }
+            } else {
+                // Single mode: use manager's primary GEO
+                const primaryGeo = Array.isArray(manager.geo) ? manager.geo[0] : manager.geo;
+                geoCode = primaryGeo;
+            }
+
+            if (!geoCode) throw new Error('Не удалось определить ГЕО для заполнения');
+
+            console.log(`🚀 Auto-filling for ${manager.name} from ${startDate} with pattern ${pattern} and GEO ${geoCode}`);
+
+            // Parse pattern (e.g., "2-2")
+            const [workDays, restDays] = pattern.split('-').map(Number);
+            const cycleLength = workDays + restDays;
+
+            // Calculate dates
+
+
+            const schedulesToUpsert = [];
+
+            // Iterate day by day from Start Date until End of Month
+            const current = new Date(start);
+
+            // If start date is in previous month, fast forward to start of this month?
+            // No, user assumes "From this date". If they select date in past, it's fine.
+
+            // To ensuring we start calculating the cycle correctly from Day 1 of the pattern...
+            // "From that date... automatically sets". So Date 1 = Work Day 1.
+            let dayCounter = 0;
+
+            while (current <= end) {
+                // Check pattern position
+                const positionInCycle = dayCounter % cycleLength;
+                const isWorkDay = positionInCycle < workDays;
+
+                if (isWorkDay) {
+                    const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+
+                    schedulesToUpsert.push({
+                        manager_id: manager.id,
+                        date: dateStr,
+                        geo_code: geoCode
+                    });
+                }
+
+                current.setDate(current.getDate() + 1);
+                dayCounter++;
+            }
+
+            // 1. Upsert work days
+            if (schedulesToUpsert.length > 0) {
+                const { error } = await supabase
+                    .from('schedules')
+                    .upsert(schedulesToUpsert, { onConflict: 'manager_id,date' });
+
+                if (error) throw error;
+            }
+
+            // Refresh
+            const { fetchAllData } = useAppStore.getState();
+            fetchAllData(true);
+
+            // Force re-render
+            setRefreshKey(prev => prev + 1);
+
+        } catch (error) {
+            console.error('Error auto-filling:', error);
+            alert(`Ошибка автозаполнения: ${error.message}`);
         }
     };
 
     return (
         <div className="pb-10 w-full max-w-full overflow-x-hidden">
             {/* EDITING MODE INDICATOR */}
-            {isEditing && !isDemo && (
-                <div className="mb-4 px-4 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
-                    <Edit size={16} className="text-green-600 dark:text-green-400" />
-                    <p className="text-sm text-green-700 dark:text-green-300 font-medium">
-                        Режим редактирования активен. Кликайте на ячейки для добавления/удаления смен.
+            {isEditing && (
+                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-r-lg">
+                    <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                        ✏️ Режим редактирования: кликните на ячейку чтобы добавить/удалить смену (1 ГЕО)
+                    </p>
+                </div>
+            )}
+
+            {/* MULTI-GEO EDITING MODE INDICATOR */}
+            {isMultiGeoEditing && (
+                <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500 rounded-r-lg">
+                    <p className="text-sm font-medium text-purple-800 dark:text-purple-300">
+                        🎨 Режим Мульти-ГЕО: кликните на ячейку чтобы назначить 2 ГЕО (split-color)
                     </p>
                 </div>
             )}
@@ -309,17 +463,11 @@ const SchedulePage = () => {
                         </button>
                     </div>
 
-                    {/* Demo Toggle */}
-                    <button
-                        onClick={() => setIsDemo(!isDemo)}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${isDemo ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#222]'}`}
-                    >
-                        <RefreshCcw size={14} className={isDemo ? 'animate-spin-slow' : ''} />
-                        Demo
-                    </button>
+
 
                     {isAdmin && (
                         <div className="flex items-center gap-2">
+                            {/* Обычное редактирование */}
                             <button
                                 onClick={() => setIsEditing(!isEditing)}
                                 className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-medium transition-all shadow-sm ${isEditing
@@ -330,7 +478,24 @@ const SchedulePage = () => {
                                 <Edit size={14} />
                                 <span className="hidden sm:inline">{isEditing ? 'Готово' : 'Ред.'}</span>
                             </button>
-                            <button className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors shadow-sm">
+
+                            {/* Мульти-ГЕО редактирование */}
+                            <button
+                                onClick={() => setIsMultiGeoEditing(!isMultiGeoEditing)}
+                                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-medium transition-all shadow-sm ${isMultiGeoEditing
+                                    ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700'
+                                    : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] hover:bg-gray-50 dark:hover:bg-[#252525] text-gray-700 dark:text-gray-200'
+                                    }`}
+                            >
+                                <Users2 size={14} />
+                                <span className="hidden sm:inline">{isMultiGeoEditing ? 'Готово' : 'Ред Мульти'}</span>
+                            </button>
+
+                            {/* Расширенное */}
+                            <button
+                                onClick={() => setShowAdvancedModal(true)}
+                                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors shadow-sm"
+                            >
                                 <Settings size={14} />
                                 <span className="hidden sm:inline">Расширенное</span>
                             </button>
@@ -359,14 +524,19 @@ const SchedulePage = () => {
 
                             {/* Day headers */}
                             <div className="flex">
-                                {daysInMonth.map((day, idx) => (
-                                    <div
-                                        key={idx}
-                                        className="w-[32px] flex-shrink-0 px-0.5 py-1.5 text-center text-xs font-normal text-gray-600 dark:text-gray-300"
-                                    >
-                                        {String(day.getDate()).padStart(2, '0')}
-                                    </div>
-                                ))}
+                                {daysInMonth.map((day, idx) => {
+                                    const isToday = new Date().toDateString() === day.toDateString();
+                                    return (
+                                        <div
+                                            key={idx}
+                                            className="w-[32px] flex-shrink-0 px-0.5 py-1.5 flex items-center justify-center text-xs font-normal text-gray-600 dark:text-gray-300"
+                                        >
+                                            <div className={`w-[24px] h-[24px] flex items-center justify-center rounded-full ${isToday ? 'bg-blue-500 text-white font-bold' : ''}`}>
+                                                {String(day.getDate()).padStart(2, '0')}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -382,18 +552,28 @@ const SchedulePage = () => {
                                 >
                                     {/* Manager Name + Geo */}
                                     <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-10 bg-white dark:bg-[#111]">
-                                        {/* Name part (90%) */}
+                                        {/* Name part */}
                                         <div className="flex-1 px-2 py-1.5 text-xs font-normal text-gray-700 dark:text-gray-300 flex items-center overflow-hidden">
-                                            <span className="truncate">{row.name}</span>
+                                            <span
+                                                className={`truncate font-medium transition-colors ${(isEditing || isMultiGeoEditing) ? 'text-blue-600 dark:text-blue-400 cursor-pointer hover:underline' : ''}`}
+                                                onClick={() => {
+                                                    if (isEditing || isMultiGeoEditing) {
+                                                        setSelectedManagerForAutoFill(row.id);
+                                                        setShowAutoFillModal(true);
+                                                    }
+                                                }}
+                                                title={isEditing || isMultiGeoEditing ? "Нажмите для автозаполнения графика" : row.name}
+                                            >
+                                                {row.name}
+                                            </span>
                                         </div>
 
-                                        {/* Geo part (10%) */}
+                                        {/* All Manager GEO Flags */}
                                         <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 flex flex-col items-center justify-center border-l border-gray-200 dark:border-[#333] gap-0.5">
-                                            {geoInfo ? (
-                                                <>
-                                                    <span className="text-xs leading-none">{geoInfo.emoji}</span>
-                                                    <span className="text-[8px] leading-none text-gray-500 dark:text-gray-400 font-medium">{managerGeo}</span>
-                                                </>
+                                            {row.geos && row.geos.length > 0 ? (
+                                                row.geos.slice(0, 3).map((geo, idx) => (
+                                                    <span key={idx} className="text-xs leading-none" title={geo}>{countryMap[geo]?.emoji || '🌍'}</span>
+                                                ))
                                             ) : (
                                                 <span className="text-gray-400 text-xs">—</span>
                                             )}
@@ -410,29 +590,64 @@ const SchedulePage = () => {
                                             const dateKey = `${year}-${month}-${dayNum}`;
 
                                             const geo = row.shifts[dateKey];
-                                            const geoConfig = GEO_PALETTE[geo];
 
-                                            const canEdit = isEditing && !isDemo;
-                                            const cellClasses = `w-full h-[28px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all ${canEdit ? 'cursor-pointer' : ''
-                                                }`;
+                                            // Parse multi-GEO format ("RO" or "RO,BG")
+                                            const geos = geo ? geo.split(',').map(g => g.trim()) : [];
+                                            const geoConfigs = geos.map(g => getGeoConfig(g)).filter(Boolean);
+
+                                            const canEdit = isEditing;
+                                            const canMultiGeoEdit = isMultiGeoEditing;
+                                            const isInteractive = canEdit || canMultiGeoEdit;
 
                                             return (
                                                 <div
                                                     key={dayIdx}
-                                                    className="w-[32px] flex-shrink-0 p-0.5 flex items-center justify-center"
-                                                    onClick={() => canEdit && toggleShift(row.id, dateKey, row.geo)}
+                                                    className={`w-[32px] flex-shrink-0 p-0.5 flex items-center justify-center ${isInteractive ? 'cursor-pointer' : ''
+                                                        }`}
+                                                    onClick={() => {
+                                                        if (canEdit) {
+                                                            toggleShift(row.id, dateKey, row.geo);
+                                                        } else if (canMultiGeoEdit) {
+                                                            handleMultiGeoClick(row.id, dateKey, geos);
+                                                        }
+                                                    }}
                                                 >
-                                                    {geoConfig ? (
+                                                    {geoConfigs.length === 2 ? (
+                                                        /* Dual GEO - Split Color Cell */
+                                                        <div className={`w-full h-[28px] rounded overflow-hidden flex flex-col shadow-sm transition-all ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : 'hover:opacity-80'
+                                                            }`}>
+                                                            {/* Top GEO */}
+                                                            <div
+                                                                className="flex-1 flex items-center justify-center text-white text-[8px] font-bold"
+                                                                style={{ backgroundColor: geoConfigs[0].color }}
+                                                            >
+                                                                {geoConfigs[0].label}
+                                                            </div>
+                                                            {/* Bottom GEO */}
+                                                            <div
+                                                                className="flex-1 flex items-center justify-center text-white text-[8px] font-bold border-t border-white/30"
+                                                                style={{ backgroundColor: geoConfigs[1].color }}
+                                                            >
+                                                                {geoConfigs[1].label}
+                                                            </div>
+                                                        </div>
+                                                    ) : geoConfigs.length === 1 ? (
+                                                        /* Single GEO */
                                                         <div
-                                                            className={`${cellClasses} text-white hover:opacity-80`}
-                                                            style={{ backgroundColor: geoConfig.color }}
+                                                            className={`w-full h-[28px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all text-white ${canEdit ? 'hover:opacity-80' : ''
+                                                                } ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : ''
+                                                                }`}
+                                                            style={{ backgroundColor: geoConfigs[0].color }}
                                                         >
-                                                            {geoConfig.label}
+                                                            {geoConfigs[0].label}
                                                         </div>
                                                     ) : (
+                                                        /* Empty Cell */
                                                         <div
-                                                            className={`${cellClasses} ${canEdit
-                                                                    ? 'border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'
+                                                            className={`w-full h-[28px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all ${canEdit
+                                                                ? 'border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
+                                                                : canMultiGeoEdit
+                                                                    ? 'border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-400 dark:hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20'
                                                                     : ''
                                                                 }`}
                                                         />
@@ -447,6 +662,53 @@ const SchedulePage = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Schedule Stats */}
+            <ScheduleStats
+                rows={scheduleData}
+                currentDate={currentDate}
+                onDataChange={() => {
+                    // Optional: reload if needed, but adjustments are local to Stats component
+                    // or trigger global refresh if adjustments affect other things
+                }}
+            />
+
+            {/* Advanced Settings Modal */}
+            <AdvancedScheduleModal
+                isOpen={showAdvancedModal}
+                onClose={() => setShowAdvancedModal(false)}
+                managers={managers}
+                countries={countries}
+                onSave={() => {
+                    const { fetchAllData } = useAppStore.getState();
+                    fetchAllData(true);
+                }}
+            />
+
+            {/* Multi-GEO Modal */}
+            <MultiGeoModal
+                isOpen={showMultiGeoModal}
+                onClose={() => {
+                    setShowMultiGeoModal(false);
+                    setSelectedCell(null);
+                }}
+                onSave={handleSaveMultiGeo}
+                countries={countries}
+            />
+
+            {/* Auto Fill Modal */}
+            <AutoFillModal
+                isOpen={showAutoFillModal}
+                onClose={() => {
+                    setShowAutoFillModal(false);
+                    setSelectedManagerForAutoFill(null);
+                }}
+                onSave={handleAutoFill}
+                mode={isMultiGeoEditing ? 'multi' : 'single'}
+                countries={countries}
+                managerName={managers.find(m => m.id === selectedManagerForAutoFill)?.name}
+                currentDate={currentDate}
+            />
         </div>
     );
 };
