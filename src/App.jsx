@@ -35,11 +35,11 @@ import ActivityLogsPage from './pages/ActivityLogsPage';
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
   const isActive = location.pathname === path;
-  const baseClasses = `group w-full flex items-center gap-2.5 px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isChild ? 'pl-8' : ''}`;
+  const baseClasses = `group w-full flex items-center gap-2.5 px-3 py-2.5 md:py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-sm md:text-xs font-medium ${isChild ? 'pl-8' : ''}`;
   const stateClasses = isActive ? 'bg-gray-200 text-black dark:bg-[#2A2A2A] dark:text-white font-semibold' : 'text-gray-600 dark:text-[#888888] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] hover:text-black dark:hover:text-[#EAEAEA]';
   return (
     <Link to={path} onClick={onClick} className={`${baseClasses} ${stateClasses} ${className || ''}`}>
-      <Icon size={isChild ? 14 : 16} className={isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'} />
+      <Icon size={isChild ? 16 : 18} className={isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'} />
       <span>{label}</span>
     </Link>
   )
@@ -157,6 +157,21 @@ function App() {
           />
         )}
 
+        {/* MOBILE HEADER BAR (visible only on mobile) */}
+        <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-white dark:bg-[#111111] border-b border-gray-200 dark:border-[#222] z-30 flex items-center justify-between px-4">
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-2 -ml-2 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1A1A1A] transition-colors"
+          >
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 bg-black dark:bg-white rounded flex items-center justify-center text-white dark:text-black font-bold text-[10px]">AP</div>
+            <span className="font-bold text-gray-900 dark:text-white tracking-tight">AstroPanel</span>
+          </div>
+          <div className="w-10" /> {/* Spacer for centering */}
+        </div>
+
         <aside className={`w-[220px] fixed inset-y-0 left-0 h-full bg-white dark:bg-[#111111] border-r border-gray-200 dark:border-[#222] flex flex-col z-50 transition-transform duration-300 ease-in-out lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
 
           {/* HEADER */}
@@ -262,15 +277,9 @@ function App() {
           </div>
         </aside>
 
-        <main className="flex-1 ml-0 lg:ml-[220px] transition-all duration-300">
-          <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-40 flex items-center justify-between px-4 lg:px-6">
+        <main className="flex-1 ml-0 lg:ml-[220px] transition-all duration-300 pt-14 lg:pt-0">
+          <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 lg:top-0 z-20 hidden lg:flex items-center justify-between px-4 lg:px-6">
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden p-1.5 -ml-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#222] rounded-md transition-colors"
-              >
-                <Menu size={20} />
-              </button>
               <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
                 {/* Status bar */}
               </div>
@@ -280,7 +289,7 @@ function App() {
             </button>
           </header>
 
-          <div className="p-3 md:p-6">
+          <div className="p-3 md:p-6 pb-safe">{/* pb-safe for notch devices */}
             <Routes>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/quick-stats" element={<ProtectedRoute resource="quick_stats"><QuickStatsPage /></ProtectedRoute>} />

@@ -333,7 +333,7 @@ const StatsPage = () => {
       </div>
 
       {/* ROW 4: Sunburst & Pie */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6 h-[450px]">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6 min-h-[400px] md:min-h-[450px]">
         <GeoComparisonChart
           startDate={startDate}
           endDate={endDate}

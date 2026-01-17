@@ -311,6 +311,7 @@ const DashboardPage = () => {
           </h2>
         </div>
 
+
         {/* Все фильтры в один ряд */}
         <div className="flex flex-wrap items-center gap-2 justify-between">
 
