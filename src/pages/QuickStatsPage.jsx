@@ -242,7 +242,7 @@ const QuickStatsPage = () => {
                     </h2>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 justify-between">
+                <div className="flex flex-wrap items-end gap-4">
                     <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
                         <button onClick={() => setFilters(p => ({ ...p, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
                         <button onClick={() => setFilters(p => ({ ...p, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
@@ -250,43 +250,48 @@ const QuickStatsPage = () => {
                         <button onClick={() => setFilters(p => ({ ...p, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
                     </div>
 
-                    {/* PERIOD 1 */}
-                    <div className="flex flex-col gap-1">
-                        <span className="text-[9px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Первый период</span>
-                        <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 px-2 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800">
-                            <CalendarIcon size={12} className="text-blue-500 shrink-0" />
-                            <DatePicker
-                                selectsRange={true}
-                                startDate={period1Start}
-                                endDate={period1End}
-                                onChange={(update) => setPeriod1(update)}
-                                dateFormat="dd.MM"
-                                className="bg-transparent text-[11px] font-medium text-blue-700 dark:text-blue-300 outline-none w-[85px] cursor-pointer text-center"
-                                popperPlacement="bottom-start"
-                                portalId="root"
-                            />
-                        </div>
-                    </div>
+                    <div className="flex-1" /> {/* Spacer */}
 
-                    {/* PERIOD 2 */}
-                    <div className="flex flex-col gap-1">
-                        <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Второй период</span>
-                        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700">
-                            <CalendarIcon size={12} className="text-gray-400 shrink-0" />
-                            <DatePicker
-                                selectsRange={true}
-                                startDate={period2Start}
-                                endDate={period2End}
-                                onChange={(update) => setPeriod2(update)}
-                                dateFormat="dd.MM"
-                                className="bg-transparent text-[11px] font-medium text-gray-600 dark:text-gray-300 outline-none w-[85px] cursor-pointer text-center"
-                                popperPlacement="bottom-end"
-                                portalId="root"
-                            />
+                    {/* PERIODS CONTAINER - centered together */}
+                    <div className="flex items-end gap-4">
+                        {/* PERIOD 1 */}
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="text-[9px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Первый период</span>
+                            <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800">
+                                <CalendarIcon size={12} className="text-blue-500 shrink-0" />
+                                <DatePicker
+                                    selectsRange={true}
+                                    startDate={period1Start}
+                                    endDate={period1End}
+                                    onChange={(update) => setPeriod1(update)}
+                                    dateFormat="dd.MM"
+                                    className="bg-transparent text-[11px] font-medium text-blue-700 dark:text-blue-300 outline-none w-[85px] cursor-pointer text-center"
+                                    popperPlacement="bottom-start"
+                                    portalId="root"
+                                />
+                            </div>
                         </div>
-                    </div>
 
-                    <button onClick={resetPeriods} className="text-gray-400 hover:text-blue-500 self-end mb-1"><RotateCcw size={14} /></button>
+                        {/* PERIOD 2 */}
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Второй период</span>
+                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700">
+                                <CalendarIcon size={12} className="text-gray-400 shrink-0" />
+                                <DatePicker
+                                    selectsRange={true}
+                                    startDate={period2Start}
+                                    endDate={period2End}
+                                    onChange={(update) => setPeriod2(update)}
+                                    dateFormat="dd.MM"
+                                    className="bg-transparent text-[11px] font-medium text-gray-600 dark:text-gray-300 outline-none w-[85px] cursor-pointer text-center"
+                                    popperPlacement="bottom-end"
+                                    portalId="root"
+                                />
+                            </div>
+                        </div>
+
+                        <button onClick={resetPeriods} className="text-gray-400 hover:text-blue-500 mb-1"><RotateCcw size={14} /></button>
+                    </div>
                 </div>
             </div>
 
