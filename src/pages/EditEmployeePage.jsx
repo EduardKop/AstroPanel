@@ -7,7 +7,7 @@ import {
   UploadCloud, ArrowLeft, Send, Calendar, Save, Loader2
 } from 'lucide-react';
 
-const ROLES = ['Sales', 'Consultant', 'Admin', 'C-level', 'Manager'];
+const ROLES = ['Sales', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manager'];
 
 const EditEmployeePage = () => {
   const { id } = useParams();
@@ -234,8 +234,8 @@ const EditEmployeePage = () => {
                         type="button"
                         onClick={() => toggleCountry(country.code)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'
                           }`}
                       >
                         <span>{country.emoji}</span>

@@ -98,7 +98,7 @@ const ScheduleStats = ({ rows, currentDate, onDataChange }) => {
                 <div>
                     <h3 className="text-lg font-bold dark:text-white">Статистика смен</h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Подсчет смен и корректировки за {currentDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                        Подсчет смен и корректировки за {(currentDate || new Date()).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
                     </p>
                 </div>
             </div>

@@ -27,7 +27,7 @@ const GEO_PALETTE = {
 
 const SchedulePage = () => {
     const { user, managers, countries, schedules } = useAppStore();
-    const isAdmin = user && ['Admin', 'C-level'].includes(user.role);
+    const isAdmin = user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [isEditing, setIsEditing] = useState(false); // Edit mode (single GEO)

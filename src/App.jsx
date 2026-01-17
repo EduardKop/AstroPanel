@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient';
@@ -27,6 +27,9 @@ import ProductsPage from './pages/knowledge/ProductsPage';
 import RulesPage from './pages/knowledge/RulesPage';
 import SalariesPage from './pages/SalariesPage';
 import SchedulePage from './pages/SchedulePage';
+import TimerWidget from './components/TimerWidget';
+import TimeLogPage from './pages/TimeLogPage';
+import CLevelSettingsPage from './pages/CLevelSettingsPage';
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
@@ -41,12 +44,30 @@ const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) =
   )
 }
 
-const ProtectedRoute = ({ allowedRoles, children }) => {
-  const user = useAppStore(state => state.user);
+const ProtectedRoute = ({ allowedRoles, resource, children }) => {
+  const { user, permissions } = useAppStore();
+
   if (!user) return <Navigate to="/" />;
+
+  // 1. Classic Role Check (Fallback)
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <div className="h-full flex items-center justify-center text-gray-500 text-sm">⛔ Доступ запрещен</div>;
+    return <div className="h-full flex items-center justify-center text-gray-500 text-sm">⛔ Доступ запрещен (Роль)</div>;
   }
+
+  // 2. Dynamic Permission Check
+  if (resource) {
+    // If permissions not loaded yet (empty), we might want to wait or be lenient.
+    // Assuming defaults are loaded. If explicit false, deny.
+    const hasAccess = permissions?.[user.role]?.[resource];
+
+    // Explicitly check for === false, because undefined might mean "allow by default" if migrating? 
+    // NO, let's differ to "deny by default" for security, BUT we seeded the DB.
+    // So if undefined, it means no permission record = deny.
+    if (!hasAccess) {
+      return <div className="h-full flex items-center justify-center text-gray-500 text-sm">⛔ Доступ запрещен (Настройки)</div>;
+    }
+  }
+
   return children;
 };
 
@@ -56,7 +77,7 @@ function App() {
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const { user, setUser, logout, fetchAllData, isLoading } = useAppStore();
+  const { user, setUser, logout, fetchAllData, isLoading, permissions } = useAppStore();
 
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark')
@@ -69,6 +90,23 @@ function App() {
       if (savedUserStr) {
         const parsedUser = JSON.parse(savedUserStr);
         setUser(parsedUser);
+
+        // Refresh user data from DB to get latest Role changes
+        try {
+          const { data: freshUser } = await supabase
+            .from('managers')
+            .select('*')
+            .eq('id', parsedUser.id)
+            .single();
+
+          if (freshUser) {
+            setUser(freshUser);
+            localStorage.setItem('astroUser', JSON.stringify(freshUser));
+          }
+        } catch (e) {
+          console.error("User refresh failed", e);
+        }
+
         fetchAllData();
       }
       setIsAuthChecking(false);
@@ -89,8 +127,14 @@ function App() {
     fetchAllData();
   }
 
-  // Общий доступ для Админов и C-level (для большинства разделов)
-  const isAdminAccess = user && ['Admin', 'C-level'].includes(user.role);
+  // Helper for dynamic access
+  const hasAccess = (resource) => {
+    if (!user || !permissions[user.role]) return false;
+    return permissions[user.role][resource] === true;
+  };
+
+  // Special Check for C-level settings (Hardcoded security for safety)
+  const isCLevel = user?.role === 'C-level';
 
   if (isAuthChecking) return <div className="min-h-screen bg-[#0A0A0A]" />
   if (!user) return <LoginPage onLoginSuccess={handleLoginSuccess} />
@@ -129,17 +173,21 @@ function App() {
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">{user.role}</div>
               </div>
             </div>
+            {/* Timer Widget */}
+            <div className="mt-2">
+              <TimerWidget />
+            </div>
           </div>
 
           <nav className="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-0.5">
             {/* --- ДАШБОРДЫ --- */}
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider">Дашборды</div>
             <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
-            <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />
+            {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
 
-            {isAdminAccess && <SidebarItem icon={Globe} label="География" path="/geo" />}
-            {isAdminAccess && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
-            <SidebarItem icon={BarChart3} label="Сравнительный анализ" path="/quick-stats" />
+            {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
+            {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
+            {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравнительный анализ" path="/quick-stats" />}
 
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
 
@@ -148,17 +196,18 @@ function App() {
             <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
             <SidebarItem icon={Shield} label="Правила" path="/rules" />
 
-            {isAdminAccess && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
+            {hasAccess('kpi') && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
 
             {/* --- ЛЮДИ (Только Админ и C-level видят раздел) --- */}
             {/* --- ЛЮДИ (Общий раздел) --- */}
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
 
-            {/* ГРАФИК (Доступен всем) */}
-            <SidebarItem icon={Calendar} label="График" path="/schedule" />
+            {/* ГРАФИК */}
+            {hasAccess('schedule') && <SidebarItem icon={Calendar} label="График" path="/schedule" />}
+            {hasAccess('time_log') && <SidebarItem icon={Clock} label="Учёт времени" path="/time-log" />}
 
-            {/* УПРАВЛЕНИЕ (Только Админ и C-level) */}
-            {isAdminAccess && (
+            {/* УПРАВЛЕНИЕ */}
+            {(hasAccess('employees_manage') || hasAccess('employees_list')) && (
               <>
                 <button onClick={() => setIsEmployeesOpen(!isEmployeesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isEmployeesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
                   <div className="flex items-center gap-2.5"><Users size={16} /><span>Сотрудники</span></div>
@@ -170,12 +219,20 @@ function App() {
                   <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
                   <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
 
-                  {/* ✅ ЗАРПЛАТЫ: ТОЛЬКО ДЛЯ ADMIN */}
-                  {user.role === 'Admin' && (
+                  {/* ✅ ЗАРПЛАТЫ */}
+                  {hasAccess('salaries') && (
                     <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
                   )}
                 </div>
-                <SidebarItem icon={Users} label="Эффективность" path="/managers" />
+                {hasAccess('stats') && <SidebarItem icon={Users} label="Эффективность" path="/managers" />}
+              </>
+            )}
+
+            {/* ✅ C-LEVEL SETTINGS: ONLY FOR C-LEVEL */}
+            {user.role === 'C-level' && (
+              <>
+                <div className="px-3 py-2 text-[10px] font-bold text-amber-500 dark:text-amber-500 uppercase tracking-wider mt-2 border-t border-gray-100 dark:border-[#222] pt-4">C-Level</div>
+                <SidebarItem icon={Settings} label="Настройки" path="/c-level-settings" className="text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10" />
               </>
             )}
           </nav>
@@ -211,38 +268,42 @@ function App() {
           <div className="p-3 md:p-6">
             <Routes>
               <Route path="/" element={<DashboardPage />} />
-              <Route path="/quick-stats" element={<QuickStatsPage />} />
-              <Route path="/stats" element={<StatsPage />} />
+              <Route path="/quick-stats" element={<ProtectedRoute resource="quick_stats"><QuickStatsPage /></ProtectedRoute>} />
+              <Route path="/stats" element={<ProtectedRoute resource="stats"><StatsPage /></ProtectedRoute>} />
               <Route path="/list" element={<PaymentsPage />} />
 
-              <Route path="/kpi" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><KPIPage /></ProtectedRoute>} />
-              <Route path="/geo" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><GeoPage /></ProtectedRoute>} />
-              <Route path="/managers" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><ManagersPage /></ProtectedRoute>} />
-              <Route path="/geo-matrix" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><GeoMatrixPage /></ProtectedRoute>} />
+              <Route path="/kpi" element={<ProtectedRoute resource="kpi"><KPIPage /></ProtectedRoute>} />
+              <Route path="/geo" element={<ProtectedRoute resource="geo"><GeoPage /></ProtectedRoute>} />
+              <Route path="/managers" element={<ProtectedRoute resource="stats"><ManagersPage /></ProtectedRoute>} />
+              <Route path="/geo-matrix" element={<ProtectedRoute resource="geo_matrix"><GeoMatrixPage /></ProtectedRoute>} />
 
-              <Route path="/sales-team" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
-              <Route path="/consultants" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
-              <Route path="/all-employees" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Все сотрудники" excludeRole="C-level" currentUser={user} showAddButton={true} /></ProtectedRoute>} />
+              <Route path="/sales-team" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
+              <Route path="/consultants" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
+              <Route path="/all-employees" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Все сотрудники" excludeRole="C-level" currentUser={user} showAddButton={true} /></ProtectedRoute>} />
 
-              {/* ✅ ГРАФИК: ДОСТУПЕН ВСЕМ */}
-              <Route path="/schedule" element={<SchedulePage />} />
+              {/* ✅ ГРАФИК */}
+              <Route path="/schedule" element={<ProtectedRoute resource="schedule"><SchedulePage /></ProtectedRoute>} />
+              <Route path="/time-log" element={<ProtectedRoute resource="time_log"><TimeLogPage /></ProtectedRoute>} />
 
-              <Route path="/add-employee" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><AddEmployeePage /></ProtectedRoute>} />
-              <Route path="/edit-employee/:id" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EditEmployeePage /></ProtectedRoute>} />
-              <Route path="/birthdays" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><BirthdaysPage /></ProtectedRoute>} />
+              <Route path="/add-employee" element={<ProtectedRoute resource="employees_manage"><AddEmployeePage /></ProtectedRoute>} />
+              <Route path="/edit-employee/:id" element={<ProtectedRoute resource="employees_manage"><EditEmployeePage /></ProtectedRoute>} />
+              <Route path="/birthdays" element={<ProtectedRoute resource="employees_list"><BirthdaysPage /></ProtectedRoute>} />
 
-              {/* ✅ РОУТ ЗАРПЛАТЫ: ТОЛЬКО 'Admin' */}
-              <Route path="/salaries" element={<ProtectedRoute allowedRoles={['Admin']}><SalariesPage /></ProtectedRoute>} />
+              {/* ✅ РОУТ ЗАРПЛАТЫ */}
+              <Route path="/salaries" element={<ProtectedRoute resource="salaries"><SalariesPage /></ProtectedRoute>} />
 
-              <Route path="/products" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><ProductsPage /></ProtectedRoute>} />
-              <Route path="/rules" element={<ProtectedRoute allowedRoles={['Admin', 'C-level', 'Manager', 'Sales', 'Consultant', 'Retention']}><RulesPage /></ProtectedRoute>} />
+              <Route path="/products" element={<ProtectedRoute resource="knowledge_base"><ProductsPage /></ProtectedRoute>} />
+              <Route path="/rules" element={<ProtectedRoute resource="knowledge_base"><RulesPage /></ProtectedRoute>} />
+
+              {/* ✅ C-LEVEL SETTINGS: ТОЛЬКО C-LEVEL */}
+              <Route path="/c-level-settings" element={<ProtectedRoute allowedRoles={['C-level']}><CLevelSettingsPage /></ProtectedRoute>} />
 
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </div>
         </main>
-      </div>
-    </BrowserRouter>
+      </div >
+    </BrowserRouter >
   )
 }
 

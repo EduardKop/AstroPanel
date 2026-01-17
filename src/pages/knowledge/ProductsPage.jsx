@@ -23,7 +23,7 @@ const ProductsPage = () => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);      // Открыт ли редактор
   const [search, setSearch] = useState('');
 
-  const isAdmin = user && ['Admin', 'C-level'].includes(user.role);
+  const isAdmin = user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
 
   const filteredProducts = products.filter(p =>
     p.title.toLowerCase().includes(search.toLowerCase()) ||

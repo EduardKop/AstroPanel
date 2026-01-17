@@ -6,7 +6,7 @@ import {
   UploadCloud, ArrowLeft, Send, Calendar, Save
 } from 'lucide-react';
 
-const ROLES = ['Sales', 'Consultant', 'Admin', 'C-level', 'Manager'];
+const ROLES = ['Sales', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manager'];
 
 const AddEmployeePage = () => {
   const navigate = useNavigate();

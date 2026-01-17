@@ -2,10 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { toggleManagerStatus } from '../services/dataService';
-import { 
-  Mail, Phone, Clock, Globe, Send, User, 
-  Briefcase, Search, Filter, XCircle, Plus, 
-  Pencil, Lock, Unlock, Ban, ShieldCheck 
+import {
+  Mail, Phone, Clock, Globe, Send, User,
+  Briefcase, Search, Filter, XCircle, Plus,
+  Pencil, Lock, Unlock, Ban, ShieldCheck
 } from 'lucide-react';
 
 const SelectFilter = ({ label, value, options, onChange }) => (
@@ -52,7 +52,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     result.sort((a, b) => {
       if (a.status === 'active' && b.status !== 'active') return -1;
       if (a.status !== 'active' && b.status === 'active') return 1;
-      return 0; 
+      return 0;
     });
 
     return result;
@@ -63,7 +63,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     return [...new Set(managers.flatMap(m => m.geo || []))].sort();
   }, [managers]);
 
-  const canManage = currentUser && ['Admin', 'C-level'].includes(currentUser.role);
+  const canManage = currentUser && ['Admin', 'C-level', 'SeniorSales'].includes(currentUser.role);
 
   const handleToggleBlock = async (id, currentStatus, name) => {
     const action = currentStatus === 'active' ? 'заблокировать' : 'разблокировать';
@@ -71,7 +71,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
 
     try {
       await toggleManagerStatus(id, currentStatus);
-      fetchAllData(true); 
+      fetchAllData(true);
     } catch (e) {
       alert('Ошибка при смене статуса');
     }
@@ -90,9 +90,9 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
   const calculateWorkDays = (createdAt) => {
     if (!createdAt) return { dateStr: '-', days: 0 };
     const diff = Math.abs(new Date() - new Date(createdAt));
-    return { 
-      dateStr: new Date(createdAt).toLocaleDateString('ru-RU'), 
-      days: Math.ceil(diff / (1000 * 3600 * 24)) 
+    return {
+      dateStr: new Date(createdAt).toLocaleDateString('ru-RU'),
+      days: Math.ceil(diff / (1000 * 3600 * 24))
     };
   };
 
@@ -102,7 +102,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
 
   return (
     <div className="animate-in fade-in zoom-in duration-300 pb-10">
-      
+
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
         <div>
@@ -117,19 +117,19 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
 
         <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
           {canManage && showAddButton && (
-             <button 
-               onClick={() => navigate('/add-employee')}
-               className="flex items-center gap-2 bg-white dark:bg-[#1A1A1A] hover:bg-gray-50 dark:hover:bg-[#222] text-gray-900 dark:text-white px-3 py-1.5 rounded-[6px] border border-gray-200 dark:border-[#333] font-medium text-xs transition-all active:scale-95"
-             >
-               <Plus size={14} /> <span>Добавить</span>
-             </button>
+            <button
+              onClick={() => navigate('/add-employee')}
+              className="flex items-center gap-2 bg-white dark:bg-[#1A1A1A] hover:bg-gray-50 dark:hover:bg-[#222] text-gray-900 dark:text-white px-3 py-1.5 rounded-[6px] border border-gray-200 dark:border-[#333] font-medium text-xs transition-all active:scale-95"
+            >
+              <Plus size={14} /> <span>Добавить</span>
+            </button>
           )}
 
           <div className="flex items-center gap-2">
             <SelectFilter label="ГЕО" value={filters.geo} options={uniqueGeos} onChange={(val) => setFilters(prev => ({ ...prev, geo: val }))} />
             {filters.geo && (
-              <button 
-                onClick={() => setFilters({ geo: '' })} 
+              <button
+                onClick={() => setFilters({ geo: '' })}
                 className="text-red-500 bg-red-500/10 hover:bg-red-500/20 p-1.5 rounded-[6px] transition-colors"
               >
                 <XCircle size={14} />
@@ -145,53 +145,52 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
           const age = calculateAge(mgr.birth_date);
           const workStats = calculateWorkDays(mgr.created_at);
           const isBlocked = mgr.status === 'blocked';
-          
+
           return (
-            <div 
-              key={mgr.id} 
+            <div
+              key={mgr.id}
               className={`
                 relative bg-white dark:bg-[#111] rounded-lg border overflow-hidden transition-all duration-200
-                ${isBlocked 
-                  ? 'border-red-200 dark:border-red-900/30 opacity-75' 
+                ${isBlocked
+                  ? 'border-red-200 dark:border-red-900/30 opacity-75'
                   : 'border-gray-200 dark:border-[#333] hover:border-gray-300 dark:hover:border-[#555] shadow-sm'
                 }
               `}
             >
-              
+
               {/* CARD HEADER */}
               <div className="p-4 flex items-start justify-between border-b border-gray-100 dark:border-[#222] bg-gray-50/50 dark:bg-[#161616]/50">
                 <div className="flex items-center gap-3">
-                   <div className="relative">
-                     {mgr.avatar_url ? (
-                       <img 
-                         src={mgr.avatar_url} 
-                         alt={mgr.name} 
-                         className={`w-10 h-10 rounded-[8px] object-cover border ${isBlocked ? 'border-red-200 grayscale' : 'border-gray-200 dark:border-[#444]'}`} 
-                       />
-                     ) : (
-                       <div className={`w-10 h-10 rounded-[8px] flex items-center justify-center text-xs font-bold border ${isBlocked ? 'bg-red-50 text-red-400 border-red-100' : 'bg-white dark:bg-[#222] text-gray-500 border-gray-200 dark:border-[#333]'}`}>
-                          {mgr.name?.charAt(0)}
-                       </div>
-                     )}
-                   </div>
-                   
-                   <div>
-                      <h3 className={`text-sm font-bold leading-tight ${isBlocked ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
-                        {mgr.name}
-                      </h3>
-                      {age && (
-                        <div className="text-[10px] text-gray-400 mt-0.5 font-mono">
-                          {age} лет
-                        </div>
-                      )}
-                   </div>
+                  <div className="relative">
+                    {mgr.avatar_url ? (
+                      <img
+                        src={mgr.avatar_url}
+                        alt={mgr.name}
+                        className={`w-10 h-10 rounded-[8px] object-cover border ${isBlocked ? 'border-red-200 grayscale' : 'border-gray-200 dark:border-[#444]'}`}
+                      />
+                    ) : (
+                      <div className={`w-10 h-10 rounded-[8px] flex items-center justify-center text-xs font-bold border ${isBlocked ? 'bg-red-50 text-red-400 border-red-100' : 'bg-white dark:bg-[#222] text-gray-500 border-gray-200 dark:border-[#333]'}`}>
+                        {mgr.name?.charAt(0)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className={`text-sm font-bold leading-tight ${isBlocked ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
+                      {mgr.name}
+                    </h3>
+                    {age && (
+                      <div className="text-[10px] text-gray-400 mt-0.5 font-mono">
+                        {age} лет
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-[4px] border text-[10px] font-bold uppercase tracking-wider ${
-                  isBlocked 
-                    ? 'bg-red-50 dark:bg-red-900/10 text-red-600 border-red-100 dark:border-red-900/30' 
+                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-[4px] border text-[10px] font-bold uppercase tracking-wider ${isBlocked
+                    ? 'bg-red-50 dark:bg-red-900/10 text-red-600 border-red-100 dark:border-red-900/30'
                     : 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 border-emerald-100 dark:border-emerald-900/30'
-                }`}>
+                  }`}>
                   {isBlocked ? <Ban size={10} /> : <ShieldCheck size={10} />}
                   {isBlocked ? 'Blocked' : 'Active'}
                 </div>
@@ -199,7 +198,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
 
               {/* CARD BODY */}
               <div className="p-4 grid grid-cols-2 gap-y-4 gap-x-2 text-xs">
-                
+
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Должность</span>
                   <div className="flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
@@ -241,7 +240,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
               <div className="px-4 py-3 border-t border-gray-100 dark:border-[#222] flex items-center justify-between bg-gray-50/30 dark:bg-[#161616]/30">
                 <div className="flex items-center gap-3">
                   {mgr.telegram_username && (
-                    <a 
+                    <a
                       href={`https://t.me/${mgr.telegram_username.replace('@', '')}`}
                       target="_blank"
                       rel="noreferrer"
@@ -265,20 +264,19 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
 
                 {canManage && (
                   <div className="flex items-center gap-2">
-                    <button 
+                    <button
                       onClick={() => navigate(`/edit-employee/${mgr.id}`)}
                       className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-all"
                       title="Редактировать"
                     >
                       <Pencil size={14} />
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleToggleBlock(mgr.id, mgr.status, mgr.name)}
-                      className={`p-1.5 rounded transition-all ${
-                        isBlocked 
-                          ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20' 
+                      className={`p-1.5 rounded transition-all ${isBlocked
+                          ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
                           : 'text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20'
-                      }`}
+                        }`}
                       title={isBlocked ? "Разблокировать" : "Заблокировать"}
                     >
                       {isBlocked ? <Unlock size={14} /> : <Lock size={14} />}

@@ -48,6 +48,9 @@ const QuickStatsPage = () => {
     });
     const [period1Start, period1End] = period1;
 
+    // Admin check for manager filter
+    const isAdmin = useAppStore(state => state.user && ['Admin', 'C-level', 'SeniorSales'].includes(state.user.role));
+
     // Period 2 (right column)
     const [period2, setPeriod2] = useState(() => {
         const today = new Date();

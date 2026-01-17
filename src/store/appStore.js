@@ -76,6 +76,12 @@ export const useAppStore = create((set, get) => ({
   // Данные трафика
   trafficStats: {},
 
+  trafficStats: {},
+
+  // Dynamic Settings (Role Permissions & Docs)
+  permissions: {},
+  roleDocs: {},
+
   stats: { totalEur: 0, count: 0 },
   isLoading: false,
   isInitialized: false,
@@ -165,6 +171,24 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  updateSettings: async (key, value) => {
+    try {
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({ key, value });
+
+      if (error) throw error;
+
+      // Optimistic update
+      if (key === 'role_permissions') set({ permissions: value });
+      if (key === 'role_documentation') set({ roleDocs: value });
+
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      alert('Ошибка при сохранении настроек');
+    }
+  },
+
   fetchAllData: async (forceUpdate = false) => {
     if (get().isLoading && !forceUpdate) return;
 
@@ -191,11 +215,16 @@ export const useAppStore = create((set, get) => ({
       const countriesData = await fetchAll('countries', '*', 'code', true);
       const schedulesData = await fetchAll('schedules', '*', 'date', false);
 
-      // Г. KPI
+      // Г. KPI & Settings
       const kpiRatesData = await fetchAll('kpi_product_rates', '*', 'rate', true);
       const kpiSettingsData = await fetchAll('kpi_settings', '*', 'key', true);
       const kpiSettingsMap = {};
       kpiSettingsData.forEach(s => kpiSettingsMap[s.key] = s.value);
+
+      // Load App Settings
+      const appSettingsData = await fetchAll('app_settings', '*', 'key', true);
+      const permissionsMap = appSettingsData.find(s => s.key === 'role_permissions')?.value || {};
+      const roleDocsMap = appSettingsData.find(s => s.key === 'role_documentation')?.value || {};
 
       // Д. Трафик и Источники (LEADS)
       // Используем пагинацию для загрузки ВСЕХ лидов (1066+)
@@ -303,6 +332,8 @@ export const useAppStore = create((set, get) => ({
         schedules: schedulesData || [],
         kpiRates: kpiRatesData || [],
         kpiSettings: kpiSettingsMap || {},
+        permissions: permissionsMap,
+        roleDocs: roleDocsMap,
         trafficStats: trafficResult,
         stats: { totalEur: total.toFixed(2), count: formattedPayments.length },
         isLoading: false,
@@ -324,6 +355,7 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_product_rates' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_settings' }, () => get().fetchAllData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => get().fetchAllData(true))
       .subscribe();
 
     return () => supabase.removeChannel(channel);
