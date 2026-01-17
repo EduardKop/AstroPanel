@@ -63,6 +63,8 @@ export const useAppStore = create((set, get) => ({
   managers: [],
   products: [],
   rules: [],
+  countries: [], // NEW: Countries with flags
+  schedules: [], // NEW: Schedule data
 
   // Данные для зарплат
   kpiRates: [],
@@ -91,6 +93,8 @@ export const useAppStore = create((set, get) => ({
       managers: [],
       products: [],
       rules: [],
+      countries: [],
+      schedules: [],
       trafficStats: {},
       kpiRates: [],
       kpiSettings: {},
@@ -180,10 +184,12 @@ export const useAppStore = create((set, get) => ({
       const managersMap = {};
       managersData.forEach(m => managersMap[m.id] = m.name);
 
-      // В. Оплаты, Продукты, Правила
+      // В. Оплаты, Продукты, Правила, Countries, Schedules
       const paymentsData = await fetchAll('payments', '*', 'transaction_date', false);
       const productsData = await fetchAll('knowledge_products', '*', 'created_at', false);
       const rulesData = await fetchAll('knowledge_rules', '*', 'created_at', false);
+      const countriesData = await fetchAll('countries', '*', 'code', true);
+      const schedulesData = await fetchAll('schedules', '*', 'date', false);
 
       // Г. KPI
       const kpiRatesData = await fetchAll('kpi_product_rates', '*', 'rate', true);
@@ -293,6 +299,8 @@ export const useAppStore = create((set, get) => ({
         managers: managersData || [],
         products: productsData || [],
         rules: rulesData || [],
+        countries: countriesData || [],
+        schedules: schedulesData || [],
         kpiRates: kpiRatesData || [],
         kpiSettings: kpiSettingsMap || {},
         trafficStats: trafficResult,

@@ -1,104 +1,289 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
+import { supabase } from '../services/supabaseClient';
 import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, RefreshCcw } from 'lucide-react';
-import { ResponsiveHeatMap } from '@nivo/heatmap';
 
 // --- GEO COLORS & CODES ---
 const GEO_PALETTE = {
-    'UA': { color: '#0ea5e9', label: 'Укр' }, // Sky Blue
-    'PL': { color: '#ef4444', label: 'Пол' }, // Red
-    'CZ': { color: '#8b5cf6', label: 'Чех' }, // Violet
-    'DE': { color: '#f59e0b', label: 'Гер' }, // Amber
-    'IT': { color: '#10b981', label: 'Ита' }, // Emerald
-    'FR': { color: '#3b82f6', label: 'Фра' }, // Blue
-    'ES': { color: '#eab308', label: 'Исп' }, // Yellow
-    'PT': { color: '#ec4899', label: 'Пор' }, // Pink
-    'BG': { color: '#14b8a6', label: 'Бол' }, // Teal
-    'RO': { color: '#6366f1', label: 'Рум' }, // Indigo
-    'TR': { color: '#f97316', label: 'Тур' }, // Orange
-    // Fallsbacks
+    'UA': { color: '#0ea5e9', label: 'Укр' },
+    'PL': { color: '#ef4444', label: 'Пол' },
+    'CZ': { color: '#8b5cf6', label: 'Чех' },
+    'DE': { color: '#f59e0b', label: 'Гер' },
+    'IT': { color: '#10b981', label: 'Ита' },
+    'FR': { color: '#3b82f6', label: 'Фра' },
+    'ES': { color: '#eab308', label: 'Исп' },
+    'PT': { color: '#ec4899', label: 'Пор' },
+    'BG': { color: '#14b8a6', label: 'Бол' },
+    'RO': { color: '#6366f1', label: 'Рум' },
+    'TR': { color: '#f97316', label: 'Тур' },
     'KZ': { color: '#2dd4bf', label: 'Каз' },
     'US': { color: '#64748b', label: 'США' },
     'UK': { color: '#3b82f6', label: 'Анг' },
 };
 
-const GEO_KEYS = Object.keys(GEO_PALETTE);
-
 const SchedulePage = () => {
-    const { user, managers: storeManagers } = useAppStore();
+    const { user, managers, countries, schedules } = useAppStore();
     const isAdmin = user && ['Admin', 'C-level'].includes(user.role);
 
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [isDemo, setIsDemo] = useState(true); // Default to Demo for visualization
+    const [isDemo, setIsDemo] = useState(false); // Real data by default
+    const [isEditing, setIsEditing] = useState(false); // Edit mode
+    const [scheduleState, setScheduleState] = useState(schedules || []); // Local state for optimistic UI
 
     // --- DATE HELPERS ---
     const daysInMonth = useMemo(() => {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
-        const date = new Date(year, month, 1);
         const days = [];
-        while (date.getMonth() === month) {
-            days.push(new Date(date));
-            date.setDate(date.getDate() + 1);
+
+        // Get number of days in month
+        const daysCount = new Date(year, month + 1, 0).getDate();
+
+        // Generate all days from 1 to last day
+        for (let day = 1; day <= daysCount; day++) {
+            days.push(new Date(year, month, day));
         }
+
+        console.log(`Generated ${days.length} days for ${year}-${month + 1}:`, days.map(d => d.getDate()));
+
         return days;
     }, [currentDate]);
 
     const monthLabel = currentDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-    const dayKeys = daysInMonth.map(d => String(d.getDate()).padStart(2, '0'));
 
-    // --- DATA GENERATION (Mix of Real Managers + Mock Schedules) ---
-    const scheduleData = useMemo(() => {
-        // 1. Get Managers (From Store or Mock if empty)
-        let managersList = storeManagers.length > 0 ? storeManagers.map(m => m.name) : ['Alice', 'Bob', 'Charlie', 'David', 'Eva'];
+    // Country code -> emoji mapping
+    const countryMap = useMemo(() => {
+        const map = {};
+        (countries || []).forEach(c => {
+            map[c.code] = { emoji: c.emoji, name: c.name };
+        });
+        return map;
+    }, [countries]);
 
-        // Force some visual names if in Demo or empty
-        if (isDemo || managersList.length < 5) {
-            managersList = ['Юра @yurissoo', 'Игорь @gonigorr', 'Анна @Annet6996', 'Алина @alinaserheeva', 'Виктория @vika', 'Ольга @helka', 'Денис @beetle', 'Светлана @sveta', 'Ксения @ksenia'];
-        }
+    // Create schedule map: manager_id -> date -> geo_code (for real data)
+    const scheduleMap = useMemo(() => {
+        const map = {};
+        (scheduleState || []).forEach(s => {
+            if (!map[s.manager_id]) map[s.manager_id] = {};
+            const dateKey = s.date; // Expected format: "2026-01-15"
+            map[s.manager_id][dateKey] = s.geo_code;
+        });
+        return map;
+    }, [scheduleState]);
 
-        // 2. Build Rows
-        return managersList.map(manager => {
-            // Assign specific GEO for this manager (Stable for the session)
-            const managerGeo = isDemo
-                ? GEO_KEYS[Math.floor(Math.random() * GEO_KEYS.length)]
-                : null;
+    // Sync local state with store when schedules change
+    useEffect(() => {
+        setScheduleState(schedules || []);
+    }, [schedules]);
 
-            const dataPoints = daysInMonth.map(day => {
-                const dayKey = String(day.getDate()).padStart(2, '0');
+    // Load schedules for current month (optimized)
+    useEffect(() => {
+        const loadMonthSchedules = async () => {
+            if (isDemo) return;
 
-                let geo = null;
-                if (isDemo) {
-                    // Random Shift presence (60% chance), but always same GEO
-                    if (Math.random() > 0.3) {
-                        geo = managerGeo;
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth() + 1;
+            const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+            const endDate = new Date(year, month, 0); // Last day of month
+            const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+
+            try {
+                // Load with pagination if needed
+                let allSchedules = [];
+                let from = 0;
+                const limit = 1000;
+
+                while (true) {
+                    const { data, error } = await supabase
+                        .from('schedules')
+                        .select('*')
+                        .gte('date', startDate)
+                        .lte('date', endDateStr)
+                        .range(from, from + limit - 1)
+                        .order('date', { ascending: true });
+
+                    if (error) {
+                        console.error('Error loading schedules:', error);
+                        break;
                     }
+
+                    allSchedules = [...allSchedules, ...data];
+
+                    if (!data || data.length < limit) break;
+                    from += limit;
                 }
 
-                return {
-                    x: dayKey,
-                    y: geo ? 1 : 0, // Heatmap needs a value
-                    geo: geo // Custom data
-                };
+                console.log(`Loaded ${allSchedules.length} schedules for ${startDate} to ${endDateStr}`);
+                setScheduleState(allSchedules);
+            } catch (error) {
+                console.error('Failed to load schedules:', error);
+            }
+        };
+
+        loadMonthSchedules();
+    }, [currentDate, isDemo]);
+
+    // --- DEMO DATA ---
+    const demoManagers = useMemo(() => {
+        const GEO_KEYS = Object.keys(GEO_PALETTE);
+        const mockNames = [
+            'Юра @yurissoo',
+            'Игорь @gonigorr',
+            'Анна @Annet6996',
+            'Алина @alinaserheeva',
+            'Виктория @vika',
+            'Ольга @helka',
+            'Денис @beetle',
+            'Светлана @sveta',
+            'Ксения @ksenia'
+        ];
+
+        return mockNames.map((name, idx) => {
+            const geo = GEO_KEYS[idx % GEO_KEYS.length];
+            const shifts = {};
+
+            daysInMonth.forEach(day => {
+                const dateKey = day.toISOString().split('T')[0];
+                if (Math.random() > 0.3) {
+                    shifts[dateKey] = geo; // Same geo for all shifts
+                }
             });
 
             return {
-                id: manager,
-                data: dataPoints
+                id: `demo-${idx}`,
+                name,
+                geo,
+                shifts
             };
         });
-    }, [storeManagers, daysInMonth, isDemo]);
+    }, [daysInMonth]);
 
-    // --- ACTIONS ---
+    // Prepare rows (demo or real)
+    const scheduleData = useMemo(() => {
+        if (isDemo) {
+            return demoManagers;
+        }
+
+        return (managers || []).map(manager => {
+            const managerSchedules = scheduleMap[manager.id] || {};
+
+            const shifts = {};
+            daysInMonth.forEach(day => {
+                const dateKey = day.toISOString().split('T')[0];
+                shifts[dateKey] = managerSchedules[dateKey] || null;
+            });
+
+            // Handle geo as array (take first element)
+            const managerGeo = Array.isArray(manager.geo) && manager.geo.length > 0
+                ? manager.geo[0]
+                : manager.geo;
+
+            return {
+                id: manager.id,
+                name: manager.name,
+                geo: managerGeo,
+                shifts
+            };
+        });
+    }, [isDemo, demoManagers, managers, scheduleMap, daysInMonth]);
+
     const prevMonth = () => {
         setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
     };
+
     const nextMonth = () => {
         setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
     };
 
+    // Toggle shift in edit mode
+    const toggleShift = async (managerId, dateKey, managerGeo) => {
+        if (!isEditing || isDemo) return; // Only in edit mode and real data
+
+        console.log('Toggle shift:', { managerId, dateKey, managerGeo }); // DEBUG
+
+        try {
+            // Check if shift exists in DB (not just local state)
+            const { data: existingInDB, error: checkError } = await supabase
+                .from('schedules')
+                .select('*')
+                .eq('manager_id', managerId)
+                .eq('date', dateKey)
+                .maybeSingle(); // Returns null if not found, doesn't throw
+
+            if (checkError) {
+                console.error('Check error:', checkError);
+                throw checkError;
+            }
+
+            console.log('Existing in DB:', existingInDB); // DEBUG
+
+            if (existingInDB) {
+                // Remove shift
+                console.log('Deleting shift...'); // DEBUG
+                const { error } = await supabase
+                    .from('schedules')
+                    .delete()
+                    .eq('manager_id', managerId)
+                    .eq('date', dateKey);
+
+                if (error) {
+                    console.error('Delete error:', error); // DEBUG
+                    throw error;
+                }
+
+                console.log('Shift deleted successfully'); // DEBUG
+                // Update local state
+                setScheduleState(prev => prev.filter(
+                    s => !(s.manager_id === managerId && s.date === dateKey)
+                ));
+            } else {
+                // Add shift (use upsert to prevent duplicates)
+                console.log('Adding shift...', { managerId, dateKey, geo_code: managerGeo }); // DEBUG
+                const { data, error } = await supabase
+                    .from('schedules')
+                    .upsert({
+                        manager_id: managerId,
+                        date: dateKey,
+                        geo_code: managerGeo
+                    }, {
+                        onConflict: 'manager_id,date' // Handle conflicts on unique constraint
+                    })
+                    .select()
+                    .single();
+
+                if (error) {
+                    console.error('Insert error:', error); // DEBUG
+                    throw error;
+                }
+
+                console.log('Shift added successfully:', data); // DEBUG
+                // Update local state - replace if exists, add if not
+                setScheduleState(prev => {
+                    const filtered = prev.filter(
+                        s => !(s.manager_id === managerId && s.date === dateKey)
+                    );
+                    return [...filtered, data];
+                });
+            }
+        } catch (error) {
+            console.error('Error toggling shift:', error);
+            console.error('Error details:', JSON.stringify(error, null, 2)); // DEBUG
+            alert(`Ошибка при изменении смены: ${error.message || 'Unknown error'}`);
+        }
+    };
+
     return (
         <div className="pb-10 w-full max-w-full overflow-x-hidden">
+            {/* EDITING MODE INDICATOR */}
+            {isEditing && !isDemo && (
+                <div className="mb-4 px-4 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+                    <Edit size={16} className="text-green-600 dark:text-green-400" />
+                    <p className="text-sm text-green-700 dark:text-green-300 font-medium">
+                        Режим редактирования активен. Кликайте на ячейки для добавления/удаления смен.
+                    </p>
+                </div>
+            )}
+
             {/* HEADER */}
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
                 <div>
@@ -112,7 +297,6 @@ const SchedulePage = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                    {/* Date Nav */}
                     <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg p-1 shadow-sm">
                         <button onClick={prevMonth} className="p-1.5 hover:bg-gray-100 dark:hover:bg-[#222] rounded-md transition-colors text-gray-600 dark:text-gray-300">
                             <ChevronLeft size={16} />
@@ -134,12 +318,17 @@ const SchedulePage = () => {
                         Demo
                     </button>
 
-                    {/* ACTIONS (Admin Only) */}
                     {isAdmin && (
                         <div className="flex items-center gap-2">
-                            <button className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] hover:bg-gray-50 dark:hover:bg-[#252525] text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition-all shadow-sm">
+                            <button
+                                onClick={() => setIsEditing(!isEditing)}
+                                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-medium transition-all shadow-sm ${isEditing
+                                    ? 'bg-green-600 text-white border-green-600 hover:bg-green-700'
+                                    : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] hover:bg-gray-50 dark:hover:bg-[#252525] text-gray-700 dark:text-gray-200'
+                                    }`}
+                            >
                                 <Edit size={14} />
-                                <span className="hidden sm:inline">Ред.</span>
+                                <span className="hidden sm:inline">{isEditing ? 'Готово' : 'Ред.'}</span>
                             </button>
                             <button className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors shadow-sm">
                                 <Settings size={14} />
@@ -150,142 +339,111 @@ const SchedulePage = () => {
                 </div>
             </div>
 
-            {/* HEATMAP CONTAINER */}
-            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-4 shadow-sm overflow-hidden flex flex-col relative w-full">
-                {/* Horizontal Scroll for small screens */}
-                <div className="w-full overflow-x-auto custom-scrollbar pb-2">
-                    {/* Dynamic height based on rows count to keep cells compact (approx 40px per row + headers) */}
-                    <div style={{ height: Math.max(200, scheduleData.length * 40 + 80), minWidth: '1000px' }} className="relative">
-                        <ResponsiveHeatMap
-                            data={scheduleData}
-                            margin={{ top: 50, right: 30, bottom: 20, left: 180 }}
-                            valueFormat=">-.2s" // Not used but required
-                            axisTop={{
-                                tickSize: 0,
-                                tickPadding: 12,
-                                tickRotation: 0,
-                                legend: '',
-                                legendOffset: 36,
-                                truncateTickAt: 0
-                            }}
-                            axisRight={null}
-                            axisLeft={{
-                                tickSize: 0,
-                                tickPadding: 0,
-                                tickRotation: 0,
-                                renderTick: ({ x, y, value }) => (
-                                    <g transform={`translate(${x},${y})`}>
-                                        <text
-                                            x={-170}
-                                            y={0}
-                                            dy={0}
-                                            dominantBaseline="middle"
-                                            textAnchor="start"
-                                            fill="#666"
-                                            fontSize={12}
-                                            fontWeight="500"
-                                        >
-                                            {value}
-                                        </text>
-                                    </g>
-                                )
-                            }}
-                            // We use custom rendering, so colors here are just for the scale logic if needed
-                            colors={{
-                                type: 'quantize',
-                                scheme: 'blues',
-                                steps: 2
-                            }}
-                            emptyColor="#f9fafb"
-                            borderColor={{ theme: 'background' }}
-                            borderWidth={3} // Gap between cells
-                            enableLabels={false}
+            {/* CUSTOM GRID */}
+            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <div className="inline-block min-w-full">
+                        {/* HEADER ROW */}
+                        <div className="flex border-b border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#0A0A0A] sticky top-0 z-10">
+                            {/* Manager column header - sticky left */}
+                            <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-20 bg-gray-50 dark:bg-[#0A0A0A]">
+                                {/* Name part (90%) */}
+                                <div className="flex-1 px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Менеджер
+                                </div>
+                                {/* Geo part (10%) */}
+                                <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 text-center text-xs font-medium text-gray-500 dark:text-gray-400 border-l border-gray-200 dark:border-[#333]">
+                                    🌍
+                                </div>
+                            </div>
 
-                            // Custom Cell Renderer
-                            cellComponent={({ cell, borderWidth }) => {
-                                const geoCode = cell.data.geo;
-                                const config = GEO_PALETTE[geoCode];
+                            {/* Day headers */}
+                            <div className="flex">
+                                {daysInMonth.map((day, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="w-[32px] flex-shrink-0 px-0.5 py-1.5 text-center text-xs font-normal text-gray-600 dark:text-gray-300"
+                                    >
+                                        {String(day.getDate()).padStart(2, '0')}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
 
-                                // If no Geo, render empty or just nothing
-                                if (!geoCode || !config) {
-                                    return (
-                                        <rect
-                                            x={cell.x}
-                                            y={cell.y}
-                                            width={cell.width}
-                                            height={cell.height}
-                                            fill={'transparent'}
-                                            strokeWidth={0}
-                                        />
-                                    )
-                                }
+                        {/* MANAGER ROWS */}
+                        {scheduleData.map((row, rowIdx) => {
+                            const managerGeo = row.geo;
+                            const geoInfo = countryMap[managerGeo];
 
-                                return (
-                                    <g transform={`translate(${cell.x}, ${cell.y})`}>
-                                        <rect
-                                            x={borderWidth / 2}
-                                            y={borderWidth / 2}
-                                            width={Math.max(cell.width - borderWidth, 0)}
-                                            height={Math.max(cell.height - borderWidth, 0)}
-                                            rx={4}
-                                            ry={4}
-                                            fill={config.color}
-                                            className="transition-all hover:opacity-80 cursor-pointer"
-                                        />
-                                        <text
-                                            x={cell.width / 2}
-                                            y={cell.height / 2}
-                                            dy={4}
-                                            textAnchor="middle"
-                                            fill="#fff"
-                                            fontSize={11}
-                                            fontWeight="bold"
-                                            style={{ pointerEvents: 'none', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}
-                                        >
-                                            {config.label}
-                                        </text>
-                                    </g>
-                                );
-                            }}
-                            theme={{
-                                text: {
-                                    fill: "#666",
-                                    fontSize: 12
-                                },
-                                axis: {
-                                    ticks: {
-                                        text: {
-                                            fill: "#6b7280", // Gray-500
-                                            fontSize: 12,
-                                            fontWeight: 500
-                                        }
-                                    }
-                                },
-                                grid: {
-                                    line: {
-                                        stroke: "#f3f4f6", // Very light gray grid
-                                        strokeWidth: 1
-                                    }
-                                }
-                            }}
-                            // Tooltip
-                            tooltip={({ cell }) => {
-                                if (!cell.data.geo) return null;
-                                const config = GEO_PALETTE[cell.data.geo];
-                                return (
-                                    <div className="bg-white dark:bg-[#1e293b] py-2 px-3 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 text-xs z-50">
-                                        <strong className="block dark:text-white mb-1">{cell.serieId}</strong>
-                                        <div className="flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full" style={{ background: config?.color }}></span>
-                                            <span className="text-gray-500 dark:text-gray-400">
-                                                {currentDate.getFullYear()}-{String(currentDate.getMonth() + 1).padStart(2, '0')}-{cell.data.x}:
-                                                <span className="ml-1 font-bold text-gray-700 dark:text-gray-200">{config?.label}</span>
-                                            </span>
+                            return (
+                                <div
+                                    key={rowIdx}
+                                    className="flex border-b border-gray-100 dark:border-[#1A1A1A] hover:bg-gray-50 dark:hover:bg-[#0A0A0A] transition-colors"
+                                >
+                                    {/* Manager Name + Geo */}
+                                    <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-10 bg-white dark:bg-[#111]">
+                                        {/* Name part (90%) */}
+                                        <div className="flex-1 px-2 py-1.5 text-xs font-normal text-gray-700 dark:text-gray-300 flex items-center overflow-hidden">
+                                            <span className="truncate">{row.name}</span>
+                                        </div>
+
+                                        {/* Geo part (10%) */}
+                                        <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 flex flex-col items-center justify-center border-l border-gray-200 dark:border-[#333] gap-0.5">
+                                            {geoInfo ? (
+                                                <>
+                                                    <span className="text-xs leading-none">{geoInfo.emoji}</span>
+                                                    <span className="text-[8px] leading-none text-gray-500 dark:text-gray-400 font-medium">{managerGeo}</span>
+                                                </>
+                                            ) : (
+                                                <span className="text-gray-400 text-xs">—</span>
+                                            )}
                                         </div>
                                     </div>
-                                );
-                            }}
-                        />
+
+                                    {/* Day Cells */}
+                                    <div className="flex">
+                                        {daysInMonth.map((day, dayIdx) => {
+                                            // Use local date format to avoid timezone issues
+                                            const year = day.getFullYear();
+                                            const month = String(day.getMonth() + 1).padStart(2, '0');
+                                            const dayNum = String(day.getDate()).padStart(2, '0');
+                                            const dateKey = `${year}-${month}-${dayNum}`;
+
+                                            const geo = row.shifts[dateKey];
+                                            const geoConfig = GEO_PALETTE[geo];
+
+                                            const canEdit = isEditing && !isDemo;
+                                            const cellClasses = `w-full h-[28px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all ${canEdit ? 'cursor-pointer' : ''
+                                                }`;
+
+                                            return (
+                                                <div
+                                                    key={dayIdx}
+                                                    className="w-[32px] flex-shrink-0 p-0.5 flex items-center justify-center"
+                                                    onClick={() => canEdit && toggleShift(row.id, dateKey, row.geo)}
+                                                >
+                                                    {geoConfig ? (
+                                                        <div
+                                                            className={`${cellClasses} text-white hover:opacity-80`}
+                                                            style={{ backgroundColor: geoConfig.color }}
+                                                        >
+                                                            {geoConfig.label}
+                                                        </div>
+                                                    ) : (
+                                                        <div
+                                                            className={`${cellClasses} ${canEdit
+                                                                    ? 'border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'
+                                                                    : ''
+                                                                }`}
+                                                        />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
