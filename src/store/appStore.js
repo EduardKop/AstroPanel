@@ -25,6 +25,37 @@ const normalizeNick = (raw) => {
   return clean.trim();
 };
 
+
+// Helper for pagination (to bypass 1000 rows limit)
+const fetchAll = async (table, select, orderBy = 'created_at', ascending = false) => {
+  let allData = [];
+  let from = 0;
+  const step = 1000;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(select)
+      .order(orderBy, { ascending })
+      .range(from, from + step - 1);
+
+    if (error) {
+      console.error(`Error fetching ${table}:`, error);
+      break;
+    }
+
+    if (data) {
+      allData = [...allData, ...data];
+      if (data.length < step) break; // Reached end
+    } else {
+      break;
+    }
+
+    from += step;
+  }
+  return allData;
+};
+
 export const useAppStore = create((set, get) => ({
   // --- STATE ---
   user: null,
@@ -71,35 +102,54 @@ export const useAppStore = create((set, get) => ({
     try {
       const map = get().channelsMap;
 
-      // Загружаем данные для графика
-      let query = supabase
-        .from('leads')
-        .select('created_at, is_comment, channel_id');
+      // Логика пагинации для графика с фильтрами
+      let allLeads = [];
+      let from = 0;
+      const step = 1000;
 
-      if (dateFrom) query = query.gte('created_at', dateFrom);
-      if (dateTo) query = query.lte('created_at', dateTo);
+      while (true) {
+        let query = supabase
+          .from('leads')
+          .select('created_at, is_comment, channel_id, wazzup_chat_id')
+          .range(from, from + step - 1);
 
-      const { data: leadsData, error } = await query;
-      if (error) throw error;
+        if (dateFrom) query = query.gte('created_at', dateFrom);
+        if (dateTo) query = query.lte('created_at', dateTo);
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        if (data) {
+          allLeads = [...allLeads, ...data];
+          if (data.length < step) break;
+        } else {
+          break;
+        }
+        from += step;
+      }
 
       const formattedStats = {};
 
-      if (leadsData) {
-        leadsData.forEach(lead => {
+      if (allLeads) {
+        allLeads.forEach(lead => {
           const countryCode = map[lead.channel_id] || 'Other';
-          // Берем дату как строку YYYY-MM-DD
           const dateStr = lead.created_at.split('T')[0];
 
           if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
           if (!formattedStats[countryCode][dateStr]) {
-            formattedStats[countryCode][dateStr] = { direct: 0, comments: 0, all: 0 };
+            formattedStats[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
           }
 
-          if (lead.is_comment) {
-            formattedStats[countryCode][dateStr].comments++;
-          } else {
-            formattedStats[countryCode][dateStr].direct++;
+          let type = lead.is_comment ? 'comments' : 'direct';
+          // Check for whatsapp (phone number check)
+          if (lead.wazzup_chat_id && /^[\d+\s()-]+$/.test(lead.wazzup_chat_id)) {
+            type = 'whatsapp';
           }
+
+          if (type === 'whatsapp') formattedStats[countryCode][dateStr].whatsapp++;
+          else if (type === 'comments') formattedStats[countryCode][dateStr].comments++;
+          else formattedStats[countryCode][dateStr].direct++;
+
           formattedStats[countryCode][dateStr].all++;
         });
       }
@@ -118,46 +168,35 @@ export const useAppStore = create((set, get) => ({
 
     try {
       // А. Каналы
-      const { data: channelsData } = await supabase.from('channels').select('*');
+      const channelsData = await fetchAll('channels', '*', 'id', true);
       const newChannelsMap = {};
-      if (channelsData) {
-        channelsData.forEach(ch => {
-          newChannelsMap[ch.wazzup_id] = ch.country_code;
-        });
-      }
+      channelsData.forEach(ch => {
+        newChannelsMap[ch.wazzup_id] = ch.country_code;
+      });
       set({ channelsMap: newChannelsMap });
 
       // Б. Менеджеры
-      const { data: managersData } = await supabase.from('managers').select('*').order('created_at', { ascending: false });
+      const managersData = await fetchAll('managers', '*', 'created_at', false);
       const managersMap = {};
-      managersData?.forEach(m => managersMap[m.id] = m.name);
+      managersData.forEach(m => managersMap[m.id] = m.name);
 
       // В. Оплаты, Продукты, Правила
-      const { data: paymentsData } = await supabase.from('payments').select('*').order('transaction_date', { ascending: false });
-      const { data: productsData } = await supabase.from('knowledge_products').select('*');
-      const { data: rulesData } = await supabase.from('knowledge_rules').select('*');
+      const paymentsData = await fetchAll('payments', '*', 'transaction_date', false);
+      const productsData = await fetchAll('knowledge_products', '*', 'created_at', false);
+      const rulesData = await fetchAll('knowledge_rules', '*', 'created_at', false);
 
       // Г. KPI
-      const { data: kpiRatesData } = await supabase.from('kpi_product_rates').select('*').order('rate', { ascending: true });
-      const { data: kpiSettingsData } = await supabase.from('kpi_settings').select('*');
+      const kpiRatesData = await fetchAll('kpi_product_rates', '*', 'rate', true);
+      const kpiSettingsData = await fetchAll('kpi_settings', '*', 'key', true);
       const kpiSettingsMap = {};
-      if (kpiSettingsData) {
-        kpiSettingsData.forEach(s => kpiSettingsMap[s.key] = s.value);
-      }
+      kpiSettingsData.forEach(s => kpiSettingsMap[s.key] = s.value);
 
       // Д. Трафик и Источники (LEADS)
-      // Берем wazzup_chat_id для связки
-      // ⚠️ ВАЖНО: По умолчанию Supabase возвращает только 1000 записей!
-      // Используем .range() чтобы получить до 10000 записей
-      const { data: leadsData, error: leadsError } = await supabase
-        .from('leads')
-        .select('created_at, is_comment, channel_id, wazzup_chat_id')
-        .order('created_at', { ascending: false }) // Сначала новые
-        .range(0, 9999); // Загружаем до 10000 лидов
+      // Используем пагинацию для загрузки ВСЕХ лидов (1066+)
+      const leadsData = await fetchAll('leads', 'created_at, is_comment, channel_id, wazzup_chat_id', 'created_at', false);
 
-      if (leadsError) {
-        console.error('❌ Error loading leads:', leadsError);
-      }
+      const leadsError = null; // Removed check inside helper, caught by try/catch
+
 
       // 1. Создаем карту источников: nickname -> 'comments' | 'direct'
       const leadsSourceMap = {};
@@ -187,10 +226,19 @@ export const useAppStore = create((set, get) => ({
 
           if (!trafficResult[countryCode]) trafficResult[countryCode] = {};
           if (!trafficResult[countryCode][dateStr]) {
-            trafficResult[countryCode][dateStr] = { direct: 0, comments: 0, all: 0 };
+            trafficResult[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
           }
-          if (lead.is_comment) trafficResult[countryCode][dateStr].comments++;
+
+          let type = lead.is_comment ? 'comments' : 'direct';
+          // Check for whatsapp (phone number check)
+          if (lead.wazzup_chat_id && /^[\d+\s()-]+$/.test(lead.wazzup_chat_id)) {
+            type = 'whatsapp';
+          }
+
+          if (type === 'whatsapp') trafficResult[countryCode][dateStr].whatsapp++;
+          else if (type === 'comments') trafficResult[countryCode][dateStr].comments++;
           else trafficResult[countryCode][dateStr].direct++;
+
           trafficResult[countryCode][dateStr].all++;
         });
       }

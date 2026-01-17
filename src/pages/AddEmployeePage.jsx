@@ -32,7 +32,7 @@ const AddEmployeePage = () => {
   // ✅ 2. Загружаем страны при старте
   useEffect(() => {
     const fetchCountries = async () => {
-      const { data } = await supabase.from('countries').select('*').order('code');
+      const { data } = await supabase.from('countries').select('*').order('code').range(0, 9999);
       if (data) setAvailableCountries(data);
     };
     fetchCountries();
@@ -231,8 +231,8 @@ const AddEmployeePage = () => {
                         type="button"
                         onClick={() => toggleCountry(country.code)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30'
-                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30'
+                          : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-400'
                           }`}
                       >
                         <span>{country.emoji}</span>

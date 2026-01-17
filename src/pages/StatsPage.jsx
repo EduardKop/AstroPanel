@@ -1,5 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
+import { ResponsiveSunburst } from '@nivo/sunburst';
+import { ResponsivePie } from '@nivo/pie';
+
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
@@ -8,12 +11,26 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 const THEME_COLORS = [
-  { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] },
-  { main: '#EC4899', gradient: ['#EC4899', '#F472B6'] },
-  { main: '#10B981', gradient: ['#10B981', '#34D399'] },
-  { main: '#F59E0B', gradient: ['#F59E0B', '#FBBF24'] },
-  { main: '#8B5CF6', gradient: ['#8B5CF6', '#A78BFA'] },
-  { main: '#06B6D4', gradient: ['#06B6D4', '#22D3EE'] },
+  { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] }, // Indigo
+  { main: '#EC4899', gradient: ['#EC4899', '#F472B6'] }, // Pink
+  { main: '#10B981', gradient: ['#10B981', '#34D399'] }, // Emerald
+  { main: '#F59E0B', gradient: ['#F59E0B', '#FBBF24'] }, // Amber
+  { main: '#8B5CF6', gradient: ['#8B5CF6', '#A78BFA'] }, // Violet
+  { main: '#06B6D4', gradient: ['#06B6D4', '#22D3EE'] }, // Cyan
+  { main: '#EF4444', gradient: ['#EF4444', '#F87171'] }, // Red
+  { main: '#F97316', gradient: ['#F97316', '#FB923C'] }, // Orange
+  { main: '#14B8A6', gradient: ['#14B8A6', '#2DD4BF'] }, // Teal
+  { main: '#84CC16', gradient: ['#84CC16', '#A3E635'] }, // Lime
+  { main: '#3B82F6', gradient: ['#3B82F6', '#60A5FA'] }, // Blue
+  { main: '#D946EF', gradient: ['#D946EF', '#E879F9'] }, // Fuchsia
+  { main: '#F43F5E', gradient: ['#F43F5E', '#FB7185'] }, // Rose
+  { main: '#0EA5E9', gradient: ['#0EA5E9', '#38BDF8'] }, // Sky
+  { main: '#22C55E', gradient: ['#22C55E', '#4ADE80'] }, // Green
+  { main: '#EAB308', gradient: ['#EAB308', '#FACC15'] }, // Yellow
+  { main: '#A855F7', gradient: ['#A855F7', '#C084FC'] }, // Purple
+  { main: '#64748B', gradient: ['#64748B', '#94A3B8'] }, // Slate
+  { main: '#78716C', gradient: ['#78716C', '#A8A29E'] }, // Stone
+  { main: '#FBBF24', gradient: ['#FBBF24', '#FDE68A'] }, // Amber Light
 ];
 
 const getLastWeekRange = () => {
@@ -54,16 +71,107 @@ const DenseSelect = ({ label, value, options, onChange }) => (
 );
 
 const StatsPage = () => {
-  const { payments, user: currentUser } = useAppStore();
-  const [dateRange, setDateRange] = useState(getLastWeekRange());
+  const { payments, user: currentUser, trafficStats, fetchTrafficStats } = useAppStore();
+  const [dateRange, setDateRange] = useState(getCurrentMonthRange());
   const [startDate, endDate] = dateRange;
   const [expandedChart, setExpandedChart] = useState(null);
   const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all' });
+  const [isDemo, setIsDemo] = useState(false);
+
+  // --- DEMO DATA GENERATOR ---
+  const demoData = useMemo(() => {
+    if (!isDemo || !startDate || !endDate) return null;
+
+    const days = [];
+    let curr = new Date(startDate);
+    const end = new Date(endDate);
+    while (curr <= end) {
+      days.push(toYMD(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    const mockCountries = ['UA', 'RU', 'KZ', 'BY', 'PL', 'DE', 'US', 'TR', 'CZ', 'IT'];
+    const mockManagers = ['Alice', 'Bob', 'Charlie', 'David', 'Eva'];
+    const mockProducts = ['Start', 'Pro', 'Premium', 'Vip', 'Exclusive'];
+    const mockTypes = ['Stripe', 'PayPal', 'Crypto', 'Cash', 'Bank'];
+
+    // 1. Mock Payments
+    const mockPayments = [];
+    days.forEach(day => {
+      // Random sales per day (5-20)
+      const count = Math.floor(Math.random() * 15) + 5;
+      for (let i = 0; i < count; i++) {
+        mockPayments.push({
+          transactionDate: `${day}T12:00:00`,
+          country: mockCountries[Math.floor(Math.random() * mockCountries.length)],
+          manager: mockManagers[Math.floor(Math.random() * mockManagers.length)],
+          product: mockProducts[Math.floor(Math.random() * mockProducts.length)],
+          type: mockTypes[Math.floor(Math.random() * mockTypes.length)],
+          source: ['direct', 'comments', 'whatsapp'][Math.floor(Math.random() * 3)],
+          amountEUR: Math.floor(Math.random() * 100) + 20
+        });
+      }
+    });
+
+    // 2. Mock Traffic
+    const mockTraffic = {};
+    mockCountries.forEach(c => {
+      mockTraffic[c] = {};
+      days.forEach(day => {
+        const direct = Math.floor(Math.random() * 50) + 10;
+        const comments = Math.floor(Math.random() * 30) + 5;
+        const whatsapp = Math.floor(Math.random() * 20) + 5;
+        mockTraffic[c][day] = {
+          direct, comments, whatsapp, all: direct + comments + whatsapp
+        };
+      });
+    });
+
+    // 3. Mock Chart Data (Grouped)
+    const prepareMock = (key, data) => {
+      const grouped = {};
+      const allKeys = new Set();
+      data.forEach(item => {
+        const d = item.transactionDate.slice(0, 10);
+        const k = item[key];
+        allKeys.add(k);
+        if (!grouped[d]) grouped[d] = { date: d };
+        if (!grouped[d][k]) grouped[d][k] = 0;
+        grouped[d][k]++;
+      });
+      return {
+        chartData: Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date)),
+        keys: Array.from(allKeys)
+      };
+    };
+
+    return {
+      payments: mockPayments,
+      traffic: mockTraffic,
+      geo: prepareMock('country', mockPayments).chartData,
+      geoKeys: prepareMock('country', mockPayments).keys,
+      manager: prepareMock('manager', mockPayments).chartData,
+      managerKeys: prepareMock('manager', mockPayments).keys,
+      product: prepareMock('product', mockPayments).chartData,
+      productKeys: prepareMock('product', mockPayments).keys,
+      type: prepareMock('type', mockPayments).chartData,
+      typeKeys: prepareMock('type', mockPayments).keys,
+    };
+  }, [isDemo, startDate, endDate]);
 
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
+
+  // --- ЗАГРУЗКА ТРАФИКА ---
+  useEffect(() => {
+    if (fetchTrafficStats) {
+      const isoStart = startDate ? new Date(startDate.setHours(0, 0, 0, 0)).toISOString() : undefined;
+      const isoEnd = endDate ? new Date(endDate.setHours(23, 59, 59, 999)).toISOString() : undefined;
+      fetchTrafficStats(isoStart, isoEnd);
+    }
+  }, [startDate, endDate, fetchTrafficStats]);
 
   const uniqueValues = useMemo(() => {
     const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
@@ -136,7 +244,7 @@ const StatsPage = () => {
   const typeData = useMemo(() => prepareData('type', filteredData), [filteredData]);
   const managerData = useMemo(() => prepareData('manager', filteredData), [filteredData]);
 
-  const resetDateRange = () => setDateRange(getLastWeekRange());
+  const resetDateRange = () => setDateRange(getCurrentMonthRange());
   const resetFilters = () => setFilters({ manager: '', country: '', product: '', type: '', source: 'all' });
 
   return (
@@ -146,11 +254,22 @@ const StatsPage = () => {
       <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent transition-colors duration-200 flex flex-col gap-3">
 
         {/* Заголовок */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
             <LayoutDashboard size={18} className="text-blue-600 dark:text-blue-500 shrink-0" />
             <span className="truncate">Аналитика трендов</span>
           </h2>
+
+          <div className="flex items-center gap-2">
+            {/* DEMO BUTTON */}
+            <button
+              onClick={() => setIsDemo(!isDemo)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${isDemo ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-[#333]'}`}
+            >
+              <RotateCcw size={12} className={isDemo ? 'animate-spin-slow' : ''} />
+              Demo
+            </button>
+          </div>
         </div>
 
         {/* Все фильтры в один ряд */}
@@ -198,16 +317,246 @@ const StatsPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <ChartWidget id="geo" title="Динамика по ГЕО" subtitle="Активность стран по дням" type="area" data={geoData.chartData} keys={geoData.keys} onExpand={() => setExpandedChart('country')} />
-        <ChartWidget id="manager" title={isRestrictedUser ? "Моя эффективность" : "Вклад Менеджеров"} subtitle="Результативность команды" type="area" data={managerData.chartData} keys={managerData.keys} onExpand={() => setExpandedChart('manager')} />
-        <ChartWidget id="product" title="Популярность Продуктов" subtitle="Сравнение объемов продаж" type="bar" data={productData.chartData} keys={productData.keys} onExpand={() => setExpandedChart('product')} />
-        <ChartWidget id="type" title="Методы Оплаты" subtitle="Предпочтения клиентов" type="bar" data={typeData.chartData} keys={typeData.keys} onExpand={() => setExpandedChart('type')} />
+      {/* NEW CHARTS ROW: SUNBURST + PIE */}
+      {/* ROW 1: Product & Type (BARS) */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+        <ChartWidget id="product" title="Популярность Продуктов" subtitle="Сравнение объемов продаж" type="bar" data={isDemo ? demoData.product : productData.chartData} keys={isDemo ? demoData.productKeys : productData.keys} onExpand={() => setExpandedChart('product')} />
+        <ChartWidget id="type" title="Методы Оплаты" subtitle="Предпочтения клиентов" type="bar" data={isDemo ? demoData.type : typeData.chartData} keys={isDemo ? demoData.typeKeys : typeData.keys} onExpand={() => setExpandedChart('type')} />
+      </div>
+
+
+
+      {/* ROW 3: Geo Dynamics (Restored) & Manager (AREAS) */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+        <ChartWidget id="geo" title="Динамика по ГЕО" subtitle="Активность стран по дням" type="area" data={isDemo ? demoData.geo : geoData.chartData} keys={isDemo ? demoData.geoKeys : geoData.keys} onExpand={() => setExpandedChart('country')} />
+        <ChartWidget id="manager" title={isRestrictedUser ? "Моя эффективность" : "Вклад Менеджеров"} subtitle="Результативность команды" type="area" data={isDemo ? demoData.manager : managerData.chartData} keys={isDemo ? demoData.managerKeys : managerData.keys} onExpand={() => setExpandedChart('manager')} />
+      </div>
+
+      {/* ROW 4: Sunburst & Pie */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6 h-[450px]">
+        <GeoComparisonChart
+          startDate={startDate}
+          endDate={endDate}
+          trafficStats={isDemo ? demoData.traffic : trafficStats}
+          payments={isDemo ? demoData.payments : filteredData}
+          countryFilter={filters.country}
+          sourceFilter={filters.source}
+        />
+        <SourcePieChart
+          data={isDemo ? demoData.payments : filteredData}
+          isDemo={isDemo}
+        />
       </div>
 
       {expandedChart && (
-        <ExpandedChartModal chartKey={expandedChart} rawPayments={filteredData} onClose={() => setExpandedChart(null)} />
+        <ExpandedChartModal chartKey={expandedChart} rawPayments={isDemo ? demoData.payments : filteredData} onClose={() => setExpandedChart(null)} />
       )}
+    </div>
+  );
+};
+
+// --- НОВЫЙ ГРАФИК: РАСПРЕДЕЛЕНИЕ ИСТОЧНИКОВ (Pie) ---
+const SourcePieChart = ({ data, isDemo }) => {
+  const chartData = useMemo(() => {
+    const map = {};
+    data.forEach(p => {
+      const s = p.source || 'Direct';
+      const key = s.charAt(0).toUpperCase() + s.slice(1);
+      if (!map[key]) map[key] = 0;
+      map[key]++;
+    });
+
+    return Object.keys(map).map(k => ({
+      id: k,
+      label: k,
+      value: map[k]
+    })).sort((a, b) => b.value - a.value);
+  }, [data]);
+
+  return (
+    <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-6 shadow-sm h-full flex flex-col relative overflow-hidden">
+      <h3 className="text-lg font-bold dark:text-white flex items-center gap-2 mb-4 relative z-10">
+        Источники Трафика
+      </h3>
+      <div className="flex-1 min-h-0 relative">
+        {chartData.length > 0 ? (
+          <ResponsivePie
+            data={chartData}
+            margin={{ top: 20, right: 80, bottom: 20, left: 80 }}
+            innerRadius={0.6}
+            padAngle={0.7}
+            cornerRadius={3}
+            activeOuterRadiusOffset={8}
+            borderWidth={1}
+            borderColor={{ from: 'color', modifiers: [['darker', 0.2]] }}
+            colors={{ scheme: 'nivo' }}
+            enableArcLinkLabels={true}
+            arcLinkLabelsSkipAngle={10}
+            arcLinkLabelsTextColor="#999"
+            arcLinkLabelsThickness={2}
+            arcLinkLabelsColor={{ from: 'color' }}
+            enableArcLabels={true}
+            arcLabelsSkipAngle={10}
+            arcLabelsTextColor={{ from: 'color', modifiers: [['darker', 2]] }}
+            tooltip={({ datum }) => (
+              <div className="bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-md p-2 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 text-xs flex items-center gap-2 z-50">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: datum.color }}></div>
+                <span className="font-bold dark:text-gray-100">{datum.id}:</span>
+                <span className="text-gray-500 dark:text-gray-400">{datum.value}</span>
+              </div>
+            )}
+          />
+        ) : <div className="h-full flex items-center justify-center text-gray-400">Нет данных</div>}
+
+        {/* Center Text */}
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+          <div className="text-center">
+            <span className="text-3xl font-black dark:text-white block">
+              {chartData.reduce((a, c) => a + c.value, 0)}
+            </span>
+            <span className="text-[10px] text-gray-400 uppercase tracking-widest">Leads</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- НОВЫЙ ГРАФИК: СРАВНЕНИЕ ГЕО (Sunburst) ---
+const GeoComparisonChart = ({ startDate, endDate, trafficStats, payments, countryFilter, sourceFilter }) => {
+  // 1. Подготовка данных для Sunburst (Иерархия: Root -> Country -> Product)
+  const { chartData } = useMemo(() => {
+    const countryMap = {};
+
+    payments.forEach(p => {
+      const country = p.country || 'Other';
+      const product = p.product || 'Unknown';
+
+      if (!countryMap[country]) countryMap[country] = {};
+      if (!countryMap[country][product]) countryMap[country][product] = 0;
+      countryMap[country][product] += 1;
+    });
+
+    const sortedCountries = Object.entries(countryMap).map(([cName, products]) => {
+      const total = Object.values(products).reduce((a, b) => a + b, 0);
+      return { cName, products, total };
+    }).sort((a, b) => b.total - a.total);
+
+    const topN = 15;
+    const finalChildren = [];
+
+    // Top Countries
+    sortedCountries.slice(0, topN).forEach(({ cName, products }) => {
+      const productChildren = Object.entries(products).map(([pName, count]) => ({
+        name: pName,
+        loc: count
+      }));
+      finalChildren.push({
+        name: cName,
+        children: productChildren
+      });
+    });
+
+    // Others
+    if (sortedCountries.length > topN) {
+      const otherTotal = sortedCountries.slice(topN).reduce((sum, item) => sum + item.total, 0);
+      if (otherTotal > 0) {
+        finalChildren.push({
+          name: 'Others',
+          children: [{ name: 'Various', loc: otherTotal }]
+        });
+      }
+    }
+
+    return { chartData: { name: "root", children: finalChildren } };
+  }, [payments]);
+
+  return (
+    <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-6 shadow-sm h-full flex flex-col relative overflow-hidden">
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-0 gap-4 relative z-10">
+        <div>
+          <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
+            Гео Структура (Sunburst)
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">Иерархия: Страна → Продукты</p>
+        </div>
+      </div>
+
+      {/* CHART CONTAINER */}
+      <div className="flex-1 min-h-0 w-full relative mt-4">
+        {(chartData.children && chartData.children.length > 0) ? (
+          <ResponsiveSunburst
+            data={chartData}
+            margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            id="name"
+            value="loc"
+            cornerRadius={4}
+            borderWidth={2}
+            borderColor={{ theme: 'background' }}
+            colors={THEME_COLORS.map(c => c.main)}
+            // Stronger distinctness for outer ring (Products)
+            childColor={{
+              from: 'color',
+              modifiers: [
+                [
+                  'brighter',
+                  0.6 // Much brighter to stand out from parent Country color
+                ],
+                [
+                  'opacity',
+                  0.9
+                ]
+              ]
+            }}
+            enableArcLabels={true}
+            arcLabel={(d) => d.data.name}
+            arcLabelsSkipAngle={8} // Lower threshold to show more labels
+            arcLabelsRadiusOffset={0.5} // Center labels better
+            arcLabelsTextColor={{
+              from: 'color',
+              modifiers: [
+                [
+                  'darker',
+                  4 // Maximum contrast for text against bright background
+                ]
+              ]
+            }}
+            theme={{
+              labels: {
+                text: {
+                  fontSize: 14, // Larger text
+                  fontWeight: 900, // Extra Bold
+                  fill: '#000', // Force black text for high contrast on bright segments
+                  textShadow: '0px 0px 4px rgba(255,255,255,0.8)' // White glow for readability
+                }
+              }
+            }}
+            // Custom Tooltip
+            tooltip={({ id, value, color, depth, data, path }) => (
+              <div className="bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-md p-2 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 text-xs flex items-center gap-2 z-50">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
+                <span className="font-bold dark:text-gray-100">
+                  {data.name}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400">Sales: {value}</span>
+              </div>
+            )}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center text-gray-400">Нет данных для отображения</div>
+        )}
+
+        {/* CENTER TEXT OVERLAY */}
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+          <div className="flex flex-col items-center bg-white/30 dark:bg-black/30 backdrop-blur-[2px] rounded-full p-4 shadow-sm border border-white/20">
+            <span className="text-[10px] uppercase tracking-widest text-gray-600 dark:text-gray-300">Total</span>
+            <span className="text-2xl font-black dark:text-white">
+              {chartData.children ? chartData.children.reduce((a, c) => a + (c.loc || (c.children ? c.children.reduce((acc, k) => acc + k.loc, 0) : 0)), 0) : 0}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -297,10 +646,49 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
   );
 };
 
+
+
+export default StatsPage;
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    // Calculate total for the percentage
+    const total = payload.reduce((sum, entry) => sum + (entry.value || 0), 0);
+
+    return (
+      <div className="bg-white/95 dark:bg-[#09090b]/90 backdrop-blur-md border border-gray-200 dark:border-[#333] p-3 rounded-lg shadow-2xl text-xs">
+        <p className="font-bold dark:text-white mb-2 font-mono border-b border-gray-200 dark:border-[#333] pb-1">
+          {new Date(label).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
+        </p>
+        <div className="space-y-1">
+          {payload.map((entry, index) => {
+            const percent = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0.0';
+            return (
+              <div key={index} className="flex items-center justify-between gap-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: entry.color }}></div>
+                  <span className="text-gray-600 dark:text-gray-400">{entry.name}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-gray-400 text-[10px]">{percent}%</span>
+                  <span className="font-bold dark:text-white font-mono">({entry.value})</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+
+// Helper for ChartWidget (Restored)
 const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
   const hasData = data && data.length > 0;
   return (
-    <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-5 shadow-sm relative overflow-hidden group">
+    <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-5 shadow-sm relative overflow-hidden group h-full">
       <div className="mb-6 z-10 relative flex justify-between items-start cursor-pointer" onClick={onExpand} title="Нажмите, чтобы развернуть детальную статистику">
         <div>
           <h3 className="text-sm font-bold dark:text-white flex items-center gap-2 group-hover:text-blue-500 transition-colors">
@@ -338,29 +726,3 @@ const ChartWidget = ({ title, subtitle, data, keys, type, onExpand }) => {
     </div>
   );
 };
-
-const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white/95 dark:bg-[#09090b]/90 backdrop-blur-md border border-gray-200 dark:border-[#333] p-3 rounded-lg shadow-2xl text-xs">
-        <p className="font-bold dark:text-white mb-2 font-mono border-b border-gray-200 dark:border-[#333] pb-1">
-          {new Date(label).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
-        </p>
-        <div className="space-y-1">
-          {payload.map((entry, index) => (
-            <div key={index} className="flex items-center justify-between gap-6">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: entry.color }}></div>
-                <span className="text-gray-600 dark:text-gray-400">{entry.name}</span>
-              </div>
-              <span className="font-bold dark:text-white font-mono">{entry.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
-
-export default StatsPage;

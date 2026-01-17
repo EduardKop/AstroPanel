@@ -86,7 +86,7 @@ const GeoMatrixPage = () => {
     const fetchCountries = async () => {
         try {
             setLoading(true);
-            const { data, error } = await supabase.from('countries').select('*').order('code', { ascending: true });
+            const { data, error } = await supabase.from('countries').select('*').order('code', { ascending: true }).range(0, 9999);
             if (error) throw error;
             setCountriesList(data || []);
         } catch (error) { console.error(error); } finally { setLoading(false); }

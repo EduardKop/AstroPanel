@@ -4,14 +4,29 @@ import axios from 'axios';
 // --- 1. ПЛАТЕЖИ ---
 export const fetchPaymentsData = async () => {
   try {
-    const { data, error } = await supabase
-      .from('payments')
-      .select(`*, managers (name)`)
-      .order('transaction_date', { ascending: false });
+    let allData = [];
+    let from = 0;
+    const step = 1000;
 
-    if (error) throw error;
+    while (true) {
+      const { data, error } = await supabase
+        .from('payments')
+        .select(`*, managers (name)`)
+        .order('transaction_date', { ascending: false })
+        .range(from, from + step - 1);
 
-    return data.map(p => ({
+      if (error) throw error;
+
+      if (data) {
+        allData = [...allData, ...data];
+        if (data.length < step) break;
+      } else {
+        break;
+      }
+      from += step;
+    }
+
+    return allData.map(p => ({
       id: p.id,
       transactionDate: p.transaction_date ? p.transaction_date.replace('T', ' ').slice(0, 16) : '',
       manager: p.managers?.name || 'Неизвестно',
@@ -39,14 +54,29 @@ export const fetchPaymentsData = async () => {
 // --- 2. МЕНЕДЖЕРЫ (Получаем ВСЕХ для админки) ---
 export const fetchManagersData = async () => {
   try {
-    // Убрали .eq('status', 'active'), чтобы видеть и заблокированных
-    const { data, error } = await supabase
-      .from('managers')
-      .select('*')
-      .order('name');
+    let allData = [];
+    let from = 0;
+    const step = 1000;
 
-    if (error) throw error;
-    return data;
+    // Убрали .eq('status', 'active'), чтобы видеть и заблокированных
+    while (true) {
+      const { data, error } = await supabase
+        .from('managers')
+        .select('*')
+        .order('name')
+        .range(from, from + step - 1);
+
+      if (error) throw error;
+
+      if (data) {
+        allData = [...allData, ...data];
+        if (data.length < step) break;
+      } else {
+        break;
+      }
+      from += step;
+    }
+    return allData;
   } catch (err) {
     console.error("Error fetching managers:", err);
     return [];

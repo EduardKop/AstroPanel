@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { fetchManagerById, updateManagerProfile } from '../services/dataService';
-import { 
-  User, Mail, Phone, MapPin, Briefcase, 
+import {
+  User, Mail, Phone, MapPin, Briefcase,
   UploadCloud, ArrowLeft, Send, Calendar, Save, Loader2
 } from 'lucide-react';
 
@@ -14,7 +14,7 @@ const EditEmployeePage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  
+
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
@@ -38,7 +38,7 @@ const EditEmployeePage = () => {
     const load = async () => {
       try {
         // А. Загружаем страны
-        const { data: countriesData } = await supabase.from('countries').select('*').order('code');
+        const { data: countriesData } = await supabase.from('countries').select('*').order('code').range(0, 9999);
         if (countriesData) setAvailableCountries(countriesData);
 
         // Б. Загружаем сотрудника
@@ -46,7 +46,7 @@ const EditEmployeePage = () => {
         if (data) {
           setFormData({
             ...data,
-            geo: data.geo || [], 
+            geo: data.geo || [],
           });
           setPreviewUrl(data.avatar_url);
         } else {
@@ -120,7 +120,7 @@ const EditEmployeePage = () => {
       });
 
       alert('Данные обновлены!');
-      navigate(-1); 
+      navigate(-1);
 
     } catch (error) {
       console.error('Error updating:', error);
@@ -134,7 +134,7 @@ const EditEmployeePage = () => {
 
   return (
     <div className="animate-in fade-in zoom-in duration-300 max-w-4xl mx-auto pb-10">
-      
+
       <div className="flex items-center gap-4 mb-8">
         <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
           <ArrowLeft className="text-gray-500" />
@@ -146,7 +146,7 @@ const EditEmployeePage = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+
         <div className="lg:col-span-1">
           <div className="bg-white dark:bg-dark-card p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center text-center">
             <div className="relative w-40 h-40 mb-4 group">
@@ -154,7 +154,7 @@ const EditEmployeePage = () => {
                 <img src={previewUrl} alt="Preview" className="w-full h-full rounded-full object-cover border-4 border-gray-100 dark:border-gray-700 shadow-md" />
               ) : (
                 <div className="w-full h-full rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                  <User size={48} className="text-gray-300"/>
+                  <User size={48} className="text-gray-300" />
                 </div>
               )}
               <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 rounded-full cursor-pointer transition-opacity backdrop-blur-sm">
@@ -169,7 +169,7 @@ const EditEmployeePage = () => {
 
         <div className="lg:col-span-2">
           <form onSubmit={handleSubmit} className="bg-white dark:bg-dark-card p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-6">
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <InputGroup label="Имя и Фамилия" icon={User}>
                 <input required name="name" value={formData.name} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
@@ -206,22 +206,22 @@ const EditEmployeePage = () => {
                   <input required name="telegram_id" value={formData.telegram_id} onChange={handleChange} className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm dark:text-white" />
                 </div>
                 <div>
-                   <label className="text-xs font-bold text-gray-500 mb-1 block">Username</label>
-                   <input required name="telegram_username" value={formData.telegram_username} onChange={handleChange} className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm dark:text-white" />
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">Username</label>
+                  <input required name="telegram_username" value={formData.telegram_username} onChange={handleChange} className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm dark:text-white" />
                 </div>
               </div>
             </div>
 
             <div className="w-full md:w-1/2">
-               <InputGroup label="Дата рождения" icon={Calendar}>
-                  <input type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
-               </InputGroup>
+              <InputGroup label="Дата рождения" icon={Calendar}>
+                <input type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
+              </InputGroup>
             </div>
 
             {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2"><MapPin size={14} /> ГЕО</label>
-              
+
               {availableCountries.length === 0 ? (
                 <div className="text-xs text-gray-400">Загрузка стран...</div>
               ) : (
@@ -233,11 +233,10 @@ const EditEmployeePage = () => {
                         key={country.code}
                         type="button"
                         onClick={() => toggleCountry(country.code)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${
-                          isActive 
-                          ? 'bg-blue-600 text-white border-blue-600' 
-                          : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'
+                          }`}
                       >
                         <span>{country.emoji}</span>
                         <span>{country.code}</span>

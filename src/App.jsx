@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins
+  BookOpen, Shield, Menu, X, Coins, Calendar
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient';
@@ -25,6 +25,7 @@ import GeoMatrixPage from './pages/GeoMatrixPage';
 import ProductsPage from './pages/knowledge/ProductsPage';
 import RulesPage from './pages/knowledge/RulesPage';
 import SalariesPage from './pages/SalariesPage';
+import SchedulePage from './pages/SchedulePage';
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
@@ -137,7 +138,7 @@ function App() {
 
             {isAdminAccess && <SidebarItem icon={Globe} label="География" path="/geo" />}
             {isAdminAccess && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
-            
+
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
 
             {/* --- БАЗА ЗНАНИЙ --- */}
@@ -148,9 +149,15 @@ function App() {
             {isAdminAccess && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
 
             {/* --- ЛЮДИ (Только Админ и C-level видят раздел) --- */}
+            {/* --- ЛЮДИ (Общий раздел) --- */}
+            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
+
+            {/* ГРАФИК (Доступен всем) */}
+            <SidebarItem icon={Calendar} label="График" path="/schedule" />
+
+            {/* УПРАВЛЕНИЕ (Только Админ и C-level) */}
             {isAdminAccess && (
               <>
-                <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
                 <button onClick={() => setIsEmployeesOpen(!isEmployeesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isEmployeesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
                   <div className="flex items-center gap-2.5"><Users size={16} /><span>Сотрудники</span></div>
                   <ChevronRight size={12} className={`transition-transform duration-200 ${isEmployeesOpen ? 'rotate-90' : ''}`} />
@@ -160,7 +167,7 @@ function App() {
                   <SidebarItem icon={Briefcase} label="Отдел Продаж" path="/sales-team" isChild />
                   <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
                   <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
-                  
+
                   {/* ✅ ЗАРПЛАТЫ: ТОЛЬКО ДЛЯ ADMIN */}
                   {user.role === 'Admin' && (
                     <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
@@ -214,10 +221,13 @@ function App() {
               <Route path="/consultants" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
               <Route path="/all-employees" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EmployeesPage pageTitle="Все сотрудники" excludeRole="C-level" currentUser={user} showAddButton={true} /></ProtectedRoute>} />
 
+              {/* ✅ ГРАФИК: ДОСТУПЕН ВСЕМ */}
+              <Route path="/schedule" element={<SchedulePage />} />
+
               <Route path="/add-employee" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><AddEmployeePage /></ProtectedRoute>} />
               <Route path="/edit-employee/:id" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><EditEmployeePage /></ProtectedRoute>} />
               <Route path="/birthdays" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><BirthdaysPage /></ProtectedRoute>} />
-              
+
               {/* ✅ РОУТ ЗАРПЛАТЫ: ТОЛЬКО 'Admin' */}
               <Route path="/salaries" element={<ProtectedRoute allowedRoles={['Admin']}><SalariesPage /></ProtectedRoute>} />
 
