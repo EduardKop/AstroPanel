@@ -13,6 +13,7 @@ import { useAppStore } from './store/appStore';
 import LoginPage from './pages/LoginPage';
 import PaymentsPage from './pages/PaymentsPage';
 import DashboardPage from './pages/DashboardPage'
+import QuickStatsPage from './pages/QuickStatsPage'
 import KPIPage from './pages/KPIPage'
 import GeoPage from './pages/GeoPage';
 import ManagersPage from './pages/ManagersPage';
@@ -138,6 +139,7 @@ function App() {
 
             {isAdminAccess && <SidebarItem icon={Globe} label="География" path="/geo" />}
             {isAdminAccess && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
+            <SidebarItem icon={BarChart3} label="Сравнительный анализ" path="/quick-stats" />
 
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
 
@@ -209,6 +211,7 @@ function App() {
           <div className="p-3 md:p-6">
             <Routes>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/quick-stats" element={<QuickStatsPage />} />
               <Route path="/stats" element={<StatsPage />} />
               <Route path="/list" element={<PaymentsPage />} />
 
