@@ -301,12 +301,12 @@ const DashboardPage = () => {
     <div className="pb-10 transition-colors duration-200 w-full max-w-full overflow-x-hidden">
 
       {/* HEADER + FILTERS */}
-      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent transition-colors duration-200 flex flex-col gap-3">
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 md:py-3 border-b border-transparent transition-colors duration-200">
 
         {/* Заголовок */}
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
-            <LayoutDashboard size={18} className="text-blue-600 dark:text-blue-500 shrink-0" />
+        <div className="flex items-center gap-2 mb-2 md:mb-3">
+          <h2 className="text-base md:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
+            <LayoutDashboard size={16} className="text-blue-600 dark:text-blue-500 shrink-0 md:w-5 md:h-5" />
             <span className="truncate">Панель отдела продаж</span>
           </h2>
         </div>
@@ -542,7 +542,7 @@ const DashboardPage = () => {
           </table>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 
