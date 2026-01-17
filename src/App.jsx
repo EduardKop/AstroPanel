@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, useParams } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
@@ -46,6 +46,7 @@ const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) =
 
 const ProtectedRoute = ({ allowedRoles, resource, children }) => {
   const { user, permissions } = useAppStore();
+  const { id } = useParams(); // Get ID from URL if present
 
   if (!user) return <Navigate to="/" />;
 
@@ -56,14 +57,13 @@ const ProtectedRoute = ({ allowedRoles, resource, children }) => {
 
   // 2. Dynamic Permission Check
   if (resource) {
-    // If permissions not loaded yet (empty), we might want to wait or be lenient.
-    // Assuming defaults are loaded. If explicit false, deny.
-    const hasAccess = permissions?.[user.role]?.[resource];
+    // Basic permission check
+    const hasPermission = permissions?.[user.role]?.[resource];
 
-    // Explicitly check for === false, because undefined might mean "allow by default" if migrating? 
-    // NO, let's differ to "deny by default" for security, BUT we seeded the DB.
-    // So if undefined, it means no permission record = deny.
-    if (!hasAccess) {
+    // Self-Edit Exception: If resource is 'employees_manage' AND id matches user.id, ALLOW.
+    const isSelfEdit = resource === 'employees_manage' && String(id) === String(user.id);
+
+    if (!hasPermission && !isSelfEdit) {
       return <div className="h-full flex items-center justify-center text-gray-500 text-sm">⛔ Доступ запрещен (Настройки)</div>;
     }
   }
@@ -86,6 +86,9 @@ function App() {
 
   useEffect(() => {
     const initAuth = async () => {
+      // 1. Initialize permissions from LocalStorage (Instant)
+      useAppStore.getState().initializeFromCache();
+
       const savedUserStr = localStorage.getItem('astroUser');
       if (savedUserStr) {
         const parsedUser = JSON.parse(savedUserStr);
@@ -162,17 +165,17 @@ function App() {
           </div>
 
           <div className="p-3">
-            <div className="flex items-center gap-2.5 p-2 rounded-lg bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#2A2A2A]">
+            <Link to={`/edit-employee/${user.id}`} className="group flex items-center gap-2.5 p-2 rounded-lg bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#2A2A2A] hover:bg-gray-100 dark:hover:bg-[#222] transition-colors cursor-pointer">
               {user.avatar_url ? (
                 <img src={user.avatar_url} className="w-8 h-8 rounded-md object-cover" alt="avatar" />
               ) : (
                 <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-300">{user.name?.[0]}</div>
               )}
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-gray-900 dark:text-gray-200 truncate">{user.name}</div>
+                <div className="text-xs font-semibold text-gray-900 dark:text-gray-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{user.name}</div>
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">{user.role}</div>
               </div>
-            </div>
+            </Link>
             {/* Timer Widget */}
             <div className="mt-2">
               <TimerWidget />
@@ -187,7 +190,7 @@ function App() {
 
             {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
             {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
-            {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравнительный анализ" path="/quick-stats" />}
+            {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/quick-stats" />}
 
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
 

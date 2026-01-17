@@ -188,8 +188,8 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                 </div>
 
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded-[4px] border text-[10px] font-bold uppercase tracking-wider ${isBlocked
-                    ? 'bg-red-50 dark:bg-red-900/10 text-red-600 border-red-100 dark:border-red-900/30'
-                    : 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 border-emerald-100 dark:border-emerald-900/30'
+                  ? 'bg-red-50 dark:bg-red-900/10 text-red-600 border-red-100 dark:border-red-900/30'
+                  : 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 border-emerald-100 dark:border-emerald-900/30'
                   }`}>
                   {isBlocked ? <Ban size={10} /> : <ShieldCheck size={10} />}
                   {isBlocked ? 'Blocked' : 'Active'}
@@ -211,7 +211,9 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Локация (ГЕО)</span>
                   <div className="flex items-center gap-1.5 font-medium text-gray-900 dark:text-white">
                     <Globe size={12} className="text-purple-500" />
-                    {mgr.geo && mgr.geo.length > 0 ? (
+                    {['Admin', 'C-level'].includes(mgr.role) ? (
+                      <span className="text-gray-500 dark:text-gray-400">Вся компания</span>
+                    ) : mgr.geo && mgr.geo.length > 0 ? (
                       <span className="truncate">{mgr.geo.join(', ')}</span>
                     ) : (
                       <span className="text-gray-400">-</span>
@@ -274,8 +276,8 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                     <button
                       onClick={() => handleToggleBlock(mgr.id, mgr.status, mgr.name)}
                       className={`p-1.5 rounded transition-all ${isBlocked
-                          ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
-                          : 'text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20'
+                        ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
+                        : 'text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20'
                         }`}
                       title={isBlocked ? "Разблокировать" : "Заблокировать"}
                     >

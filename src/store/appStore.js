@@ -165,9 +165,24 @@ export const useAppStore = create((set, get) => ({
       }
 
       set({ trafficStats: formattedStats });
-
     } catch (error) {
       console.error('Error fetching traffic stats:', error);
+    }
+  },
+
+  initializeFromCache: () => {
+    try {
+      const cachedPermissions = localStorage.getItem('astroPermissions');
+      const cachedDocs = localStorage.getItem('astroRoleDocs');
+
+      if (cachedPermissions) {
+        set({ permissions: JSON.parse(cachedPermissions) });
+      }
+      if (cachedDocs) {
+        set({ roleDocs: JSON.parse(cachedDocs) });
+      }
+    } catch (e) {
+      console.error('Error loading from cache:', e);
     }
   },
 
@@ -179,9 +194,15 @@ export const useAppStore = create((set, get) => ({
 
       if (error) throw error;
 
-      // Optimistic update
-      if (key === 'role_permissions') set({ permissions: value });
-      if (key === 'role_documentation') set({ roleDocs: value });
+      // Optimistic update & Cache
+      if (key === 'role_permissions') {
+        set({ permissions: value });
+        localStorage.setItem('astroPermissions', JSON.stringify(value));
+      }
+      if (key === 'role_documentation') {
+        set({ roleDocs: value });
+        localStorage.setItem('astroRoleDocs', JSON.stringify(value));
+      }
 
     } catch (error) {
       console.error('Error updating settings:', error);
@@ -225,6 +246,10 @@ export const useAppStore = create((set, get) => ({
       const appSettingsData = await fetchAll('app_settings', '*', 'key', true);
       const permissionsMap = appSettingsData.find(s => s.key === 'role_permissions')?.value || {};
       const roleDocsMap = appSettingsData.find(s => s.key === 'role_documentation')?.value || {};
+
+      // SAVE TO CACHE
+      localStorage.setItem('astroPermissions', JSON.stringify(permissionsMap));
+      localStorage.setItem('astroRoleDocs', JSON.stringify(roleDocsMap));
 
       // Д. Трафик и Источники (LEADS)
       // Используем пагинацию для загрузки ВСЕХ лидов (1066+)

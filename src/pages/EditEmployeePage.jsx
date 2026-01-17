@@ -218,34 +218,36 @@ const EditEmployeePage = () => {
               </InputGroup>
             </div>
 
-            {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2"><MapPin size={14} /> ГЕО</label>
+            {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН (Скрываем для Admin/C-level) */}
+            {!['Admin', 'C-level'].includes(formData.role) && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2"><MapPin size={14} /> ГЕО</label>
 
-              {availableCountries.length === 0 ? (
-                <div className="text-xs text-gray-400">Загрузка стран...</div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {availableCountries.map(country => {
-                    const isActive = formData.geo.includes(country.code);
-                    return (
-                      <button
-                        key={country.code}
-                        type="button"
-                        onClick={() => toggleCountry(country.code)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'
-                          }`}
-                      >
-                        <span>{country.emoji}</span>
-                        <span>{country.code}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+                {availableCountries.length === 0 ? (
+                  <div className="text-xs text-gray-400">Загрузка стран...</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {availableCountries.map(country => {
+                      const isActive = formData.geo.includes(country.code);
+                      return (
+                        <button
+                          key={country.code}
+                          type="button"
+                          onClick={() => toggleCountry(country.code)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'
+                            }`}
+                        >
+                          <span>{country.emoji}</span>
+                          <span>{country.code}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             <button type="submit" disabled={saving} className="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-70">
               {saving ? <Loader2 className="animate-spin" /> : <><Save size={20} /> Сохранить изменения</>}
