@@ -39,6 +39,15 @@ const MultiGeoModal = ({ isOpen, onClose, onSave, countries }) => {
     const [geo1, setGeo1] = React.useState('');
     const [geo2, setGeo2] = React.useState('');
 
+    // Hotkey: Escape to close
+    React.useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && isOpen) handleClose();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen]);
+
     const handleSave = () => {
         if (geo1 && geo2) {
             onSave([geo1, geo2]);

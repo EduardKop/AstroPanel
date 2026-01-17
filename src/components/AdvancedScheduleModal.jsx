@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, User } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import { useAppStore } from '../store/appStore';
 
 const AdvancedScheduleModal = ({ isOpen, onClose, managers, countries, onSave }) => {
     const [localManagers, setLocalManagers] = useState([]);
@@ -16,7 +17,13 @@ const AdvancedScheduleModal = ({ isOpen, onClose, managers, countries, onSave })
                 show_in_schedule: m.show_in_schedule !== false
             })));
         }
-    }, [isOpen, managers]);
+
+        const handleEsc = (e) => {
+            if (e.key === 'Escape' && isOpen) onClose();
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [isOpen, managers, onClose]);
 
     const toggleManager = (managerId) => {
         setLocalManagers(prev => prev.map(m =>
@@ -37,6 +44,22 @@ const AdvancedScheduleModal = ({ isOpen, onClose, managers, countries, onSave })
             );
 
             await Promise.all(updates);
+
+            // 📝 LOG ACTIVITY
+            const changedCount = localManagers.filter(m => {
+                const original = managers.find(om => om.id === m.id);
+                return original && original.show_in_schedule !== m.show_in_schedule;
+            }).length;
+
+            if (changedCount > 0) {
+                logActivity({
+                    action: 'update',
+                    entity: 'settings',
+                    entityId: 'schedule_visibility',
+                    details: { changed_managers_count: changedCount },
+                    importance: 'medium'
+                });
+            }
 
             if (onSave) onSave();
             onClose();

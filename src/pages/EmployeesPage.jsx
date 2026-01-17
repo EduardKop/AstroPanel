@@ -28,7 +28,7 @@ const SelectFilter = ({ label, value, options, onChange }) => (
 
 const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, excludeRole, showAddButton = false }) => {
   const navigate = useNavigate();
-  const { managers, user: currentUser, fetchAllData, isLoading } = useAppStore();
+  const { managers, user: currentUser, fetchAllData, isLoading, onlineUsers } = useAppStore();
   const [filters, setFilters] = useState({ geo: '' });
 
   // Фильтрация
@@ -50,13 +50,19 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
 
     // 3. Сортировка (Активные выше)
     result.sort((a, b) => {
+      // Приоритет 1: Сначала онлайн
+      const isOnlineA = onlineUsers?.includes(a.id) ? 1 : 0;
+      const isOnlineB = onlineUsers?.includes(b.id) ? 1 : 0;
+      if (isOnlineA !== isOnlineB) return isOnlineB - isOnlineA;
+
+      // Приоритет 2: Активные
       if (a.status === 'active' && b.status !== 'active') return -1;
       if (a.status !== 'active' && b.status === 'active') return 1;
       return 0;
     });
 
     return result;
-  }, [managers, targetRole, excludeRole, filters.geo]);
+  }, [managers, targetRole, excludeRole, filters.geo, onlineUsers]);
 
   // Собираем уникальные ГЕО для фильтра
   const uniqueGeos = useMemo(() => {
@@ -145,6 +151,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
           const age = calculateAge(mgr.birth_date);
           const workStats = calculateWorkDays(mgr.created_at);
           const isBlocked = mgr.status === 'blocked';
+          const isOnline = onlineUsers?.includes(mgr.id);
 
           return (
             <div
@@ -172,6 +179,10 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                       <div className={`w-10 h-10 rounded-[8px] flex items-center justify-center text-xs font-bold border ${isBlocked ? 'bg-red-50 text-red-400 border-red-100' : 'bg-white dark:bg-[#222] text-gray-500 border-gray-200 dark:border-[#333]'}`}>
                         {mgr.name?.charAt(0)}
                       </div>
+                    )}
+                    {/* 🟢 ONLINE INDICATOR */}
+                    {isOnline && (
+                      <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#1A1A1A] rounded-full animate-pulse z-10" title="Online" />
                     )}
                   </div>
 

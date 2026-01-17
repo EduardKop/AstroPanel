@@ -65,6 +65,8 @@ export const useAppStore = create((set, get) => ({
   rules: [],
   countries: [], // NEW: Countries with flags
   schedules: [], // NEW: Schedule data
+  onlineUsers: [], // NEW: Realtime Online Users
+  activityLogs: [], // NEW: Activity Logs
 
   // Данные для зарплат
   kpiRates: [],
@@ -203,6 +205,15 @@ export const useAppStore = create((set, get) => ({
         set({ roleDocs: value });
         localStorage.setItem('astroRoleDocs', JSON.stringify(value));
       }
+
+      // 📝 LOG ACTIVITY
+      get().logActivity({
+        action: 'update',
+        entity: 'settings',
+        entityId: key,
+        details: { key, value_preview: JSON.stringify(value).slice(0, 50) + '...' },
+        importance: 'medium'
+      });
 
     } catch (error) {
       console.error('Error updating settings:', error);
@@ -382,6 +393,104 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_settings' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => get().fetchAllData(true))
       .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  },
+
+  // --- ONLINE PRESENCE ---
+  // --- ACTIVITY LOGS ---
+  fetchLogs: async (from = 0, to = 49) => {
+    try {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+
+      if (from === 0) {
+        set({ activityLogs: data || [] });
+      } else {
+        set(state => ({ activityLogs: [...state.activityLogs, ...(data || [])] }));
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+      return [];
+    }
+  },
+
+  logActivity: async ({ action, entity, entityId = null, details = {}, importance = 'low' }) => {
+    try {
+      const user = get().user;
+      console.log('📝 logActivity called:', { action, entity, user_id: user?.id });
+
+      if (!user) {
+        console.error('❌ logActivity failed: No user in store');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user.id,
+          user_name: user.name || 'Unknown',
+          action_type: action,
+          entity_type: entity,
+          entity_id: entityId,
+          details: details,
+          importance: importance
+        })
+        .select();
+
+      if (error) {
+        console.error('❌ Failed to log activity to DB:', error);
+      } else {
+        console.log('✅ Activity logged successfully:', data);
+      }
+    } catch (e) {
+      console.error('❌ Log activity exception:', e);
+    }
+  },
+
+  subscribeToPresence: () => {
+    const user = get().user;
+    if (!user) return () => { };
+
+    const channel = supabase.channel('online-users', {
+      config: {
+        presence: {
+          key: user.id,
+        },
+      },
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const newState = channel.presenceState();
+        const onlineIds = Object.keys(newState);
+        set({ onlineUsers: onlineIds });
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        // Optional: show toast "User X came online"
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        // Optional: show toast "User X went offline"
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            online_at: new Date().toISOString(),
+            user_id: user.id,
+            role: user.role,
+          });
+        }
+      });
+
+    // EXPOSE FOR DEBUGGING
+    window.logActivityTest = get().logActivity;
 
     return () => supabase.removeChannel(channel);
   }

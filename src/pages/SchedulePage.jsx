@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
 import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, Users2 } from 'lucide-react';
@@ -26,7 +27,8 @@ const GEO_PALETTE = {
 };
 
 const SchedulePage = () => {
-    const { user, managers, countries, schedules } = useAppStore();
+    const navigate = useNavigate();
+    const { user, managers, countries, schedules, fetchAllData, onlineUsers, logActivity } = useAppStore();
     const isAdmin = user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
 
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -152,6 +154,23 @@ const SchedulePage = () => {
         loadMonthSchedules();
     }, [currentDate]);
 
+    // Hotkeys for navigation
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Ignore if input is focused
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+
+            if (e.key === 'ArrowLeft') prevMonth();
+            if (e.key === 'ArrowRight') nextMonth();
+            if (e.key === 'Escape') {
+                setIsEditing(false);
+                setIsMultiGeoEditing(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [currentDate]);
+
     const scheduleData = useMemo(() => {
         // Filter managers by show_in_schedule field
         const visibleManagers = (managers || []).filter(m => m.show_in_schedule !== false);
@@ -219,6 +238,15 @@ const SchedulePage = () => {
                 setScheduleState(prev => prev.filter(
                     s => !(s.manager_id === managerId && s.date === dateKey)
                 ));
+
+                // 📝 LOG ACTIVITY
+                logActivity({
+                    action: 'delete',
+                    entity: 'schedule',
+                    entityId: `${managerId}_${dateKey}`,
+                    details: { managerId, date: dateKey, action: 'remove_shift' },
+                    importance: 'low'
+                });
             } else {
                 // Add shift with single GEO
                 const { data, error } = await supabase
@@ -240,6 +268,15 @@ const SchedulePage = () => {
                         s => !(s.manager_id === managerId && s.date === dateKey)
                     );
                     return [...filtered, data];
+                });
+
+                // 📝 LOG ACTIVITY
+                logActivity({
+                    action: 'create',
+                    entity: 'schedule',
+                    entityId: `${managerId}_${dateKey}`,
+                    details: { managerId, date: dateKey, geo: managerGeo, action: 'add_shift' },
+                    importance: 'low'
                 });
             }
         } catch (error) {
@@ -276,6 +313,15 @@ const SchedulePage = () => {
                 .single();
 
             if (error) throw error;
+
+            // 📝 LOG ACTIVITY
+            logActivity({
+                action: 'update',
+                entity: 'schedule',
+                entityId: `${managerId}_${dateKey}`,
+                details: { managerId, date: dateKey, geo: geoCode, action: 'update_multi_geo_shift' },
+                importance: 'low'
+            });
 
             // Close modal
             setShowMultiGeoModal(false);
@@ -333,6 +379,15 @@ const SchedulePage = () => {
                     .lte('date', monthEndStr);
 
                 if (error) throw error;
+
+                // 📝 LOG ACTIVITY
+                logActivity({
+                    action: 'delete',
+                    entity: 'schedule',
+                    entityId: `clear_${manager.id}`,
+                    details: { manager: manager.name, range: `${startDate} - ${monthEndStr}`, action: 'clear_schedule' },
+                    importance: 'high'
+                });
 
                 // Refresh
                 const { fetchAllData } = useAppStore.getState();
@@ -403,6 +458,15 @@ const SchedulePage = () => {
                     .upsert(schedulesToUpsert, { onConflict: 'manager_id,date' });
 
                 if (error) throw error;
+
+                // 📝 LOG ACTIVITY
+                logActivity({
+                    action: 'update',
+                    entity: 'schedule',
+                    entityId: `autofill_${manager.id}`,
+                    details: { manager: manager.name, pattern, range: `${startDate} - ${monthEndStr}`, shifts_count: schedulesToUpsert.length },
+                    importance: 'high'
+                });
             }
 
             // Refresh

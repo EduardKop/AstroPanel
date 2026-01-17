@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
+import { useAppStore } from '../store/appStore';
 import { fetchManagerById, updateManagerProfile } from '../services/dataService';
 import {
   User, Mail, Phone, MapPin, Briefcase,
@@ -12,6 +13,7 @@ const ROLES = ['Sales', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manage
 const EditEmployeePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { logActivity, user: currentUser } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -94,8 +96,8 @@ const EditEmployeePage = () => {
 
       if (avatarFile) {
         const fileExt = avatarFile.name.split('.').pop();
-        const fileName = `${Date.now()}.${fileExt}`;
-        const filePath = `${fileName}`;
+        const fileName = `${Date.now()}.${fileExt} `;
+        const filePath = `${fileName} `;
 
         const { error: uploadError } = await supabase.storage
           .from('avatars')
@@ -119,6 +121,15 @@ const EditEmployeePage = () => {
         avatar_url: finalAvatarUrl
       });
 
+      // 📝 LOG ACTIVITY
+      await logActivity({
+        action: 'update',
+        entity: 'manager',
+        entityId: id,
+        details: { changes: formData },
+        importance: 'medium'
+      });
+
       alert('Данные обновлены!');
       navigate(-1);
 
@@ -130,142 +141,215 @@ const EditEmployeePage = () => {
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-gray-500">Загрузка...</div>;
+  if (loading) return <div className="flex h-screen items-center justify-center text-white/50">Загрузка...</div>;
 
   return (
-    <div className="animate-in fade-in zoom-in duration-300 max-w-4xl mx-auto pb-10">
+    <div className="relative min-h-screen w-full overflow-hidden bg-[#0A0A0A] text-white">
+      {/* 🔮 BACKGROUND BLOBS */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none mix-blend-screen" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[100px] pointer-events-none mix-blend-screen translate-x-20 translate-y-20" />
 
-      <div className="flex items-center gap-4 mb-8">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
-          <ArrowLeft className="text-gray-500" />
-        </button>
-        <div>
-          <h2 className="text-2xl font-bold dark:text-white">Редактирование</h2>
-          <p className="text-gray-500 text-sm">Измените данные сотрудника</p>
-        </div>
-      </div>
+      {/* 🌟 CONTENT WRAPPER */}
+      <div className="relative z-10 max-w-5xl mx-auto px-6 py-12 animate-in fade-in zoom-in duration-500">
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-        <div className="lg:col-span-1">
-          <div className="bg-white dark:bg-dark-card p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center text-center">
-            <div className="relative w-40 h-40 mb-4 group">
-              {previewUrl ? (
-                <img src={previewUrl} alt="Preview" className="w-full h-full rounded-full object-cover border-4 border-gray-100 dark:border-gray-700 shadow-md" />
-              ) : (
-                <div className="w-full h-full rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                  <User size={48} className="text-gray-300" />
-                </div>
-              )}
-              <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 rounded-full cursor-pointer transition-opacity backdrop-blur-sm">
-                <UploadCloud size={24} />
-                <span className="text-xs font-bold ml-2">Изменить</span>
-                <input type="file" accept="image/jpeg, image/png, image/webp" onChange={handleFileChange} className="hidden" />
-              </label>
-            </div>
-            <p className="text-xs text-gray-400">Нажмите на фото, чтобы изменить</p>
+        {/* HEADER */}
+        <div className="flex items-center gap-6 mb-12">
+          <button
+            onClick={() => navigate(-1)}
+            className="group p-3 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all active:scale-95 backdrop-blur-md shadow-lg"
+          >
+            <ArrowLeft className="text-gray-400 group-hover:text-white transition-colors" size={24} />
+          </button>
+          <div>
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Редактирование профиля</h2>
+            <p className="text-gray-400 mt-1">Персональные данные и настройки доступа</p>
           </div>
         </div>
 
-        <div className="lg:col-span-2">
-          <form onSubmit={handleSubmit} className="bg-white dark:bg-dark-card p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <InputGroup label="Имя и Фамилия" icon={User}>
-                <input required name="name" value={formData.name} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
-              </InputGroup>
+          {/* 🖼 LEFT COLUMN: AVATAR CARD */}
+          <div className="lg:col-span-4">
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 flex flex-col items-center text-center shadow-2xl relative overflow-hidden group">
+              {/* Shine Effect */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-400 uppercase ml-1">Роль</label>
-                <div className="relative">
-                  <select name="role" value={formData.role} onChange={handleChange} className="w-full appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium dark:text-white focus:ring-2 focus:ring-blue-500 outline-none">
-                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                  <Briefcase size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <InputGroup label="Email" icon={Mail}>
-                <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
-              </InputGroup>
-              <InputGroup label="Телефон" icon={Phone}>
-                <input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
-              </InputGroup>
-            </div>
-
-            <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/30 space-y-4">
-              <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
-                <Send size={18} />
-                <span className="font-bold text-sm">Telegram</span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-gray-500 mb-1 block">ID</label>
-                  <input required name="telegram_id" value={formData.telegram_id} onChange={handleChange} className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm dark:text-white" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-500 mb-1 block">Username</label>
-                  <input required name="telegram_username" value={formData.telegram_username} onChange={handleChange} className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm dark:text-white" />
-                </div>
-              </div>
-            </div>
-
-            <div className="w-full md:w-1/2">
-              <InputGroup label="Дата рождения" icon={Calendar}>
-                <input type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
-              </InputGroup>
-            </div>
-
-            {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН (Скрываем для Admin/C-level) */}
-            {!['Admin', 'C-level'].includes(formData.role) && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2"><MapPin size={14} /> ГЕО</label>
-
-                {availableCountries.length === 0 ? (
-                  <div className="text-xs text-gray-400">Загрузка стран...</div>
+              <div className="relative w-48 h-48 mb-6 group/avatar">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 blur-lg opacity-40 group-hover/avatar:opacity-60 transition-opacity" />
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Preview" className="relative w-full h-full rounded-full object-cover border-4 border-[#1A1A1A] shadow-2xl" />
                 ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {availableCountries.map(country => {
-                      const isActive = formData.geo.includes(country.code);
-                      return (
-                        <button
-                          key={country.code}
-                          type="button"
-                          onClick={() => toggleCountry(country.code)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 border-gray-200 dark:border-gray-700'
-                            }`}
-                        >
-                          <span>{country.emoji}</span>
-                          <span>{country.code}</span>
-                        </button>
-                      )
-                    })}
+                  <div className="relative w-full h-full rounded-full bg-[#1A1A1A] flex items-center justify-center border-4 border-[#2A2A2A]">
+                    <User size={64} className="text-gray-600" />
+                  </div>
+                )}
+
+                <label className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white opacity-0 group-hover/avatar:opacity-100 rounded-full cursor-pointer transition-all duration-300 backdrop-blur-sm scale-95 group-hover/avatar:scale-100">
+                  <UploadCloud size={28} className="mb-2" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Изменить</span>
+                  <input type="file" accept="image/jpeg, image/png, image/webp" onChange={handleFileChange} className="hidden" />
+                </label>
+              </div>
+
+              <h3 className="text-xl font-bold text-white mb-1">{formData.name || 'Новый сотрудник'}</h3>
+              <p className="text-sm font-medium text-blue-400 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
+                {formData.role}
+              </p>
+            </div>
+
+            {/* TIPS CARD */}
+            <div className="mt-4 bg-gradient-to-br from-blue-600/20 to-purple-600/20 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-xl">
+              <h4 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                <Calendar size={14} className="text-blue-400" /> Совет
+              </h4>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                Фотография профиля отображается в чатах и таблицах. Используйте качественное фото для лучшей узнаваемости.
+              </p>
+            </div>
+          </div>
+
+          {/* 📝 RIGHT COLUMN: FORM */}
+          <div className="lg:col-span-8">
+            <form onSubmit={handleSubmit} className="bg-white/5 backdrop-blur-xl rounded-3xl p-8 relative border border-white/0">
+
+              {/* Section Title */}
+              <div className="mb-8 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <span className="w-1 h-6 bg-blue-500 rounded-full inline-block" />
+                  Основная информация
+                </h3>
+              </div>
+
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <GlassInput label="Имя и Фамилия" icon={User} name="name" value={formData.name} onChange={handleChange} required />
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase ml-1">Роль</label>
+                    <div className="relative group/select">
+                      <select
+                        name="role"
+                        value={formData.role}
+                        onChange={handleChange}
+                        className="w-full appearance-none bg-black/20 hover:bg-black/30 border border-white/10 rounded-xl px-4 py-3.5 text-sm font-medium text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all cursor-pointer"
+                      >
+                        {ROLES.map(r => <option key={r} value={r} className="bg-[#1A1A1A] text-gray-300">{r}</option>)}
+                      </select>
+                      <Briefcase size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 group-hover/select:text-white transition-colors pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <GlassInput label="Email" icon={Mail} name="email" value={formData.email} onChange={handleChange} type="email" />
+                  <GlassInput label="Телефон" icon={Phone} name="phone" value={formData.phone} onChange={handleChange} type="tel" />
+                </div>
+
+                {/* TELEGRAM SECTION */}
+                <div className="p-1 rounded-2xl bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-white/5">
+                  <div className="bg-[#0A0A0A]/60 backdrop-blur-md rounded-xl p-6 border border-white/5">
+                    <div className="flex items-center gap-2 text-blue-400 mb-6">
+                      <Send size={18} />
+                      <span className="font-bold text-sm tracking-wide">TELEGRAM ИНТЕГРАЦИЯ</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <GlassInput label="Telegram ID" name="telegram_id" value={formData.telegram_id} onChange={handleChange} placeholder="Например: 12345678" />
+                      <GlassInput label="Username" name="telegram_username" value={formData.telegram_username} onChange={handleChange} placeholder="@username" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="w-full md:w-1/2">
+                  <GlassInput label="Дата рождения" icon={Calendar} name="birth_date" value={formData.birth_date} onChange={handleChange} type="date" />
+                </div>
+
+                {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН (Скрываем для Admin/C-level) */}
+                {!['Admin', 'C-level'].includes(formData.role) && (
+                  <div className="space-y-3 pt-4 border-t border-white/5">
+                    <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2">
+                      <MapPin size={14} className="text-purple-400" />
+                      География работы
+                      {/* Security note if user is editing themselves and is not admin */}
+                      {currentUser?.id === id && !['Admin', 'C-level'].includes(currentUser?.role) && (
+                        <span className="text-[10px] text-yellow-500 normal-case">
+                          (Только для просмотра - изменения доступны Администратору)
+                        </span>
+                      )}
+                    </label>
+
+                    {availableCountries.length === 0 ? (
+                      <div className="text-xs text-gray-500 animate-pulse">Загрузка доступных стран...</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2.5">
+                        {availableCountries.map(country => {
+                          const isActive = formData.geo.includes(country.code);
+                          const isEditingSelfAsNonAdmin = currentUser?.id === id && !['Admin', 'C-level'].includes(currentUser?.role);
+
+                          return (
+                            <button
+                              key={country.code}
+                              type="button"
+                              onClick={() => !isEditingSelfAsNonAdmin && toggleCountry(country.code)}
+                              disabled={isEditingSelfAsNonAdmin}
+                              className={`
+                                relative group overflow-hidden px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-300 flex items-center gap-2
+                                ${isEditingSelfAsNonAdmin
+                                  ? 'cursor-not-allowed opacity-50'
+                                  : 'cursor-pointer'
+                                }
+                                ${isActive
+                                  ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]'
+                                  : 'bg-black/20 border-white/5 text-gray-400 hover:border-white/20 hover:text-white hover:bg-white/5'
+                                }
+`}
+                            >
+                              <span className="text-base">{country.emoji}</span>
+                              <span className="tracking-wide">{country.code}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
 
-            <button type="submit" disabled={saving} className="w-full mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-70">
-              {saving ? <Loader2 className="animate-spin" /> : <><Save size={20} /> Сохранить изменения</>}
-            </button>
+              {/* SAVE BUTTON */}
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full mt-10 relative overflow-hidden group bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98] disabled:opacity-70 disabled:grayscale"
+              >
+                {/* Button Shine */}
+                <div className="absolute top-0 -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
 
-          </form>
+                <div className="relative flex items-center justify-center gap-2">
+                  {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+                  <span>{saving ? 'Сохранение...' : 'Сохранить изменения'}</span>
+                </div>
+              </button>
+
+            </form>
+          </div>
+
         </div>
       </div>
     </div>
   );
 };
 
-const InputGroup = ({ label, icon: Icon, children }) => (
-  <div className="space-y-1.5">
+const GlassInput = ({ label, icon: Icon, className, ...props }) => (
+  <div className={`space-y-2 ${className}`}>
     <label className="text-xs font-bold text-gray-400 uppercase ml-1">{label}</label>
-    <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
-      <Icon size={18} className="text-gray-400 shrink-0" />
-      {children}
+    <div className="relative group/input">
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl blur opacity-0 group-focus-within/input:opacity-100 transition-opacity duration-500" />
+      <div className="relative flex items-center gap-3 bg-black/20 hover:bg-black/30 border border-white/10 rounded-xl px-4 py-3.5 focus-within:border-blue-500/50 focus-within:bg-black/40 transition-all">
+        {Icon && <Icon size={18} className="text-gray-500 group-focus-within/input:text-blue-400 transition-colors shrink-0" />}
+        <input
+          className="w-full bg-transparent outline-none text-sm text-white placeholder-gray-600 font-medium"
+          {...props}
+        />
+      </div>
     </div>
   </div>
 );

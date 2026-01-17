@@ -5,11 +5,13 @@ import {
   User, Mail, Phone, MapPin, Briefcase,
   UploadCloud, ArrowLeft, Send, Calendar, Save
 } from 'lucide-react';
+import { useAppStore } from '../store/appStore';
 
 const ROLES = ['Sales', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manager'];
 
 const AddEmployeePage = () => {
   const navigate = useNavigate();
+  const { logActivity } = useAppStore();
   const [loading, setLoading] = useState(false);
 
   const [avatarFile, setAvatarFile] = useState(null);
@@ -111,6 +113,16 @@ const AddEmployeePage = () => {
       if (insertError) throw insertError;
 
       alert('Сотрудник успешно создан!');
+
+      // 📝 LOG ACTIVITY
+      logActivity({
+        action: 'create',
+        entity: 'manager',
+        entityId: formData.name, // We don't have ID yet returned from insert without select(), using name for now
+        details: { name: formData.name, role: formData.role },
+        importance: 'high'
+      });
+
       navigate('/all-employees');
 
     } catch (error) {

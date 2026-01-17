@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient';
@@ -30,6 +30,7 @@ import SchedulePage from './pages/SchedulePage';
 import TimerWidget from './components/TimerWidget';
 import TimeLogPage from './pages/TimeLogPage';
 import CLevelSettingsPage from './pages/CLevelSettingsPage';
+import ActivityLogsPage from './pages/ActivityLogsPage';
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
@@ -105,6 +106,9 @@ function App() {
           if (freshUser) {
             setUser(freshUser);
             localStorage.setItem('astroUser', JSON.stringify(freshUser));
+
+            // Start Presence
+            useAppStore.getState().subscribeToPresence();
           }
         } catch (e) {
           console.error("User refresh failed", e);
@@ -231,6 +235,14 @@ function App() {
               </>
             )}
 
+            {/* ✅ ADMIN TOOLS (BLUE) */}
+            {(user?.role === 'Admin' || user?.role === 'C-level') && (
+              <>
+                <div className="px-3 py-2 text-[10px] font-bold text-cyan-500 uppercase tracking-wider mt-2 border-t border-gray-100 dark:border-[#222] pt-4">Admin</div>
+                <SidebarItem icon={Activity} label="Логирование" path="/activity-logs" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />
+              </>
+            )}
+
             {/* ✅ C-LEVEL SETTINGS: ONLY FOR C-LEVEL */}
             {user.role === 'C-level' && (
               <>
@@ -297,6 +309,9 @@ function App() {
 
               <Route path="/products" element={<ProtectedRoute resource="knowledge_base"><ProductsPage /></ProtectedRoute>} />
               <Route path="/rules" element={<ProtectedRoute resource="knowledge_base"><RulesPage /></ProtectedRoute>} />
+
+              {/* ✅ ADMIN ROUTES */}
+              <Route path="/activity-logs" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><ActivityLogsPage /></ProtectedRoute>} />
 
               {/* ✅ C-LEVEL SETTINGS: ТОЛЬКО C-LEVEL */}
               <Route path="/c-level-settings" element={<ProtectedRoute allowedRoles={['C-level']}><CLevelSettingsPage /></ProtectedRoute>} />

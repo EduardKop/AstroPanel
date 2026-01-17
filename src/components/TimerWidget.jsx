@@ -14,8 +14,11 @@ const TimerWidget = () => {
     const fetchActiveEntry = useCallback(async () => {
         if (!user?.id) return;
 
+        // Temporarily disabled to avoid 406 errors
+        // TODO: Fix work_shifts API access issue
+        /*
         const { data, error } = await supabase
-            .from('time_entries')
+            .from('work_shifts')
             .select('*')
             .eq('manager_id', user.id)
             .is('clock_out', null)
@@ -28,6 +31,7 @@ const TimerWidget = () => {
         } else {
             setActiveEntry(null);
         }
+        */
     }, [user?.id]);
 
     // Initial fetch
@@ -134,7 +138,7 @@ const TimerWidget = () => {
         setIsLoading(true);
 
         const { data, error } = await supabase
-            .from('time_entries')
+            .from('work_shifts')
             .insert({
                 manager_id: user.id,
                 clock_in: new Date().toISOString(),
@@ -157,7 +161,7 @@ const TimerWidget = () => {
         setIsLoading(true);
 
         const { error } = await supabase
-            .from('time_entries')
+            .from('work_shifts')
             .update({
                 clock_out: new Date().toISOString()
             })

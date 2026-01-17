@@ -28,7 +28,7 @@ const TimeLogPage = () => {
             setIsLoading(true);
 
             let query = supabase
-                .from('time_entries')
+                .from('work_shifts')
                 .select('*, managers(name, avatar_url)')
                 .order('clock_in', { ascending: false });
 

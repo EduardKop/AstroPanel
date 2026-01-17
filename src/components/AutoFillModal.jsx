@@ -27,6 +27,15 @@ const AutoFillModal = ({ isOpen, onClose, onSave, mode, countries, managerName, 
     const [geo1, setGeo1] = useState('');
     const [geo2, setGeo2] = useState('');
 
+    // Hotkey: Escape to close
+    React.useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && isOpen) onClose();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
+
     const handleSave = () => {
         if (!startDate) return;
         if (mode === 'multi' && (!geo1 || !geo2)) return;
