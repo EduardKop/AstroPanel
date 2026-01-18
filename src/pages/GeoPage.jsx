@@ -232,6 +232,7 @@ const GeoPage = () => {
   const [filters, setFilters] = useState({ manager: '', product: '', type: '', source: 'all', showMobileFilters: false });
   // Сортировка по умолчанию по Евро
   const [sortConfig, setSortConfig] = useState({ key: 'salesSumEUR', direction: 'desc' });
+  const [expandedId, setExpandedId] = useState(null);
 
   const hasActiveFilters = useMemo(() => {
     return !!(filters.manager || filters.product || filters.type || filters.source !== 'all');
@@ -435,7 +436,8 @@ const GeoPage = () => {
 
       {/* TABLE */}
       <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden shadow-sm w-full min-w-0">
-        <div className="overflow-x-auto w-full min-w-0">
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto w-full min-w-0">
           <table className="w-full text-left text-xs text-gray-600 dark:text-[#888] whitespace-nowrap">
             <thead className="bg-gray-50 dark:bg-[#161616] font-medium border-b border-gray-200 dark:border-[#333] text-gray-500 dark:text-[#666]">
               <tr>
@@ -502,6 +504,68 @@ const GeoPage = () => {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden space-y-2 p-3">
+          {geoStats.length === 0 ? (
+            <div className="text-center py-6 text-xs text-gray-500">Нет данных</div>
+          ) : (
+            geoStats.map((geo) => {
+              const isExpanded = expandedId === geo.code;
+              let crColorClass = 'text-gray-500';
+              if (geo.cr >= 8) crColorClass = 'text-emerald-500';
+              else if (geo.cr >= 4) crColorClass = 'text-amber-500';
+              else crColorClass = 'text-red-500';
+
+              return (
+                <div key={geo.code} className="border border-gray-200 dark:border-[#333] rounded-lg p-3 bg-white dark:bg-[#111] transition-all">
+                  <div className="flex justify-between items-center">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-gray-100 dark:bg-[#222] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-[#AAA] border border-gray-200 dark:border-[#333]">
+                          {geo.code}
+                        </div>
+                        <div>
+                          <div className="font-bold text-gray-900 dark:text-white">{geo.code}</div>
+                          <div className={`text-sm font-bold ${crColorClass}`}>
+                            CR: {geo.cr}%
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : geo.code)}
+                      className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-bold transition-colors"
+                    >
+                      {isExpanded ? 'Скрыть' : 'Подробнее'}
+                    </button>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[#333] space-y-2 text-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Трафик:</span>
+                        <span className="font-mono">{geo.traffic}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Оплат (шт):</span>
+                        <span className="font-bold">{geo.salesCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Сумма (Local):</span>
+                        <span className="font-mono font-bold">{geo.salesSumLocal.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} loc</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Сумма (EUR):</span>
+                        <span className="font-mono font-bold text-gray-900 dark:text-white">€ {geo.salesSumEUR.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>
