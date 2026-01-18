@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css' // <--- ВОТ ЭТА СТРОЧКА ОБЯЗАТЕЛЬНА!
-import './mobile.css' // Mobile PWA styles
+import './mobile.css' // Mobile styles
 import './responsive.css' // Global responsive overrides
 
 
@@ -11,16 +11,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
   </React.StrictMode>,
 )
-
-// Register Service Worker for PWA
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(registration => {
-        console.log('✅ SW registered:', registration);
-      })
-      .catch(error => {
-        console.log('❌ SW registration failed:', error);
-      });
-  });
-}
