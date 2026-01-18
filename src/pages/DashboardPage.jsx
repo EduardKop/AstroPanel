@@ -61,17 +61,199 @@ const toYMD = (date) => {
   return `${y}-${m}-${d}`;
 };
 
-const DenseSelect = ({ label, value, options, onChange }) => (
+// Mobile Custom Dropdown
+const MobileSelect = ({ label, value, options, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleSelect = (val) => {
+    onChange(val);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center"
+      >
+        <span className={value ? '' : 'text-gray-400'}>{value || label}</span>
+        <Filter size={10} className="shrink-0 ml-2" />
+      </button>
+
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+
+          {/* Dropdown */}
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
+            <button
+              onClick={() => handleSelect('')}
+              className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${!value ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}
+            >
+              {label}
+            </button>
+            {options.map(opt => (
+              <button
+                key={opt}
+                onClick={() => handleSelect(opt)}
+                className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${value === opt ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Desktop Native Select
+const DesktopSelect = ({ label, value, options, onChange }) => (
   <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[100px]">
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer truncate"
+      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer"
     >
       <option value="">{label}</option>
       {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
     </select>
     <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
+  </div>
+);
+
+// Adaptive Select Component
+const DenseSelect = (props) => (
+  <>
+    <div className="md:hidden w-full">
+      <MobileSelect {...props} />
+    </div>
+    <div className="hidden md:block">
+      <DesktopSelect {...props} />
+    </div>
+  </>
+);
+
+// Mobile Date Range Picker
+const MobileDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
+  const formatDate = (date) => {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const parseDate = (str) => {
+    if (!str) return null;
+    const [year, month, day] = str.split('-');
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  };
+
+  const handleStartChange = (e) => {
+    const newStart = parseDate(e.target.value);
+    onChange([newStart, endDate]);
+  };
+
+  const handleEndChange = (e) => {
+    const newEnd = parseDate(e.target.value);
+    onChange([startDate, newEnd]);
+  };
+
+  const displayText = () => {
+    if (!startDate && !endDate) return 'Период';
+    if (!startDate) return `По ${endDate.toLocaleDateString('ru-RU')}`;
+    if (!endDate) return `С ${startDate.toLocaleDateString('ru-RU')}`;
+    return `${startDate.toLocaleDateString('ru-RU')} - ${endDate.toLocaleDateString('ru-RU')}`;
+  };
+
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center h-[34px]"
+      >
+        <CalendarIcon size={12} className="shrink-0 mr-2 text-gray-400" />
+        <span className={`flex-1 ${!startDate && !endDate ? 'text-gray-400' : ''}`}>{displayText()}</span>
+        <RotateCcw
+          size={12}
+          className="shrink-0 ml-2 text-gray-400 hover:text-red-500 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReset();
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-lg p-3 z-50">
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">От</label>
+                <input
+                  type="date"
+                  value={formatDate(startDate)}
+                  onChange={handleStartChange}
+                  className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">До</label>
+                <input
+                  type="date"
+                  value={formatDate(endDate)}
+                  onChange={handleEndChange}
+                  className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+                />
+              </div>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded px-3 py-1.5 text-xs font-bold transition-colors"
+              >
+                Применить
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Desktop Date Range Picker
+const DesktopDateRangePicker = ({ startDate, endDate, onChange, onReset }) => (
+  <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm h-[34px] flex-1">
+    <CalendarIcon size={12} className="text-gray-400 mr-2 shrink-0" />
+    <div className="relative flex-1">
+      <DatePicker
+        selectsRange={true}
+        startDate={startDate}
+        endDate={endDate}
+        onChange={onChange}
+        dateFormat="dd.MM.yyyy"
+        placeholderText="Период"
+        className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center"
+        popperPlacement="bottom-end"
+      />
+    </div>
+    <button onClick={onReset} className="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 transition-colors">
+      <RotateCcw size={12} />
+    </button>
   </div>
 );
 
@@ -81,7 +263,8 @@ const DashboardPage = () => {
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
 
-  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all' });
+  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all', showMobileFilters: false });
+  const [expandedId, setExpandedId] = useState(null);
 
   const hasActiveFilters = useMemo(() => {
     return !!(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all');
@@ -304,47 +487,93 @@ const DashboardPage = () => {
       <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 md:py-3 border-b border-transparent transition-colors duration-200">
 
         {/* Заголовок */}
-        <div className="flex items-center gap-2 mb-2 md:mb-3">
-          <h2 className="text-base md:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
+        <div className="flex items-center justify-center md:justify-start gap-2 mb-3">
+          <h2 className="text-base md:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 text-center md:text-left min-w-0">
             <LayoutDashboard size={16} className="text-blue-600 dark:text-blue-500 shrink-0 md:w-5 md:h-5" />
-            <span className="truncate">Панель отдела продаж</span>
+            <span>Панель отдела продаж</span>
           </h2>
         </div>
 
 
-        {/* Все фильтры в один ряд */}
-        <div className="flex flex-wrap items-center gap-2 justify-between">
 
-          {/* Левая часть: Кнопки источников */}
-          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
-          </div>
+        {/* Все фильтры */}
+        <div className="w-full md:w-auto mx-auto max-w-[90%] md:max-w-none">
+          <div className="flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2 md:justify-between">
 
-          {/* Правая часть: Фильтры + Календарь */}
-          <div className="flex flex-wrap items-center gap-2">
-            {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
-            <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-            <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
-            <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
-            <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm h-[34px]">
-              <CalendarIcon size={12} className="text-gray-400 mr-2 shrink-0" />
-              <div className="relative flex-1">
-                <DatePicker
-                  selectsRange={true} startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)}
-                  dateFormat="dd.MM.yyyy" placeholderText="Период"
-                  className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center"
-                  popperPlacement="bottom-end"
-                />
-              </div>
-              <button onClick={resetDateRange} className="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 transition-colors">
-                <RotateCcw size={12} />
-              </button>
+            {/* Кнопки источников */}
+            <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full md:w-auto justify-center">
+              <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
             </div>
 
-            <button onClick={resetFilters} disabled={!hasActiveFilters} className={`shrink-0 p-1.5 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 flex justify-center items-center h-[34px] w-[34px] transition-opacity duration-200 ${hasActiveFilters ? 'opacity-100 cursor-pointer' : 'opacity-0 cursor-default pointer-events-none'}`}><XCircle size={14} /></button>
+            {/* Фильтры */}
+            <div className="flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2 w-full md:w-auto">
+
+              {/* MOBILE - Collapsible Filters Menu */}
+              <div className="md:hidden w-full space-y-2">
+                <button
+                  onClick={() => setFilters(prev => ({ ...prev, showMobileFilters: !prev.showMobileFilters }))}
+                  className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center h-[34px]"
+                >
+                  <span className="flex items-center gap-2">
+                    <Filter size={12} />
+                    <span>Фильтры</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400">
+                    {hasActiveFilters && '●'}
+                  </span>
+                </button>
+
+                {filters.showMobileFilters && (
+                  <div className="space-y-2 p-3 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg">
+                    {!isRestrictedUser && <DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />}
+                    <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
+                    <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+                    <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
+
+                    <MobileDateRangePicker
+                      startDate={startDate}
+                      endDate={endDate}
+                      onChange={(update) => setDateRange(update)}
+                      onReset={resetDateRange}
+                    />
+
+                    <button
+                      onClick={resetFilters}
+                      disabled={!hasActiveFilters}
+                      className={`w-full p-2 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 text-xs font-bold transition-opacity ${hasActiveFilters ? 'opacity-100' : 'opacity-50 cursor-not-allowed'}`}
+                    >
+                      Сбросить фильтры
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* DESKTOP - Inline Filters */}
+              <div className="hidden md:contents">
+                {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
+                <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
+                <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+                <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
+
+                {/* Календарь + Reset */}
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  {/* Desktop Date Picker */}
+                  <div className="flex flex-1">
+                    <DesktopDateRangePicker
+                      startDate={startDate}
+                      endDate={endDate}
+                      onChange={(update) => setDateRange(update)}
+                      onReset={resetDateRange}
+                    />
+                  </div>
+
+                  <button onClick={resetFilters} disabled={!hasActiveFilters} className={`shrink-0 p-1.5 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 flex justify-center items-center h-[34px] w-[34px] transition-opacity duration-200 ${hasActiveFilters ? 'opacity-100 cursor-pointer' : 'opacity-0 cursor-default pointer-events-none'}`}><XCircle size={14} /></button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -487,7 +716,8 @@ const DashboardPage = () => {
           <Layers size={14} className="text-gray-400 shrink-0" />
           <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Последние операции</span>
         </div>
-        <div className="overflow-x-auto w-full min-w-0">
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto w-full min-w-0">
           <table className="w-full text-left text-xs text-gray-600 dark:text-[#888] whitespace-nowrap">
             <thead className="bg-gray-50 dark:bg-[#161616] font-medium border-b border-gray-200 dark:border-[#333]">
               <tr>
@@ -510,7 +740,6 @@ const DashboardPage = () => {
                     #{p.id.slice(0, 8)}...
                   </td>
                   <td className="px-4 py-2 text-gray-500 font-mono">
-                    {/* Raw time */}
                     {p.transactionDate ? p.transactionDate.substring(0, 16).replace('T', ' ') : '-'}
                   </td>
                   <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">
@@ -540,6 +769,74 @@ const DashboardPage = () => {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden space-y-2 p-3">
+          {isLoading ? (
+            <div className="text-center py-6 text-xs text-gray-500">Загрузка...</div>
+          ) : filteredData.length === 0 ? (
+            <div className="text-center py-6 text-xs text-gray-500">Нет данных</div>
+          ) : (
+            filteredData.slice(0, 10).map((p) => {
+              const isExpanded = expandedId === p.id;
+              return (
+                <div key={p.id} className="border border-gray-200 dark:border-[#333] rounded-lg p-3 bg-white dark:bg-[#111] transition-all">
+                  <div className="flex justify-between items-center">
+                    <div className="flex-1">
+                      <div className="font-bold text-lg text-gray-900 dark:text-white">€{p.amountEUR}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {p.transactionDate ? p.transactionDate.substring(11, 16) : '-'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                      className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-bold transition-colors"
+                    >
+                      {isExpanded ? 'Скрыть' : 'Подробнее'}
+                    </button>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[#333] space-y-2 text-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">ID:</span>
+                        <span className="font-mono text-xs">#{p.id.slice(0, 8)}...</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Дата:</span>
+                        <span className="text-xs">{p.transactionDate?.substring(0, 10)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Менеджер:</span>
+                        <span className="font-medium">{p.manager}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500">ГЕО:</span>
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-xs font-bold">
+                          {getFlag(p.country)} {p.country}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500">Метод:</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${getPaymentBadgeStyle(p.type)}`}>
+                          {p.type || 'Other'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Сумма (Loc):</span>
+                        <span className="font-bold">{p.amountLocal?.toLocaleString() || '-'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Статус:</span>
+                        <span className="text-emerald-500 text-xs font-bold uppercase">{p.status}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div >
