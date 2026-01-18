@@ -309,7 +309,17 @@ const GeoPage = () => {
           // dateStr уже в формате YYYY-MM-DD, сравниваем напрямую со строками границ
           if (dateStr < startStr || dateStr > endStr) return;
 
-          const num = typeof val === 'object' ? (val.all || 0) : (Number(val) || 0);
+          // Фильтруем трафик по источнику
+          let num = 0;
+          if (typeof val === 'object') {
+            if (filters.source === 'all') {
+              num = val.all || 0;
+            } else {
+              num = val[filters.source] || 0;
+            }
+          } else {
+            num = Number(val) || 0;
+          }
           realTraffic += num;
         });
       }
