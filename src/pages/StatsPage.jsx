@@ -244,8 +244,8 @@ const DesktopDateRangePicker = ({ startDate, endDate, onChange, onReset }) => (
         popperPlacement="bottom-end"
       />
     </div>
-    <button onClick={onReset} className="ml-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 transition-colors">
-      <RotateCcw size={12} />
+    <button onClick={onReset} className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+      <X size={12} />
     </button>
   </div>
 );

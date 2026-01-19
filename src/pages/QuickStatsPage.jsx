@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
 import {
-    Filter, RotateCcw, XCircle, LayoutDashboard,
+    Filter, RotateCcw, X, XCircle, LayoutDashboard,
     TrendingUp, TrendingDown, Minus, AlertTriangle, Users2, Calendar as CalendarIcon, MessageCircle, MessageSquare, Phone
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
@@ -36,6 +36,105 @@ const toYMD = (date) => {
 };
 
 
+
+// Source Filter Buttons (Reusable)
+const SourceFilterButtons = ({ filters, setFilters }) => (
+    <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full md:w-auto justify-center">
+        <button onClick={() => setFilters(p => ({ ...p, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all flex-1 md:flex-none ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+        <button onClick={() => setFilters(p => ({ ...p, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center justify-center gap-1 flex-1 md:flex-none ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
+        <button onClick={() => setFilters(p => ({ ...p, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center justify-center gap-1 flex-1 md:flex-none ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
+        <button onClick={() => setFilters(p => ({ ...p, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center justify-center gap-1 flex-1 md:flex-none ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
+    </div>
+);
+
+// Mobile Date Range Picker
+const MobileDateRangePicker = ({ startDate, endDate, onChange, label }) => {
+    const formatDate = (date) => {
+        if (!date) return '';
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const parseDate = (str) => {
+        if (!str) return null;
+        const [year, month, day] = str.split('-');
+        return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    };
+
+    const handleStartChange = (e) => {
+        const newStart = parseDate(e.target.value);
+        onChange([newStart, endDate]);
+    };
+
+    const handleEndChange = (e) => {
+        const newEnd = parseDate(e.target.value);
+        onChange([startDate, newEnd]);
+    };
+
+    const displayText = () => {
+        if (!startDate && !endDate) return 'Выберите период';
+        if (!startDate) return `По ${endDate.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}`;
+        if (!endDate) return `С ${startDate.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}`;
+        return `${startDate.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} - ${endDate.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}`;
+    };
+
+    const [isOpen, setIsOpen] = useState(false);
+
+    return (
+        <div className="relative w-full">
+            {label && <div className="text-[10px] text-gray-500 mb-1 font-medium bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded w-max">{label}</div>}
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center h-[34px]"
+            >
+                <CalendarIcon size={12} className="shrink-0 mr-2 text-gray-400" />
+                <span className={`flex-1 ${!startDate && !endDate ? 'text-gray-400' : ''}`}>{displayText()}</span>
+            </button>
+
+            {isOpen && (
+                <>
+                    <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsOpen(false)}
+                    />
+
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-lg p-3 z-50">
+                        <div className="space-y-2">
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">От</label>
+                                <input
+                                    type="date"
+                                    value={formatDate(startDate)}
+                                    onChange={handleStartChange}
+                                    className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">До</label>
+                                <input
+                                    type="date"
+                                    value={formatDate(endDate)}
+                                    onChange={handleEndChange}
+                                    className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-200"
+                                />
+                            </div>
+                            <button
+                                onClick={() => setIsOpen(false)}
+                                className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded px-3 py-1.5 text-xs font-bold transition-colors"
+                            >
+                                Применить
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
 const QuickStatsPage = () => {
     const { payments, schedules, trafficStats, fetchAllData, fetchTrafficStats, managers } = useAppStore();
 
@@ -59,6 +158,7 @@ const QuickStatsPage = () => {
     const [period2Start, period2End] = period2;
 
     const [filters, setFilters] = useState({ source: 'all' });
+    const [showMobileFilters, setShowMobileFilters] = useState(false);
 
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
@@ -191,6 +291,8 @@ const QuickStatsPage = () => {
         yesterday.setDate(yesterday.getDate() - 1);
         setPeriod1([yesterday, yesterday]);
         setPeriod2([today, today]);
+        setFilters(p => ({ ...p, source: 'all' }));
+        setShowMobileFilters(false);
     };
 
     // --- RENDER HELPERS ---
@@ -238,6 +340,8 @@ const QuickStatsPage = () => {
         <div className="pb-10 w-full max-w-full overflow-x-hidden">
             {/* HEADER */}
             <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent flex flex-col gap-3">
+
+                {/* ROW 1: Title */}
                 <div className="flex items-center gap-2">
                     <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate">
                         <TrendingUp size={18} className="text-blue-600 dark:text-blue-500" />
@@ -245,18 +349,60 @@ const QuickStatsPage = () => {
                     </h2>
                 </div>
 
-                <div className="flex flex-wrap items-end gap-4">
-                    <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
-                        <button onClick={() => setFilters(p => ({ ...p, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
-                        <button onClick={() => setFilters(p => ({ ...p, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
-                        <button onClick={() => setFilters(p => ({ ...p, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
-                        <button onClick={() => setFilters(p => ({ ...p, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
+                {/* ROW 2: Filters */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+
+                    {/* LEFT SIDE: Source Buttons (Desktop & Mobile Wrapper) */}
+                    <div className="w-full md:w-auto">
+
+                        {/* MOBILE ONLY: Source Buttons + Filter Toggle + Menu */}
+                        <div className="md:hidden space-y-2 w-full">
+                            <SourceFilterButtons filters={filters} setFilters={setFilters} />
+
+                            <button
+                                onClick={() => setShowMobileFilters(!showMobileFilters)}
+                                className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center h-[34px]"
+                            >
+                                <span className="flex items-center gap-2">
+                                    <Filter size={12} />
+                                    <span>Периоды</span>
+                                </span>
+                            </button>
+
+                            {/* MOBILE COLLAPSIBLE FILTERS - DATES ONLY */}
+                            {showMobileFilters && (
+                                <div className="mt-2 space-y-3 p-3 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <MobileDateRangePicker
+                                        label="Первый период"
+                                        startDate={period1Start}
+                                        endDate={period1End}
+                                        onChange={setPeriod1}
+                                    />
+                                    <MobileDateRangePicker
+                                        label="Второй период"
+                                        startDate={period2Start}
+                                        endDate={period2End}
+                                        onChange={setPeriod2}
+                                    />
+
+                                    <button
+                                        onClick={resetPeriods}
+                                        className="w-full p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-[6px] hover:bg-red-100 dark:hover:bg-red-900/30 text-xs font-bold flex items-center justify-center gap-2 border border-red-100 dark:border-red-900/30"
+                                    >
+                                        <X size={14} /> Сбросить всё
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* DESKTOP SOURCE BUTTONS */}
+                        <div className="hidden md:block">
+                            <SourceFilterButtons filters={filters} setFilters={setFilters} />
+                        </div>
                     </div>
 
-                    <div className="flex-1" /> {/* Spacer */}
-
-                    {/* PERIODS CONTAINER - centered together */}
-                    <div className="flex items-end gap-4">
+                    {/* RIGHT SIDE: DESKTOP DATE PICKERS */}
+                    <div className="hidden md:flex items-end gap-4">
                         {/* PERIOD 1 */}
                         <div className="flex flex-col items-center gap-1">
                             <span className="text-[9px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Первый период</span>
@@ -293,8 +439,9 @@ const QuickStatsPage = () => {
                             </div>
                         </div>
 
-                        <button onClick={resetPeriods} className="text-gray-400 hover:text-blue-500 mb-1"><RotateCcw size={14} /></button>
+                        <button onClick={resetPeriods} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 mb-1"><X size={16} /></button>
                     </div>
+
                 </div>
             </div>
 

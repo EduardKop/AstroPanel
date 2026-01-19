@@ -187,8 +187,8 @@ const PaymentsPage = () => {
                   popperPlacement="bottom-end"
                 />
               </div>
-              <button onClick={resetDateRange} className="ml-2 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                <RotateCcw size={12} className="text-gray-400" />
+              <button onClick={resetDateRange} className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                <X size={12} />
               </button>
             </div>
 
