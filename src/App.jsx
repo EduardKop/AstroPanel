@@ -27,7 +27,7 @@ import ProductsPage from './pages/knowledge/ProductsPage';
 import RulesPage from './pages/knowledge/RulesPage';
 import SalariesPage from './pages/SalariesPage';
 import SchedulePage from './pages/SchedulePage';
-import TimerWidget from './components/TimerWidget';
+// TimerWidget removed - feature in development
 import TimeLogPage from './pages/TimeLogPage';
 import CLevelSettingsPage from './pages/CLevelSettingsPage';
 import ActivityLogsPage from './pages/ActivityLogsPage';
@@ -195,10 +195,7 @@ function App() {
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">{user.role}</div>
               </div>
             </Link>
-            {/* Timer Widget */}
-            <div className="mt-2">
-              <TimerWidget />
-            </div>
+
           </div>
 
           <nav className="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-0.5">
