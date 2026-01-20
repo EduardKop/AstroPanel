@@ -136,28 +136,147 @@ const DesktopSelect = ({ label, value, options, onChange }) => (
     </div>
 );
 
-// Desktop Date Range Picker
-const DesktopDateRangePicker = ({ startDate, endDate, onChange, onReset }) => (
-    <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm h-[34px] flex-1">
-        <Calendar size={12} className="text-gray-400 mr-2 shrink-0" />
+// Custom Desktop Date Range Picker
+const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [viewDate, setViewDate] = useState(startDate || new Date());
+    const [selecting, setSelecting] = useState('start');
+    const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+    const triggerRef = React.useRef(null);
+
+    const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+        'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+    const formatDate = (date) => {
+        if (!date) return '';
+        const d = String(date.getDate()).padStart(2, '0');
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const y = date.getFullYear();
+        return `${d}.${m}.${y}`;
+    };
+
+    const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+    const getFirstDayOfMonth = (year, month) => {
+        const day = new Date(year, month, 1).getDay();
+        return day === 0 ? 6 : day - 1;
+    };
+
+    const isSameDay = (d1, d2) => {
+        if (!d1 || !d2) return false;
+        return d1.getFullYear() === d2.getFullYear() &&
+            d1.getMonth() === d2.getMonth() &&
+            d1.getDate() === d2.getDate();
+    };
+
+    const isInRange = (date) => {
+        if (!startDate || !endDate) return false;
+        return date >= startDate && date <= endDate;
+    };
+
+    const isToday = (date) => isSameDay(date, new Date());
+
+    const openCalendar = () => {
+        if (triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setDropdownPos({
+                top: rect.bottom + 8,
+                left: rect.right - 220
+            });
+        }
+        setIsOpen(true);
+        setSelecting('start');
+    };
+
+    const handleDayClick = (day) => {
+        const clickedDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+        if (selecting === 'start') {
+            onChange([clickedDate, null]);
+            setSelecting('end');
+        } else {
+            if (clickedDate < startDate) {
+                onChange([clickedDate, startDate]);
+            } else {
+                onChange([startDate, clickedDate]);
+            }
+            setSelecting('start');
+            setIsOpen(false);
+        }
+    };
+
+    const setToday = () => { onChange([new Date(), new Date()]); setIsOpen(false); };
+    const setLastMonth = () => {
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth(), 0);
+        onChange([firstDay, lastDay]);
+        setIsOpen(false);
+    };
+    const setCurrentMonth = () => {
+        const today = new Date();
+        onChange([new Date(today.getFullYear(), today.getMonth(), 1), new Date(today.getFullYear(), today.getMonth() + 1, 0)]);
+        setIsOpen(false);
+    };
+
+    const prevMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
+    const nextMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
+
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const daysInMonth = getDaysInMonth(year, month);
+    const firstDay = getFirstDayOfMonth(year, month);
+
+    const displayText = () => {
+        if (startDate && endDate) return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+        if (startDate) return `${formatDate(startDate)} - ...`;
+        return 'Период';
+    };
+
+    return (
         <div className="relative flex-1">
-            <DatePicker
-                selectsRange
-                startDate={startDate}
-                endDate={endDate}
-                onChange={onChange}
-                dateFormat="dd.MM.yyyy"
-                placeholderText="Период"
-                popperClassName="!z-[100]"
-                className="bg-transparent text-xs font-medium dark:text-white outline-none w-full cursor-pointer text-center"
-                popperPlacement="bottom-end"
-            />
+            <div ref={triggerRef} onClick={openCalendar} className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] px-2 py-0.5 shadow-sm h-[34px] cursor-pointer hover:border-gray-400 dark:hover:border-[#555] transition-colors w-full">
+                <Calendar size={12} className="text-gray-400 mr-2 shrink-0" />
+                <span className={`flex-1 text-xs font-medium text-center ${startDate ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>{displayText()}</span>
+                <button onClick={(e) => { e.stopPropagation(); onReset(); }} className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X size={12} /></button>
+            </div>
+
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-[100]" onClick={() => setIsOpen(false)} />
+                    <div className="fixed bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl z-[101] p-2.5 w-[220px]" style={{ top: dropdownPos.top, left: dropdownPos.left }}>
+                        <div className="flex gap-1 mb-2">
+                            <button onClick={setLastMonth} className="flex-1 text-[10px] font-medium py-1 px-1 rounded-md bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Пр. мес.</button>
+                            <button onClick={setCurrentMonth} className="flex-1 text-[10px] font-medium py-1 px-1 rounded-md bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Тек. мес.</button>
+                        </div>
+                        <div className="flex items-center justify-between mb-2">
+                            <button onClick={prevMonth} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-[#222] text-gray-500 dark:text-gray-400 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg></button>
+                            <span className="text-xs font-bold text-gray-900 dark:text-white">{MONTHS[month]} {year}</span>
+                            <button onClick={nextMonth} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-[#222] text-gray-500 dark:text-gray-400 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg></button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-0.5 mb-0.5">{DAYS.map(d => <div key={d} className="text-[9px] font-bold text-gray-400 dark:text-gray-500 text-center py-0.5">{d}</div>)}</div>
+                        <div className="grid grid-cols-7 gap-0.5">
+                            {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} className="w-7 h-7" />)}
+                            {Array.from({ length: daysInMonth }).map((_, i) => {
+                                const day = i + 1;
+                                const date = new Date(year, month, day);
+                                const isStart = isSameDay(date, startDate);
+                                const isEnd = isSameDay(date, endDate);
+                                const inRange = isInRange(date);
+                                const today = isToday(date);
+                                let dayClass = 'w-7 h-7 flex items-center justify-center text-[11px] font-medium rounded cursor-pointer transition-all ';
+                                if (isStart || isEnd) dayClass += 'bg-blue-500 text-white font-bold ';
+                                else if (inRange) dayClass += 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ';
+                                else if (today) dayClass += 'ring-1 ring-blue-400 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-[#222] ';
+                                else dayClass += 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#222] ';
+                                return <button key={day} onClick={() => handleDayClick(day)} className={dayClass}>{day}</button>;
+                            })}
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
-        <button onClick={onReset} className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-            <X size={12} />
-        </button>
-    </div>
-);
+    );
+};
 
 // Mobile Date Range Picker
 const MobileDateRangePicker = ({ startDate, endDate, onChange }) => {
@@ -360,7 +479,10 @@ const GeoMatrixPage = () => {
     const uniqueProducts = useMemo(() => [...new Set(payments.map(p => p.product).filter(Boolean))], [payments]);
     const uniqueTypes = useMemo(() => [...new Set(payments.map(p => p.type).filter(Boolean))], [payments]);
 
-    const resetFilters = () => setFilters({ product: '', type: '' });
+    const resetFilters = () => {
+        setFilters({ product: '', type: '' });
+        setDateRange([null, null]);
+    };
 
     // ✅ ОБНОВЛЕННЫЙ КЛИК ПО ЯЧЕЙКЕ
     const handleCellClick = (countryCode, dateKey, count) => {
@@ -655,22 +777,20 @@ const GeoMatrixPage = () => {
                                 <DesktopSelect label="Методы" value={filters.type} options={uniqueTypes} onChange={(val) => setFilters({ ...filters, type: val })} />
 
                                 <div className="flex items-center gap-2">
-                                    <DesktopDateRangePicker
+                                    <CustomDateRangePicker
                                         startDate={startDate}
                                         endDate={endDate}
                                         onChange={(u) => setDateRange(u)}
                                         onReset={() => setDateRange([null, null])}
                                     />
 
-                                    {(filters.product || filters.type) && (
-                                        <button
-                                            onClick={resetFilters}
-                                            className="bg-gray-200 dark:bg-[#1A1A1A] hover:bg-gray-300 dark:hover:bg-[#333] text-gray-500 dark:text-gray-400 p-1.5 rounded-[6px] transition-colors h-[34px] w-[34px] flex items-center justify-center"
-                                            title="Сбросить фильтры"
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                    )}
+                                    <button
+                                        onClick={resetFilters}
+                                        className="bg-gray-200 dark:bg-[#1A1A1A] hover:bg-gray-300 dark:hover:bg-[#333] text-gray-500 dark:text-gray-400 p-1.5 rounded-[6px] transition-colors h-[34px] w-[34px] flex items-center justify-center"
+                                        title="Сбросить фильтры"
+                                    >
+                                        <X size={14} />
+                                    </button>
                                 </div>
                             </div>
                         </div>

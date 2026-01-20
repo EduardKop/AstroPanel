@@ -135,6 +135,178 @@ const MobileDateRangePicker = ({ startDate, endDate, onChange, label }) => {
     );
 };
 
+// Custom Period Picker (Desktop) with fixed positioning
+const CustomPeriodPicker = ({ startDate, endDate, onChange, label, variant = 'primary' }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [viewDate, setViewDate] = useState(startDate || new Date());
+    const [selecting, setSelecting] = useState('start');
+    const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+    const triggerRef = React.useRef(null);
+
+    const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+        'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+    const formatDate = (date) => {
+        if (!date) return '';
+        const d = String(date.getDate()).padStart(2, '0');
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        return `${d}.${m}`;
+    };
+
+    const openCalendar = () => {
+        if (triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setDropdownPos({ top: rect.bottom + 8, left: Math.max(8, rect.left - 100) });
+        }
+        setIsOpen(true);
+        setSelecting('start');
+    };
+
+    const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+    const getFirstDayOfMonth = (year, month) => {
+        const day = new Date(year, month, 1).getDay();
+        return day === 0 ? 6 : day - 1;
+    };
+
+    const isSameDay = (d1, d2) => {
+        if (!d1 || !d2) return false;
+        return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+    };
+
+    const isInRange = (date) => {
+        if (!startDate || !endDate) return false;
+        return date >= startDate && date <= endDate;
+    };
+
+    const isToday = (date) => isSameDay(date, new Date());
+
+    const handleDayClick = (day) => {
+        const clickedDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+        if (selecting === 'start') {
+            onChange([clickedDate, null]);
+            setSelecting('end');
+        } else {
+            if (clickedDate < startDate) onChange([clickedDate, startDate]);
+            else onChange([startDate, clickedDate]);
+            setSelecting('start');
+            setIsOpen(false);
+        }
+    };
+
+    const setYesterday = () => { const y = new Date(); y.setDate(y.getDate() - 1); onChange([y, y]); setIsOpen(false); };
+    const setTodayFunc = () => { const t = new Date(); onChange([t, t]); setIsOpen(false); };
+    const setLastWeek = () => {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const thisMonday = new Date(today);
+        thisMonday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+        const lastMonday = new Date(thisMonday);
+        lastMonday.setDate(thisMonday.getDate() - 7);
+        const lastSunday = new Date(lastMonday);
+        lastSunday.setDate(lastMonday.getDate() + 6);
+        onChange([lastMonday, lastSunday]);
+        setIsOpen(false);
+    };
+    const setThisWeek = () => {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const monday = new Date(today);
+        monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        onChange([monday, sunday]);
+        setIsOpen(false);
+    };
+    const setLastMonth = () => {
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth(), 0);
+        onChange([firstDay, lastDay]);
+        setIsOpen(false);
+    };
+    const setThisMonth = () => {
+        const today = new Date();
+        onChange([new Date(today.getFullYear(), today.getMonth(), 1), new Date(today.getFullYear(), today.getMonth() + 1, 0)]);
+        setIsOpen(false);
+    };
+
+    const prevMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
+    const nextMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
+
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const daysInMonth = getDaysInMonth(year, month);
+    const firstDay = getFirstDayOfMonth(year, month);
+
+    const displayText = () => {
+        if (startDate && endDate) return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+        if (startDate) return `${formatDate(startDate)} - ...`;
+        return '—';
+    };
+
+    const isPrimary = variant === 'primary';
+    const bgClass = isPrimary ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700';
+    const textClass = isPrimary ? 'text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-gray-300';
+    const iconClass = isPrimary ? 'text-blue-500' : 'text-gray-400';
+    const labelClass = isPrimary ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400';
+
+    return (
+        <div className="flex flex-col items-center gap-1">
+            <span className={`text-[9px] font-medium uppercase tracking-wide ${labelClass}`}>{label}</span>
+            <div ref={triggerRef} onClick={openCalendar} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border cursor-pointer hover:opacity-80 transition-opacity ${bgClass}`}>
+                <CalendarIcon size={12} className={`shrink-0 ${iconClass}`} />
+                <span className={`text-[11px] font-medium ${textClass}`}>{displayText()}</span>
+            </div>
+
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-[100]" onClick={() => setIsOpen(false)} />
+                    <div className="fixed bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-xl z-[101] p-2.5 w-[220px]" style={{ top: dropdownPos.top, left: dropdownPos.left }}>
+                        <div className="space-y-1 mb-2">
+                            <div className="flex gap-1">
+                                <button onClick={setYesterday} className="flex-1 text-[10px] font-medium py-1 px-1 rounded-md bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Вчера</button>
+                                <button onClick={setTodayFunc} className="flex-1 text-[10px] font-medium py-1 px-1 rounded-md bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Сегодня</button>
+                            </div>
+                            <div className="flex gap-1">
+                                <button onClick={setLastWeek} className="flex-1 text-[10px] font-medium py-1 px-1 rounded-md bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Пр. нед.</button>
+                                <button onClick={setThisWeek} className="flex-1 text-[10px] font-medium py-1 px-1 rounded-md bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Тек. нед.</button>
+                            </div>
+                            <div className="flex gap-1">
+                                <button onClick={setLastMonth} className="flex-1 text-[10px] font-medium py-1 px-1 rounded-md bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Пр. мес.</button>
+                                <button onClick={setThisMonth} className="flex-1 text-[10px] font-medium py-1 px-1 rounded-md bg-gray-100 dark:bg-[#222] text-gray-600 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Тек. мес.</button>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between mb-2">
+                            <button onClick={prevMonth} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-[#222] text-gray-500 dark:text-gray-400 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg></button>
+                            <span className="text-xs font-bold text-gray-900 dark:text-white">{MONTHS[month]} {year}</span>
+                            <button onClick={nextMonth} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-[#222] text-gray-500 dark:text-gray-400 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg></button>
+                        </div>
+                        <div className="grid grid-cols-7 gap-0.5 mb-0.5">{DAYS.map(d => <div key={d} className="text-[9px] font-bold text-gray-400 dark:text-gray-500 text-center py-0.5">{d}</div>)}</div>
+                        <div className="grid grid-cols-7 gap-0.5">
+                            {Array.from({ length: firstDay }).map((_, i) => <div key={`empty-${i}`} className="w-7 h-7" />)}
+                            {Array.from({ length: daysInMonth }).map((_, i) => {
+                                const day = i + 1;
+                                const date = new Date(year, month, day);
+                                const isStart = isSameDay(date, startDate);
+                                const isEnd = isSameDay(date, endDate);
+                                const inRange = isInRange(date);
+                                const today = isToday(date);
+                                let dayClass = 'w-7 h-7 flex items-center justify-center text-[11px] font-medium rounded cursor-pointer transition-all ';
+                                if (isStart || isEnd) dayClass += 'bg-blue-500 text-white font-bold ';
+                                else if (inRange) dayClass += 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ';
+                                else if (today) dayClass += 'ring-1 ring-blue-400 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-[#222] ';
+                                else dayClass += 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#222] ';
+                                return <button key={day} onClick={() => handleDayClick(day)} className={dayClass}>{day}</button>;
+                            })}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
 const QuickStatsPage = () => {
     const { payments, schedules, trafficStats, fetchAllData, fetchTrafficStats, managers } = useAppStore();
 
@@ -404,42 +576,30 @@ const QuickStatsPage = () => {
                     {/* RIGHT SIDE: DESKTOP DATE PICKERS */}
                     <div className="hidden md:flex items-end gap-4">
                         {/* PERIOD 1 */}
-                        <div className="flex flex-col items-center gap-1">
-                            <span className="text-[9px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Первый период</span>
-                            <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800">
-                                <CalendarIcon size={12} className="text-blue-500 shrink-0" />
-                                <DatePicker
-                                    selectsRange={true}
-                                    startDate={period1Start}
-                                    endDate={period1End}
-                                    onChange={(update) => setPeriod1(update)}
-                                    dateFormat="dd.MM"
-                                    className="bg-transparent text-[11px] font-medium text-blue-700 dark:text-blue-300 outline-none w-[85px] cursor-pointer text-center"
-                                    popperPlacement="bottom-start"
-                                    portalId="root"
-                                />
-                            </div>
-                        </div>
+                        <CustomPeriodPicker
+                            startDate={period1Start}
+                            endDate={period1End}
+                            onChange={(update) => setPeriod1(update)}
+                            label="Первый период"
+                            variant="primary"
+                        />
 
                         {/* PERIOD 2 */}
-                        <div className="flex flex-col items-center gap-1">
-                            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Второй период</span>
-                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700">
-                                <CalendarIcon size={12} className="text-gray-400 shrink-0" />
-                                <DatePicker
-                                    selectsRange={true}
-                                    startDate={period2Start}
-                                    endDate={period2End}
-                                    onChange={(update) => setPeriod2(update)}
-                                    dateFormat="dd.MM"
-                                    className="bg-transparent text-[11px] font-medium text-gray-600 dark:text-gray-300 outline-none w-[85px] cursor-pointer text-center"
-                                    popperPlacement="bottom-end"
-                                    portalId="root"
-                                />
-                            </div>
-                        </div>
+                        <CustomPeriodPicker
+                            startDate={period2Start}
+                            endDate={period2End}
+                            onChange={(update) => setPeriod2(update)}
+                            label="Второй период"
+                            variant="secondary"
+                        />
 
-                        <button onClick={resetPeriods} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 mb-1"><X size={16} /></button>
+                        <button
+                            onClick={resetPeriods}
+                            className="bg-gray-200 dark:bg-[#1A1A1A] hover:bg-gray-300 dark:hover:bg-[#333] text-gray-500 dark:text-gray-400 p-1.5 rounded-[6px] transition-colors h-[34px] w-[34px] flex items-center justify-center mb-1"
+                            title="Сбросить периоды"
+                        >
+                            <X size={14} />
+                        </button>
                     </div>
 
                 </div>
