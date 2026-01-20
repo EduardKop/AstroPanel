@@ -346,15 +346,23 @@ const ConsQuickStatsPage = () => {
         }
     }, [fetchTrafficStats, period1Start, period1End, period2Start, period2End]);
 
+    // 🔥 Strict Filter: Only Consultant Data (for Sales/Deposits)
+    const consPayments = useMemo(() => payments.filter(p => p.managerRole === 'Consultant'), [payments]);
+
+    // 🔥 Sales Dept Data (for Traffic/Leads)
+    const salesDeptPayments = useMemo(() => payments.filter(p => p.managerRole === 'Sales' || p.managerRole === 'SeniorSales'), [payments]);
+
     const uniqueGeos = useMemo(() => {
         const geos = new Set();
-        payments.forEach(p => p.country && geos.add(p.country));
+        consPayments.forEach(p => p.country && geos.add(p.country));
         schedules.forEach(s => {
             if (s.geo_code) s.geo_code.split(',').forEach(g => geos.add(g.trim()));
         });
-        if (trafficStats) Object.keys(trafficStats).forEach(g => geos.add(g));
+        // Also add geos from sales payments as they are now the traffic source
+        salesDeptPayments.forEach(p => p.country && geos.add(p.country));
+
         return Array.from(geos).sort();
-    }, [payments, schedules, trafficStats]);
+    }, [consPayments, salesDeptPayments, schedules]);
 
     const geoData = useMemo(() => {
         // Period 1 dates (left column)
@@ -365,8 +373,8 @@ const ConsQuickStatsPage = () => {
         const p2EndStr = period2End ? toYMD(period2End) : p2StartStr;
 
         const managerMap = managers.reduce((acc, m) => ({ ...acc, [m.id]: m.name }), {});
-        // Create a set of visible manager IDs
-        const visibleManagerIds = new Set(managers.filter(m => m.show_in_schedule !== false).map(m => m.id));
+        // Create a set of visible manager IDs (ONLY CONSULTANTS)
+        const visibleManagerIds = new Set(managers.filter(m => m.show_in_schedule !== false && m.role === 'Consultant').map(m => m.id));
 
         const getScheduledManagers = (sDateStart, sDateEnd, sGeo) => {
             const foundIds = new Set();
@@ -400,34 +408,25 @@ const ConsQuickStatsPage = () => {
                 let transactionCount = 0;
                 let trafficCount = 0;
 
-                // Sales
-                payments.forEach(p => {
-                    // 🔥 ФИЛЬТР ПО РОЛИ: Только Consultant
-                    if (p.managerRole !== 'Consultant') return;
-
+                // Sales (Consultants)
+                consPayments.forEach(p => {
                     const pDate = p.transactionDate.slice(0, 10);
                     if (p.country === geo && pDate >= start && pDate <= end) {
                         if (filters.source !== 'all' && p.source !== filters.source) return;
                         salesCount++;
                     }
-                    // Separate transaction count logic if needed differently, but here salesCount IS transaction count
                 });
 
-                // Traffic
-                if (trafficStats && trafficStats[geo]) {
-                    Object.entries(trafficStats[geo]).forEach(([dateStr, val]) => {
-                        if (dateStr >= start && dateStr <= end) {
-                            if (typeof val === 'object' && val !== null) {
-                                if (filters.source === 'all') trafficCount += (val.all || 0);
-                                else if (filters.source === 'direct') trafficCount += (val.direct || 0);
-                                else if (filters.source === 'comments') trafficCount += (val.comments || 0);
-                                else if (filters.source === 'whatsapp') trafficCount += (val.whatsapp || 0);
-                            } else {
-                                trafficCount += (Number(val) || 0);
-                            }
-                        }
-                    });
-                }
+                // Traffic (Sales Dept Payments)
+                salesDeptPayments.forEach(p => {
+                    const pDate = p.transactionDate.slice(0, 10);
+                    if (p.country === geo && pDate >= start && pDate <= end) {
+                        // Optional: Apply source filter if needed, though usually traffic is raw
+                        // For now, assuming we count all sales as traffic, or apply same source filter
+                        if (filters.source !== 'all' && p.source !== filters.source) return;
+                        trafficCount++;
+                    }
+                });
 
                 return {
                     sales: salesCount,
@@ -628,15 +627,15 @@ const ConsQuickStatsPage = () => {
                         </tr>
                         <tr className="border-b border-gray-200 dark:border-[#333] text-[10px]">
                             {/* Period 1 columns */}
-                            <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400 border-l border-gray-200 dark:border-[#333]">Лиды</th>
-                            <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400">Продажи</th>
+                            <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400 border-l border-gray-200 dark:border-[#333]">Первые продажи (ОП)</th>
+                            <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400">Повторные продажи</th>
                             <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400">Конв%</th>
                             <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400">Ср.чек</th>
                             <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400">Чек</th>
                             {/* Period 2 columns with diff */}
-                            <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400 border-l border-gray-200 dark:border-[#333]">Лиды</th>
+                            <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400 border-l border-gray-200 dark:border-[#333]">Первые продажи (ОП)</th>
                             <th className="px-1 py-1.5 text-center font-medium text-gray-400 dark:text-gray-500 text-[8px]">±</th>
-                            <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400">Продажи</th>
+                            <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400">Повторные продажи</th>
                             <th className="px-1 py-1.5 text-center font-medium text-gray-400 dark:text-gray-500 text-[8px]">±</th>
                             <th className="px-2 py-1.5 text-center font-medium text-gray-500 dark:text-gray-400">Конв%</th>
                             <th className="px-1 py-1.5 text-center font-medium text-gray-400 dark:text-gray-500 text-[8px]">±</th>
@@ -753,12 +752,12 @@ const ConsQuickStatsPage = () => {
 
                             {/* METRIC ROWS */}
                             <MetricItem
-                                label="Продажи"
+                                label="Повторные продажи"
                                 current={geo.current.sales}
                                 previous={geo.previous.sales}
                             />
                             <MetricItem
-                                label="Трафик"
+                                label="Первые продажи (ОП)"
                                 current={geo.current.traffic}
                                 previous={geo.previous.traffic}
                             />

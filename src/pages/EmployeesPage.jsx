@@ -48,6 +48,11 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
       result = result.filter(mgr => mgr.geo && Array.isArray(mgr.geo) && mgr.geo.includes(filters.geo));
     }
 
+    // 2.1 Фильтр по РОЛИ (из выпадающего списка)
+    if (filters.role) {
+      result = result.filter(m => m.role === filters.role);
+    }
+
     // 3. Сортировка (Активные выше)
     result.sort((a, b) => {
       // Приоритет 1: Сначала онлайн
@@ -62,11 +67,16 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     });
 
     return result;
-  }, [managers, targetRole, excludeRole, filters.geo, onlineUsers]);
+  }, [managers, targetRole, excludeRole, filters.geo, filters.role, onlineUsers]);
 
   // Собираем уникальные ГЕО для фильтра
   const uniqueGeos = useMemo(() => {
     return [...new Set(managers.flatMap(m => m.geo || []))].sort();
+  }, [managers]);
+
+  // Собираем уникальные Роли для фильтра
+  const uniqueRoles = useMemo(() => {
+    return [...new Set(managers.map(m => m.role).filter(Boolean))].sort();
   }, [managers]);
 
   const canManage = currentUser && ['Admin', 'C-level', 'SeniorSales'].includes(currentUser.role);
@@ -132,11 +142,13 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
           )}
 
           <div className="flex items-center gap-2">
+            <SelectFilter label="Роль" value={filters.role || ''} options={uniqueRoles} onChange={(val) => setFilters(prev => ({ ...prev, role: val }))} />
             <SelectFilter label="ГЕО" value={filters.geo} options={uniqueGeos} onChange={(val) => setFilters(prev => ({ ...prev, geo: val }))} />
-            {filters.geo && (
+            {(filters.geo || filters.role) && (
               <button
-                onClick={() => setFilters({ geo: '' })}
+                onClick={() => setFilters({ geo: '', role: '' })}
                 className="text-red-500 bg-red-500/10 hover:bg-red-500/20 p-1.5 rounded-[6px] transition-colors"
+                title="Сбросить фильтры"
               >
                 <XCircle size={14} />
               </button>

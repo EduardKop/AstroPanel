@@ -172,7 +172,7 @@ const PaymentsPage = () => {
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
 
-  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all' });
+  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all' });
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
@@ -202,7 +202,7 @@ const PaymentsPage = () => {
   }, [payments]);
 
   const resetFilters = () => {
-    setFilters({ manager: '', country: '', product: '', type: '', source: 'all' });
+    setFilters({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all' });
     setDateRange(getLastWeekRange());
   };
   const toggleSort = () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
@@ -235,6 +235,15 @@ const PaymentsPage = () => {
       if (filters.product && item.product !== filters.product) return false;
       if (filters.type && item.type !== filters.type) return false;
       if (filters.source !== 'all' && item.source !== filters.source) return false;
+
+      // Filter by Department
+      if (filters.department !== 'all') {
+        if (filters.department === 'sales') {
+          if (item.managerRole !== 'Sales' && item.managerRole !== 'SeniorSales') return false;
+        } else if (filters.department === 'consultant') {
+          if (item.managerRole !== 'Consultant') return false;
+        }
+      }
 
       return true;
     });
@@ -280,12 +289,22 @@ const PaymentsPage = () => {
         {/* Все фильтры в один ряд */}
         <div className="flex flex-wrap items-center gap-2 justify-between">
 
-          {/* Левая часть: Кнопки источников */}
-          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
-            <button onClick={() => setFilters(prev => ({ ...prev, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
+          {/* Левая часть: Кнопки источников и Департаментов */}
+          <div className="flex flex-col md:flex-row gap-2">
+            {/* Кнопки источников */}
+            <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
+              <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
+            </div>
+
+            {/* Кнопки Департаментов */}
+            <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
+              <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
+              <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
+            </div>
           </div>
 
           {/* Правая часть: Фильтры + Календарь + Sort */}

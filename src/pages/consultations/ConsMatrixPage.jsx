@@ -413,7 +413,20 @@ const ConsMatrixPage = () => {
             d.setDate(d.getDate() + 1);
         }
         return list;
+        return list;
     }, [startDate, endDate]);
+
+    // 🔥 RAW ФИЛЬТРАЦИЯ (SALES DEPT - TRAFFIC SOURCE)
+    const salesDeptPayments = useMemo(() => {
+        return payments.filter(p => {
+            // Role check
+            if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
+            // Filters (optional, but consistent with other pages)
+            if (filters.product && p.product !== filters.product) return false;
+            if (filters.type && p.type !== filters.type) return false;
+            return true;
+        });
+    }, [payments, filters]);
 
     const { matrixData, totalsByCountry, totalsByDate, grandTotal } = useMemo(() => {
         const data = {};
@@ -512,12 +525,22 @@ const ConsMatrixPage = () => {
         const countryInfo = countriesList.find(c => c.code === countryCode);
 
         // 2. Достаем трафик (заявки) из стора для конкретной ячейки
+        // 2. Достаем трафик (заявки) из стора для конкретной ячейки - ТЕПЕРЬ ЭТО ОПЛАТЫ ОТДЕЛА ПРОДАЖ
         let cellTraffic = 0;
-        if (trafficStats && trafficStats[countryCode] && trafficStats[countryCode][dateKey]) {
-            const val = trafficStats[countryCode][dateKey];
-            // val может быть объектом {all, direct} или числом
-            cellTraffic = typeof val === 'object' ? (val.all || 0) : (Number(val) || 0);
-        }
+        salesDeptPayments.forEach(p => {
+            if (p.country !== countryCode) return;
+            // Date check
+            let pDate;
+            try {
+                pDate = typeof p.transactionDate === 'string'
+                    ? p.transactionDate.split(/[T ]/)[0]
+                    : new Date(p.transactionDate).toISOString().split('T')[0];
+            } catch (e) { return; }
+
+            if (pDate === dateKey) {
+                cellTraffic++;
+            }
+        });
 
         setSelectedCell({
             countryCode,
@@ -572,12 +595,20 @@ const ConsMatrixPage = () => {
                 });
             }
 
-            // Leads from trafficStats
-            dateList.forEach(date => {
-                const dKey = getLocalDateKey(date);
-                if (trafficStats && trafficStats[country.code] && trafficStats[country.code][dKey]) {
-                    const val = trafficStats[country.code][dKey];
-                    totalLeads += typeof val === 'object' ? (val.all || 0) : (Number(val) || 0);
+            // Leads from Sales Dept Payments (Traffic)
+            salesDeptPayments.forEach(p => {
+                if (p.country !== country.code) return;
+
+                let pDate;
+                try {
+                    pDate = typeof p.transactionDate === 'string'
+                        ? p.transactionDate.split(/[T ]/)[0]
+                        : new Date(p.transactionDate).toISOString().split('T')[0];
+                } catch (e) { return; }
+
+                const dKey = getLocalDateKey(new Date(pDate));
+                if (totalsByDate[dKey] !== undefined) { // Check if date is in range (approximated by totalsByDate keys which match dateList)
+                    totalLeads++;
                 }
             });
         });
@@ -637,12 +668,21 @@ const ConsMatrixPage = () => {
                                     const dateKey = getLocalDateKey(date);
                                     const sales = matrixData[dateKey]?.[country.code] || 0;
 
-                                    // Traffic
+                                    // Traffic (Sales Dept Payments)
                                     let traffic = 0;
-                                    if (trafficStats && trafficStats[country.code] && trafficStats[country.code][dateKey]) {
-                                        const val = trafficStats[country.code][dateKey];
-                                        traffic = typeof val === 'object' ? (val.all || 0) : (Number(val) || 0);
-                                    }
+                                    salesDeptPayments.forEach(p => {
+                                        if (p.country !== country.code) return;
+                                        let pDate;
+                                        try {
+                                            pDate = typeof p.transactionDate === 'string'
+                                                ? p.transactionDate.split(/[T ]/)[0]
+                                                : new Date(p.transactionDate).toISOString().split('T')[0];
+                                        } catch (e) { return; }
+
+                                        if (pDate === dateKey) {
+                                            traffic++;
+                                        }
+                                    });
 
                                     // Revenue logic per day (simplified for now, ideally pre-calc)
                                     // ... skipped for performance, focusing on key requested metrics

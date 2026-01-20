@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart,
 } from 'lucide-react'
 
 import { supabase } from './services/supabaseClient';
@@ -47,13 +47,31 @@ import ConsQuickStatsPage from './pages/consultations/ConsQuickStatsPage';
 import ConsMatrixPage from './pages/consultations/ConsMatrixPage';
 import ConsGeoPage from './pages/consultations/ConsGeoPage';
 import ConsStatsPage from './pages/consultations/ConsStatsPage';
+import ConsConversionsPage from './pages/consultations/ConsConversionsPage';
+
+import GeoSettingsPage from './pages/GeoSettingsPage';
 
 
-const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
+const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild, children, isOpen, onToggle }) => {
   const location = useLocation();
   const isActive = location.pathname === path;
   const baseClasses = `group w-full flex items-center gap-2.5 px-3 py-2.5 md:py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-sm md:text-xs font-medium ${isChild ? 'pl-8' : ''}`;
   const stateClasses = isActive ? 'bg-gray-200 text-black dark:bg-[#2A2A2A] dark:text-white font-semibold' : 'text-gray-600 dark:text-[#888888] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] hover:text-black dark:hover:text-[#EAEAEA]';
+
+  if (children) {
+    return (
+      <>
+        <button onClick={onToggle} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+          <div className="flex items-center gap-2.5"><Icon size={16} /><span>{label}</span></div>
+          <ChevronRight size={12} className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+        </button>
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+          {children}
+        </div>
+      </>
+    );
+  }
+
   return (
     <Link to={path} onClick={onClick} className={`${baseClasses} ${stateClasses} ${className || ''}`}>
       <Icon size={isChild ? 16 : 18} className={isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'} />
@@ -94,9 +112,11 @@ function App() {
     const saved = localStorage.getItem('theme');
     return saved ? saved === 'dark' : true; // Default to true (dark)
   })
+
   const [isEmployeesOpen, setIsEmployeesOpen] = useState(false);
   const [isSalesOpen, setIsSalesOpen] = useState(false);
   const [isConsOpen, setIsConsOpen] = useState(false);
+  const [isCLevelOpen, setIsCLevelOpen] = useState(false); // New state for C-Level menu
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -232,7 +252,7 @@ function App() {
             {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
             {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
             {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
-            {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/quick-stats" />}
+
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
 
 
@@ -264,6 +284,7 @@ function App() {
               <SidebarItem icon={LayoutGrid} label="Матрица" path="/cons/matrix" isChild />
               <SidebarItem icon={Globe} label="География" path="/cons/geo" isChild />
               <SidebarItem icon={LineChart} label="Аналитика" path="/cons/stats" isChild />
+              <SidebarItem icon={PieChart} label="Конверсии" path="/cons/conversions" isChild />
             </div>
 
 
@@ -316,7 +337,8 @@ function App() {
             {user.role === 'C-level' && (
               <>
                 <div className="px-3 py-2 text-[10px] font-bold text-amber-500 dark:text-amber-500 uppercase tracking-wider mt-2 border-t border-gray-100 dark:border-[#222] pt-4">C-Level</div>
-                <SidebarItem icon={Settings} label="Настройки" path="/c-level-settings" className="text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10" />
+                <SidebarItem icon={Settings} label="Настройки ролей" path="/c-level-settings" className="text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10" />
+                <SidebarItem icon={Globe} label="Управление ГЕО" path="/geo-settings" className="text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10" />
               </>
             )}
           </nav>
@@ -370,6 +392,7 @@ function App() {
               <Route path="/cons/matrix" element={<ConsMatrixPage />} />
               <Route path="/cons/geo" element={<ConsGeoPage />} />
               <Route path="/cons/stats" element={<ConsStatsPage />} />
+              <Route path="/cons/conversions" element={<ConsConversionsPage />} />
 
               <Route path="/sales-team" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
               <Route path="/consultants" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
@@ -394,6 +417,7 @@ function App() {
 
               {/* ✅ C-LEVEL SETTINGS: ТОЛЬКО C-LEVEL */}
               <Route path="/c-level-settings" element={<ProtectedRoute allowedRoles={['C-level']}><CLevelSettingsPage /></ProtectedRoute>} />
+              <Route path="/geo-settings" element={<ProtectedRoute allowedRoles={['C-level']}><GeoSettingsPage /></ProtectedRoute>} />
 
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>

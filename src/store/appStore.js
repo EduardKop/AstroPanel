@@ -393,6 +393,7 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_product_rates' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_settings' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => get().fetchAllData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'countries' }, () => get().fetchAllData(true))
       .subscribe();
 
     return () => supabase.removeChannel(channel);

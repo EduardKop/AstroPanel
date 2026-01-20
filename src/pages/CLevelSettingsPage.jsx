@@ -66,7 +66,7 @@ const CLevelSettingsPage = () => {
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-3 dark:text-white">
                         <Settings className="text-amber-500" />
-                        C-Level Настройки
+                        C-Level Настройки ролей
                     </h1>
                     <p className="text-gray-500 text-sm mt-1">Глобальное управление ролями и доступами</p>
                 </div>

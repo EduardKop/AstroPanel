@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import {
@@ -11,7 +11,7 @@ const ROLES = ['Sales', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manage
 
 const AddEmployeePage = () => {
   const navigate = useNavigate();
-  const { logActivity } = useAppStore();
+  const { logActivity, user: currentUser } = useAppStore();
   const [loading, setLoading] = useState(false);
 
   const [avatarFile, setAvatarFile] = useState(null);
@@ -39,6 +39,24 @@ const AddEmployeePage = () => {
     };
     fetchCountries();
   }, []);
+
+  // ✅ 3. Фильтрация доступных ролей
+  const availableRoles = useMemo(() => {
+    if (!currentUser) return [];
+
+    // C-level: Может добавлять всех (включая других C-level и Admin)
+    if (currentUser.role === 'C-level') {
+      return ROLES;
+    }
+
+    // Admin: Может добавлять ТОЛЬКО Sales, Consultant, Manager, SeniorSales
+    if (currentUser.role === 'Admin') {
+      return ['Sales', 'Consultant', 'Manager', 'SeniorSales'];
+    }
+
+    // Остальные (на всякий случай, хотя у них нет доступа к этой странице)
+    return [];
+  }, [currentUser]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -185,7 +203,7 @@ const AddEmployeePage = () => {
                 <label className="text-xs font-bold text-gray-400 uppercase ml-1">Роль / Отдел</label>
                 <div className="relative">
                   <select name="role" value={formData.role} onChange={handleChange} className="w-full appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium dark:text-white focus:ring-2 focus:ring-blue-500 outline-none">
-                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                    {availableRoles.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                   <Briefcase size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>

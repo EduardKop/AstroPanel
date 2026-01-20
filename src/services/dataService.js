@@ -153,3 +153,23 @@ export const fetchTrafficData = async (startDate, endDate) => {
     return {};
   }
 };
+
+// --- 7. УПРАВЛЕНИЕ ГЕО (COUNTRIES) ---
+export const addCountry = async (countryData) => {
+  const { error } = await supabase
+    .from('countries')
+    .insert([countryData]);
+
+  if (error) throw error;
+  return true;
+};
+
+export const deleteCountry = async (code) => {
+  const { error } = await supabase
+    .from('countries')
+    .delete()
+    .eq('code', code);
+
+  if (error) throw error;
+  return true;
+};

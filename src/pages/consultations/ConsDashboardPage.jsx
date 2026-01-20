@@ -520,44 +520,36 @@ const ConsDashboardPage = () => {
     return data.sort((a, b) => new Date(b.transactionDate) - new Date(a.transactionDate));
   }, [payments, startDate, endDate, filters, isRestrictedUser, currentUser]);
 
+  // 🔥 RAW ФИЛЬТРАЦИЯ (SALES DEPT - TRAFFIC SOURCE)
+  const salesDeptPayments = useMemo(() => {
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
+    return payments.filter(p => {
+      // Role check
+      if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
+      // Date check
+      const pDate = p.transactionDate.slice(0, 10);
+      if (pDate < startStr || pDate > endStr) return false;
+      // Country filter (if applied)
+      if (filters.country && p.country !== filters.country) return false;
+      // Source filter (if applied)
+      if (filters.source !== 'all' && p.source !== filters.source) return false;
+
+      return true;
+    });
+  }, [payments, startDate, endDate, filters.country, filters.source]);
+
   const stats = useMemo(() => {
     const totalEur = filteredData.reduce((sum, item) => sum + (item.amountEUR || 0), 0);
     const count = filteredData.length;
-    let traffic = 0;
 
-    if (trafficStats && Object.keys(trafficStats).length > 0) {
-      const startStr = startDate ? toYMD(startDate) : '0000-00-00';
-      const endStr = endDate ? toYMD(endDate) : '9999-99-99';
-
-      const countTrafficForGeo = (geo) => {
-        const geoData = trafficStats[geo];
-        if (!geoData) return 0;
-        let sum = 0;
-        Object.entries(geoData).forEach(([dateStr, val]) => {
-          if (dateStr < startStr || dateStr > endStr) return;
-
-          if (typeof val === 'object' && val !== null) {
-            if (filters.source === 'all') sum += (val.all || 0);
-            else if (filters.source === 'direct') sum += (val.direct || 0);
-            else if (filters.source === 'comments') sum += (val.comments || 0);
-            else if (filters.source === 'whatsapp') sum += (val.whatsapp || 0);
-          } else {
-            sum += (Number(val) || 0);
-          }
-        });
-        return sum;
-      };
-
-      if (filters.country) {
-        traffic = countTrafficForGeo(filters.country);
-      } else {
-        traffic = Object.keys(trafficStats).reduce((acc, geo) => acc + countTrafficForGeo(geo), 0);
-      }
-    }
+    // Traffic = Count of Sales Dept Payments
+    const traffic = salesDeptPayments.length;
 
     const conversion = traffic > 0 ? ((count / traffic) * 100).toFixed(2) : "0.00";
     return { traffic, conversion, totalEur: totalEur.toFixed(2), count };
-  }, [filteredData, trafficStats, filters.country, filters.source, startDate, endDate]);
+  }, [filteredData, salesDeptPayments]);
 
   // ✅ РАСЧЕТ KPI ПО ИСТОЧНИКАМ
   // Direct, Comments, WhatsApp - всегда показывает полные данные
@@ -633,22 +625,8 @@ const ConsDashboardPage = () => {
     });
 
     return Object.entries(statsByGeo).map(([code, data]) => {
-      let realTraffic = 0;
-      if (trafficStats && trafficStats[code]) {
-        const startStr = startDate ? toYMD(startDate) : '0000-00-00';
-        const endStr = endDate ? toYMD(endDate) : '9999-99-99';
-
-        Object.entries(trafficStats[code]).forEach(([dateStr, val]) => {
-          if (dateStr < startStr || dateStr > endStr) return;
-          if (typeof val === 'object' && val !== null) {
-            if (filters.source === 'all') realTraffic += (val.all || 0);
-            else if (filters.source === 'direct') realTraffic += (val.direct || 0);
-            else if (filters.source === 'comments') realTraffic += (val.comments || 0);
-          } else {
-            realTraffic += (Number(val) || 0);
-          }
-        });
-      }
+      // Traffic for this specific country from Sales Dept
+      const realTraffic = salesDeptPayments.filter(p => p.country === code).length;
 
       const cr = realTraffic > 0
         ? ((data.count / realTraffic) * 100).toFixed(1)
@@ -662,7 +640,7 @@ const ConsDashboardPage = () => {
         cr: cr
       };
     }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 5);
-  }, [filteredData, trafficStats, startDate, endDate, filters.source]);
+  }, [filteredData, salesDeptPayments]);
 
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const resetFilters = () => {
@@ -789,9 +767,9 @@ const ConsDashboardPage = () => {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-px bg-gray-100 dark:bg-[#222] border border-gray-100 dark:border-[#222] rounded-lg overflow-hidden mb-4 transition-colors duration-200 w-full">
-              <TechStatItem icon={CreditCard} label="Продажи" value={stats.count} />
+              <TechStatItem icon={CreditCard} label="Повторные продажи" value={stats.count} />
               <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
-              <TechStatItem icon={Users} label="Трафик" value={stats.traffic} />
+              <TechStatItem icon={Users} label="Первые продажи" value={stats.traffic} />
               <TechStatItem icon={Percent} label="Конверсия" value={`${stats.conversion}%`} valueColor={getCRColor(stats.conversion)} />
             </div>
 
@@ -816,24 +794,12 @@ const ConsDashboardPage = () => {
           </div>
         </div>
 
-        {/* 2. KPI CARDS (First Dynamic, Second Static) */}
+        {/* 2. KPI CARDS (Only Consultants / Repeat Sales) */}
         <div className="col-span-12 md:col-span-6 lg:col-span-3 xl:col-span-4 flex flex-col gap-3 min-w-0">
 
           <ProductCard
-            title="Отдел Продаж"
-            subtitle="Первые продажи"
-            mainValue={filters.source === 'whatsapp' ? kpiData.whatsapp.sales : filters.source === 'comments' ? 0 : filters.source === 'all' ? (kpiData.direct.sales + kpiData.whatsapp.sales) : kpiData.direct.sales}
-            mainType="count"
-            data={[
-              { label: 'Активных менеджеров', val: filters.source === 'whatsapp' ? kpiData.whatsapp.active : filters.source === 'comments' ? 0 : filters.source === 'all' ? (kpiData.direct.active + kpiData.whatsapp.active) : kpiData.direct.active },
-              { label: 'Сумма депозитов', val: filters.source === 'whatsapp' ? `€${kpiData.whatsapp.depositSum}` : filters.source === 'comments' ? '€0.00' : filters.source === 'all' ? `€${(Number(kpiData.direct.depositSum) + Number(kpiData.whatsapp.depositSum)).toFixed(2)}` : `€${kpiData.direct.depositSum}` },
-              { label: 'Средний чек', val: filters.source === 'whatsapp' ? `€${kpiData.whatsapp.sales > 0 ? (Number(kpiData.whatsapp.depositSum) / kpiData.whatsapp.sales).toFixed(2) : '0.00'}` : filters.source === 'comments' ? '€0.00' : filters.source === 'all' ? `€${(kpiData.direct.sales + kpiData.whatsapp.sales) > 0 ? ((Number(kpiData.direct.depositSum) + Number(kpiData.whatsapp.depositSum)) / (kpiData.direct.sales + kpiData.whatsapp.sales)).toFixed(2) : '0.00'}` : `€${kpiData.direct.sales > 0 ? (Number(kpiData.direct.depositSum) / kpiData.direct.sales).toFixed(2) : '0.00'}` }
-            ]}
-          />
-
-          <ProductCard
             title="Консультанты"
-            subtitle="Продажи с Консультаций"
+            subtitle="Повторные продажи"
             mainValue={(filters.source === 'comments' || filters.source === 'all') ? kpiData.comments.sales : 0}
             mainType="count"
             data={[

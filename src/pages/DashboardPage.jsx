@@ -448,12 +448,30 @@ const DashboardPage = () => {
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
 
-  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all', showMobileFilters: false });
+  const [filters, setFilters] = useState(() => {
+    const savedSource = localStorage.getItem('dash_source_filter');
+    const savedDept = localStorage.getItem('dash_dept_filter');
+    return {
+      manager: '',
+      country: '',
+      product: '',
+      type: '',
+      source: savedSource || 'all',
+      department: savedDept || 'all',
+      showMobileFilters: false
+    };
+  });
   const [expandedId, setExpandedId] = useState(null);
 
   const hasActiveFilters = useMemo(() => {
     return !!(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all');
   }, [filters]);
+
+  // Save filters to LocalStorage
+  useEffect(() => {
+    localStorage.setItem('dash_source_filter', filters.source);
+    localStorage.setItem('dash_dept_filter', filters.department);
+  }, [filters.source, filters.department]);
 
   // 🔄 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ДАННЫХ ПРИ МОНТИРОВАНИИ
   useEffect(() => {
@@ -486,6 +504,28 @@ const DashboardPage = () => {
     };
   }, [payments]);
 
+  // 1. GLOBAL RANKING LOGIC (from global payments)
+  const paymentRanks = useMemo(() => {
+    const ranks = new Map(); // Map<PaymentID, RankNumber>
+    const grouped = {};
+
+    payments.forEach(p => {
+      const link = p.crm_link ? p.crm_link.trim().toLowerCase() : null;
+      if (!link || link === '—') return;
+      if (!grouped[link]) grouped[link] = [];
+      grouped[link].push(p);
+    });
+
+    Object.values(grouped).forEach(userPayments => {
+      // Sort by date ascending
+      userPayments.sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
+      userPayments.forEach((p, index) => {
+        ranks.set(p.id, index + 1);
+      });
+    });
+    return ranks;
+  }, [payments]);
+
   // 🔥 RAW ФИЛЬТРАЦИЯ
   const filteredData = useMemo(() => {
     const startStr = startDate ? toYMD(startDate) : '0000-00-00';
@@ -512,6 +552,15 @@ const DashboardPage = () => {
         if (item.source !== filters.source) return false;
       }
 
+      // Фильтр по отделу
+      if (filters.department !== 'all') {
+        if (filters.department === 'sales') {
+          if (item.managerRole !== 'Sales' && item.managerRole !== 'SeniorSales') return false;
+        } else if (filters.department === 'consultant') {
+          if (item.managerRole !== 'Consultant') return false;
+        }
+      }
+
       return true;
     });
 
@@ -522,6 +571,21 @@ const DashboardPage = () => {
     const totalEur = filteredData.reduce((sum, item) => sum + (item.amountEUR || 0), 0);
     const count = filteredData.length;
     let traffic = 0;
+
+    // New metrics
+    let uniqueSales = 0;
+    let secondSales = 0;
+    const activeManagersSet = new Set();
+
+    // Count ranks and managers from filtered Data
+    filteredData.forEach(p => {
+      if (p.manager) activeManagersSet.add(p.manager);
+
+      // Use Global Rank
+      const rank = paymentRanks.get(p.id);
+      if (rank === 1) uniqueSales++;
+      if (rank === 2) secondSales++;
+    });
 
     if (trafficStats && Object.keys(trafficStats).length > 0) {
       const startStr = startDate ? toYMD(startDate) : '0000-00-00';
@@ -554,8 +618,22 @@ const DashboardPage = () => {
     }
 
     const conversion = traffic > 0 ? ((count / traffic) * 100).toFixed(2) : "0.00";
-    return { traffic, conversion, totalEur: totalEur.toFixed(2), count };
-  }, [filteredData, trafficStats, filters.country, filters.source, startDate, endDate]);
+    // Conversion from Traffic to Unique
+    const conversionUnique = traffic > 0 ? ((uniqueSales / traffic) * 100).toFixed(2) : "0.00";
+    const avgCheck = count > 0 ? (totalEur / count).toFixed(2) : "0";
+
+    return {
+      traffic,
+      conversion,
+      totalEur: totalEur.toFixed(2),
+      count,
+      uniqueSales,
+      secondSales,
+      conversionUnique,
+      avgCheck,
+      activeManagers: activeManagersSet.size
+    };
+  }, [filteredData, trafficStats, filters, startDate, endDate, paymentRanks]);
 
   // ✅ РАСЧЕТ KPI ПО ИСТОЧНИКАМ
   // Direct, Comments, WhatsApp - всегда показывает полные данные
@@ -664,7 +742,7 @@ const DashboardPage = () => {
 
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const resetFilters = () => {
-    setFilters({ manager: '', country: '', product: '', type: '', source: 'all' });
+    setFilters({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all' });
     setDateRange(getLastWeekRange());
   };
 
@@ -678,7 +756,7 @@ const DashboardPage = () => {
         <div className="flex items-center justify-center md:justify-start gap-2 mb-3">
           <h2 className="text-base md:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 text-center md:text-left min-w-0">
             <LayoutDashboard size={16} className="text-blue-600 dark:text-blue-500 shrink-0 md:w-5 md:h-5" />
-            <span>Панель отдела продаж</span>
+            <span>Обзор</span>
           </h2>
         </div>
 
@@ -688,12 +766,22 @@ const DashboardPage = () => {
         <div className="w-full md:w-auto mx-auto max-w-[90%] md:max-w-none">
           <div className="flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2 md:justify-between">
 
-            {/* Кнопки источников */}
-            <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full md:w-auto justify-center">
-              <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
-              <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
-              <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
-              <button onClick={() => setFilters(prev => ({ ...prev, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
+            {/* ГРУППА КНОПОК СЛЕВА */}
+            <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+              {/* Кнопки источников */}
+              <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full md:w-auto justify-center">
+                <button onClick={() => setFilters(prev => ({ ...prev, source: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.source === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, source: 'direct' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageCircle size={10} />Direct</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, source: 'comments' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><MessageSquare size={10} />Comm</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, source: 'whatsapp' }))} className={`px-2 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${filters.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 dark:text-green-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><Phone size={10} />WP</button>
+              </div>
+
+              {/* Кнопки Департаментов */}
+              <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full md:w-auto justify-center">
+                <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
+              </div>
             </div>
 
             {/* Фильтры */}
@@ -786,11 +874,21 @@ const DashboardPage = () => {
               </h3>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-px bg-gray-100 dark:bg-[#222] border border-gray-100 dark:border-[#222] rounded-lg overflow-hidden mb-4 transition-colors duration-200 w-full">
-              <TechStatItem icon={CreditCard} label="Продажи" value={stats.count} />
-              <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-px bg-gray-100 dark:bg-[#222] border border-gray-100 dark:border-[#222] rounded-lg overflow-hidden mb-4 transition-colors duration-200 w-full">
+              {/* Row 1 */}
               <TechStatItem icon={Users} label="Трафик" value={stats.traffic} />
+              <TechStatItem icon={CreditCard} label="Продажи" value={stats.count} />
               <TechStatItem icon={Percent} label="Конверсия" value={`${stats.conversion}%`} valueColor={getCRColor(stats.conversion)} />
+
+              {/* Row 2 */}
+              <TechStatItem icon={Trophy} label="Уникальные" value={stats.uniqueSales} highlight />
+              <TechStatItem icon={Layers} label="Вторые продажи" value={stats.secondSales} />
+              <TechStatItem icon={Activity} label="Конв. (Уник)" value={`${stats.conversionUnique}%`} valueColor={getCRColor(stats.conversionUnique)} />
+
+              {/* Row 3 */}
+              <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
+              <TechStatItem icon={DollarSign} label="Средний чек" value={`€${Number(stats.avgCheck).toLocaleString()}`} />
+              <TechStatItem icon={Users} label="Кол-во менеджеров" value={stats.activeManagers} />
             </div>
 
             <div className="flex-1 min-h-[100px] w-full min-w-0">

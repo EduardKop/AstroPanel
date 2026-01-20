@@ -523,13 +523,9 @@ const ConsStatsPage = () => {
   }, [currentUser]);
 
   // --- ЗАГРУЗКА ТРАФИКА ---
-  useEffect(() => {
-    if (fetchTrafficStats) {
-      const isoStart = startDate ? new Date(startDate.setHours(0, 0, 0, 0)).toISOString() : undefined;
-      const isoEnd = endDate ? new Date(endDate.setHours(23, 59, 59, 999)).toISOString() : undefined;
-      fetchTrafficStats(isoStart, isoEnd);
-    }
-  }, [startDate, endDate, fetchTrafficStats]);
+  // --- ЗАГРУЗКА ТРАФИКА (Old Traffic Stats - Removed) ---
+  // Traffic is now derived from Sales Dept payments
+  // useEffect(() => { ... }, []);
 
   const uniqueValues = useMemo(() => {
     const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
@@ -574,7 +570,33 @@ const ConsStatsPage = () => {
 
     // Сортировка (строковая)
     return data.sort((a, b) => (a.transactionDate || '').localeCompare(b.transactionDate || ''));
+    return data.sort((a, b) => (a.transactionDate || '').localeCompare(b.transactionDate || ''));
   }, [payments, startDate, endDate, isRestrictedUser, currentUser, filters]);
+
+  // 🔥 RAW ФИЛЬТРАЦИЯ ДЛЯ ТРАФИКА (SALES DEPT)
+  const salesDeptTraffic = useMemo(() => {
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
+    return payments.filter(p => {
+      // Role check: Sales or SeniorSales
+      if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
+      if (!p.transactionDate) return false;
+
+      // Date check
+      const dbDateStr = p.transactionDate.slice(0, 10);
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
+
+      // Apply same filters as main (except manager, as we want overall traffic?)
+      // Usually traffic is filtered by Geo/Source.
+      if (filters.country && p.country !== filters.country) return false;
+      if (filters.source !== 'all' && p.source !== filters.source) return false;
+      // Product/Type might not apply to Leads/Traffic normally, but if implied:
+      if (filters.product && p.product !== filters.product) return false;
+
+      return true;
+    });
+  }, [payments, startDate, endDate, filters]);
 
   // --- ГРУППИРОВКА ДЛЯ ГРАФИКОВ ---
   const prepareData = (dataKey, sourceData) => {
@@ -739,13 +761,12 @@ const ConsStatsPage = () => {
         <GeoComparisonChart
           startDate={startDate}
           endDate={endDate}
-          trafficStats={isDemo ? demoData.traffic : trafficStats}
           payments={isDemo ? demoData.payments : filteredData}
           countryFilter={filters.country}
           sourceFilter={filters.source}
         />
         <SourcePieChart
-          data={isDemo ? demoData.payments : filteredData}
+          data={isDemo ? demoData.payments : salesDeptTraffic}
           isDemo={isDemo}
         />
       </div>
@@ -825,7 +846,7 @@ const SourcePieChart = ({ data, isDemo }) => {
 };
 
 // --- НОВЫЙ ГРАФИК: СРАВНЕНИЕ ГЕО (Sunburst) ---
-const GeoComparisonChart = ({ startDate, endDate, trafficStats, payments, countryFilter, sourceFilter }) => {
+const GeoComparisonChart = ({ startDate, endDate, payments, countryFilter, sourceFilter }) => {
   // 1. Подготовка данных для Sunburst (Иерархия: Root -> Country -> Product)
   const { chartData } = useMemo(() => {
     const countryMap = {};

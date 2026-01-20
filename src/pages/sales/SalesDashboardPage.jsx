@@ -486,6 +486,28 @@ const SalesDashboardPage = () => {
     };
   }, [payments]);
 
+  // 1. GLOBAL RANKING LOGIC (from global payments)
+  const paymentRanks = useMemo(() => {
+    const ranks = new Map(); // Map<PaymentID, RankNumber>
+    const grouped = {};
+
+    payments.forEach(p => {
+      const link = p.crm_link ? p.crm_link.trim().toLowerCase() : null;
+      if (!link || link === '—') return;
+      if (!grouped[link]) grouped[link] = [];
+      grouped[link].push(p);
+    });
+
+    Object.values(grouped).forEach(userPayments => {
+      // Sort by date ascending
+      userPayments.sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
+      userPayments.forEach((p, index) => {
+        ranks.set(p.id, index + 1);
+      });
+    });
+    return ranks;
+  }, [payments]);
+
   // 🔥 RAW ФИЛЬТРАЦИЯ
   const filteredData = useMemo(() => {
     const startStr = startDate ? toYMD(startDate) : '0000-00-00';
@@ -526,6 +548,21 @@ const SalesDashboardPage = () => {
     const count = filteredData.length;
     let traffic = 0;
 
+    // New metrics
+    let uniqueSales = 0;
+    let secondSales = 0;
+    const activeManagersSet = new Set();
+
+    // Count ranks and managers from filtered Data
+    filteredData.forEach(p => {
+      if (p.manager) activeManagersSet.add(p.manager);
+
+      // Use Global Rank
+      const rank = paymentRanks.get(p.id);
+      if (rank === 1) uniqueSales++;
+      if (rank === 2) secondSales++;
+    });
+
     if (trafficStats && Object.keys(trafficStats).length > 0) {
       const startStr = startDate ? toYMD(startDate) : '0000-00-00';
       const endStr = endDate ? toYMD(endDate) : '9999-99-99';
@@ -557,8 +594,22 @@ const SalesDashboardPage = () => {
     }
 
     const conversion = traffic > 0 ? ((count / traffic) * 100).toFixed(2) : "0.00";
-    return { traffic, conversion, totalEur: totalEur.toFixed(2), count };
-  }, [filteredData, trafficStats, filters.country, filters.source, startDate, endDate]);
+    // Conversion from Traffic to Unique
+    const conversionUnique = traffic > 0 ? ((uniqueSales / traffic) * 100).toFixed(2) : "0.00";
+    const avgCheck = count > 0 ? (totalEur / count).toFixed(2) : "0";
+
+    return {
+      traffic,
+      conversion,
+      totalEur: totalEur.toFixed(2),
+      count,
+      uniqueSales,
+      secondSales,
+      conversionUnique,
+      avgCheck,
+      activeManagers: activeManagersSet.size
+    };
+  }, [filteredData, trafficStats, filters, startDate, endDate, paymentRanks]);
 
   // ✅ РАСЧЕТ KPI ПО ИСТОЧНИКАМ
   // Direct, Comments, WhatsApp - всегда показывает полные данные
@@ -789,11 +840,21 @@ const SalesDashboardPage = () => {
               </h3>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-px bg-gray-100 dark:bg-[#222] border border-gray-100 dark:border-[#222] rounded-lg overflow-hidden mb-4 transition-colors duration-200 w-full">
-              <TechStatItem icon={CreditCard} label="Продажи" value={stats.count} />
-              <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-px bg-gray-100 dark:bg-[#222] border border-gray-100 dark:border-[#222] rounded-lg overflow-hidden mb-4 transition-colors duration-200 w-full">
+              {/* Row 1 */}
               <TechStatItem icon={Users} label="Трафик" value={stats.traffic} />
+              <TechStatItem icon={CreditCard} label="Продажи" value={stats.count} />
               <TechStatItem icon={Percent} label="Конверсия" value={`${stats.conversion}%`} valueColor={getCRColor(stats.conversion)} />
+
+              {/* Row 2 */}
+              <TechStatItem icon={Trophy} label="Уникальные" value={stats.uniqueSales} highlight />
+              <TechStatItem icon={Layers} label="Вторые продажи" value={stats.secondSales} />
+              <TechStatItem icon={Activity} label="Конв. (Уник)" value={`${stats.conversionUnique}%`} valueColor={getCRColor(stats.conversionUnique)} />
+
+              {/* Row 3 */}
+              <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
+              <TechStatItem icon={DollarSign} label="Средний чек" value={`€${Number(stats.avgCheck).toLocaleString()}`} />
+              <TechStatItem icon={Users} label="Кол-во менеджеров" value={stats.activeManagers} />
             </div>
 
             <div className="flex-1 min-h-[100px] w-full min-w-0">

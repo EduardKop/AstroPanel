@@ -490,7 +490,7 @@ const ConsGeoPage = () => {
       return true;
     });
 
-    // 3. Агрегация по странам
+    // 3. Агрегация по странам (Consultant Sales)
     const statsByGeo = {};
     filteredPayments.forEach(p => {
       const code = p.country || 'Unknown';
@@ -501,29 +501,24 @@ const ConsGeoPage = () => {
       statsByGeo[code].sumLocal += (p.amountLocal || 0);
     });
 
-    // 4. Добавление трафика и расчет конверсии
+    // 4. Трафик = Продажи Отдела Продаж
+    const salesPayments = payments.filter(p => {
+      if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
+
+      const dbDateStr = p.transactionDate.slice(0, 10);
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
+
+      // Apply filters to traffic as well if consistent with dashboard
+      if (filters.source !== 'all' && p.source !== filters.source) return false;
+
+      return true;
+    });
+
+    // 5. Добавление трафика и расчет конверсии
     return Object.entries(statsByGeo).map(([code, data]) => {
 
-      let realTraffic = 0;
-      if (trafficStats && trafficStats[code]) {
-        Object.entries(trafficStats[code]).forEach(([dateStr, val]) => {
-          // dateStr уже в формате YYYY-MM-DD, сравниваем напрямую со строками границ
-          if (dateStr < startStr || dateStr > endStr) return;
-
-          // Фильтруем трафик по источнику
-          let num = 0;
-          if (typeof val === 'object') {
-            if (filters.source === 'all') {
-              num = val.all || 0;
-            } else {
-              num = val[filters.source] || 0;
-            }
-          } else {
-            num = Number(val) || 0;
-          }
-          realTraffic += num;
-        });
-      }
+      // Traffic for this country from Sales Dept
+      const realTraffic = salesPayments.filter(p => p.country === code).length;
 
       const realCR = realTraffic > 0
         ? ((data.count / realTraffic) * 100).toFixed(2)

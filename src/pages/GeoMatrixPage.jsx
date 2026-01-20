@@ -376,7 +376,7 @@ const GeoMatrixPage = () => {
     const [selectedCell, setSelectedCell] = useState(null);
     const [dateRange, setDateRange] = useState(getCurrentMonthRange());
     const [startDate, endDate] = dateRange;
-    const [filters, setFilters] = useState({ product: '', type: '', showMobileFilters: false });
+    const [filters, setFilters] = useState({ product: '', type: '', department: 'all', showMobileFilters: false });
     const [sortOrder, setSortOrder] = useState('default');
 
     // Загрузка стран (справочник)
@@ -432,6 +432,15 @@ const GeoMatrixPage = () => {
                 if (filters.product && p.product !== filters.product) return;
                 if (filters.type && p.type !== filters.type) return;
 
+                // Filter by Department
+                if (filters.department !== 'all') {
+                    if (filters.department === 'sales') {
+                        if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return;
+                    } else if (filters.department === 'consultant') {
+                        if (p.managerRole !== 'Consultant') return;
+                    }
+                }
+
                 let pDate;
                 try {
                     pDate = typeof p.transactionDate === 'string'
@@ -480,7 +489,7 @@ const GeoMatrixPage = () => {
     const uniqueTypes = useMemo(() => [...new Set(payments.map(p => p.type).filter(Boolean))], [payments]);
 
     const resetFilters = () => {
-        setFilters({ product: '', type: '' });
+        setFilters({ product: '', type: '', department: 'all' });
         setDateRange([null, null]);
     };
 
@@ -499,6 +508,15 @@ const GeoMatrixPage = () => {
             // Важно: Применяем те же фильтры, что и в матрице
             if (filters.product && p.product !== filters.product) return false;
             if (filters.type && p.type !== filters.type) return false;
+
+            // Filter by Department
+            if (filters.department !== 'all') {
+                if (filters.department === 'sales') {
+                    if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
+                } else if (filters.department === 'consultant') {
+                    if (p.managerRole !== 'Consultant') return false;
+                }
+            }
 
             return p.country === countryCode && pDate === dateKey;
         });
@@ -546,6 +564,15 @@ const GeoMatrixPage = () => {
                         // Apply filters
                         if (filters.product && p.product !== filters.product) return;
                         if (filters.type && p.type !== filters.type) return;
+
+                        // Filter by Department
+                        if (filters.department !== 'all') {
+                            if (filters.department === 'sales') {
+                                if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return;
+                            } else if (filters.department === 'consultant') {
+                                if (p.managerRole !== 'Consultant') return;
+                            }
+                        }
 
                         // Date check
                         let pDate;
@@ -756,8 +783,9 @@ const GeoMatrixPage = () => {
                                 )}
                             </div>
 
-                            {/* DESKTOP - Sort button LEFT */}
+                            {/* DESKTOP - Left Controls (Sort + Dept) */}
                             <div className="hidden md:flex items-center gap-2">
+                                {/* Sort Button */}
                                 <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
                                     <button
                                         onClick={() => setSortOrder(prev => prev === 'default' ? 'desc' : prev === 'desc' ? 'asc' : 'default')}
@@ -768,6 +796,13 @@ const GeoMatrixPage = () => {
                                         {sortOrder === 'asc' && <ArrowUpNarrowWide size={14} />}
                                         <span>Сорт</span>
                                     </button>
+                                </div>
+
+                                {/* Department Buttons */}
+                                <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center justify-center">
+                                    <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+                                    <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
+                                    <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
                                 </div>
                             </div>
 
