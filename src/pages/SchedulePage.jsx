@@ -570,8 +570,8 @@ const SchedulePage = () => {
 
             {/* CUSTOM GRID */}
             <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <div className="inline-block min-w-full">
+                <div className="overflow-x-auto 2xl:overflow-x-visible">
+                    <div className="inline-block min-w-full 2xl:block">
                         {/* HEADER ROW */}
                         <div className="flex border-b border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#0A0A0A] sticky top-0 z-10">
                             {/* Manager column header - sticky left */}
@@ -586,14 +586,14 @@ const SchedulePage = () => {
                                 </div>
                             </div>
 
-                            {/* Day headers */}
-                            <div className="flex">
+                            {/* Day headers - stretch on 2xl+ */}
+                            <div className="flex flex-1">
                                 {daysInMonth.map((day, idx) => {
                                     const isToday = new Date().toDateString() === day.toDateString();
                                     return (
                                         <div
                                             key={idx}
-                                            className="w-[32px] flex-shrink-0 px-0.5 py-1.5 flex items-center justify-center text-xs font-normal text-gray-600 dark:text-gray-300"
+                                            className="min-w-[32px] flex-1 px-0.5 py-1.5 flex items-center justify-center text-xs font-normal text-gray-600 dark:text-gray-300"
                                         >
                                             <div className={`w-[24px] h-[24px] flex items-center justify-center rounded-full ${isToday ? 'bg-blue-500 text-white font-bold' : ''}`}>
                                                 {String(day.getDate()).padStart(2, '0')}
@@ -644,8 +644,8 @@ const SchedulePage = () => {
                                         </div>
                                     </div>
 
-                                    {/* Day Cells */}
-                                    <div className="flex">
+                                    {/* Day Cells - stretch on 2xl+ */}
+                                    <div className="flex flex-1">
                                         {daysInMonth.map((day, dayIdx) => {
                                             // Use local date format to avoid timezone issues
                                             const year = day.getFullYear();
@@ -666,7 +666,7 @@ const SchedulePage = () => {
                                             return (
                                                 <div
                                                     key={dayIdx}
-                                                    className={`w-[32px] flex-shrink-0 p-0.5 flex items-center justify-center ${isInteractive ? 'cursor-pointer' : ''
+                                                    className={`min-w-[32px] flex-1 p-0.5 flex items-center justify-center ${isInteractive ? 'cursor-pointer' : ''
                                                         }`}
                                                     onClick={() => {
                                                         if (canEdit) {

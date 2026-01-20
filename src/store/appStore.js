@@ -238,7 +238,7 @@ export const useAppStore = create((set, get) => ({
       // Б. Менеджеры
       const managersData = await fetchAll('managers', '*', 'created_at', false);
       const managersMap = {};
-      managersData.forEach(m => managersMap[m.id] = m.name);
+      managersData.forEach(m => managersMap[m.id] = { name: m.name, role: m.role });
 
       // В. Оплаты, Продукты, Правила, Countries, Schedules
       const paymentsData = await fetchAll('payments', '*', 'transaction_date', false);
@@ -349,8 +349,9 @@ export const useAppStore = create((set, get) => ({
           amountEUR: Number(item.amount_eur) || 0,
           amountLocal: Number(item.amount_local) || 0,
           amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
-          manager: managersMap[item.manager_id] || 'Не назначен',
+          manager: managersMap[item.manager_id]?.name || 'Не назначен',
           managerId: item.manager_id,
+          managerRole: managersMap[item.manager_id]?.role || null,
           type: item.payment_type || 'Other',
           status: item.status || 'pending',
           source: source // 'direct', 'comments', 'whatsapp', 'unknown'

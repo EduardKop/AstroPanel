@@ -32,6 +32,23 @@ import TimeLogPage from './pages/TimeLogPage';
 import CLevelSettingsPage from './pages/CLevelSettingsPage';
 import ActivityLogsPage from './pages/ActivityLogsPage';
 
+// Sales Department Pages
+import SalesDashboardPage from './pages/sales/SalesDashboardPage';
+import SalesPaymentsPage from './pages/sales/SalesPaymentsPage';
+import SalesQuickStatsPage from './pages/sales/SalesQuickStatsPage';
+import SalesMatrixPage from './pages/sales/SalesMatrixPage';
+import SalesGeoPage from './pages/sales/SalesGeoPage';
+import SalesStatsPage from './pages/sales/SalesStatsPage';
+
+// Consultations Department Pages
+import ConsDashboardPage from './pages/consultations/ConsDashboardPage';
+import ConsPaymentsPage from './pages/consultations/ConsPaymentsPage';
+import ConsQuickStatsPage from './pages/consultations/ConsQuickStatsPage';
+import ConsMatrixPage from './pages/consultations/ConsMatrixPage';
+import ConsGeoPage from './pages/consultations/ConsGeoPage';
+import ConsStatsPage from './pages/consultations/ConsStatsPage';
+
+
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild }) => {
   const location = useLocation();
   const isActive = location.pathname === path;
@@ -73,16 +90,26 @@ const ProtectedRoute = ({ allowedRoles, resource, children }) => {
 };
 
 function App() {
-  const [darkMode, setDarkMode] = useState(true)
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved ? saved === 'dark' : true; // Default to true (dark)
+  })
   const [isEmployeesOpen, setIsEmployeesOpen] = useState(false);
+  const [isSalesOpen, setIsSalesOpen] = useState(false);
+  const [isConsOpen, setIsConsOpen] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const { user, setUser, logout, fetchAllData, isLoading, permissions } = useAppStore();
 
   useEffect(() => {
-    if (darkMode) document.documentElement.classList.add('dark')
-    else document.documentElement.classList.remove('dark')
+    if (darkMode) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
+    }
   }, [darkMode])
 
   useEffect(() => {
@@ -199,16 +226,46 @@ function App() {
           </div>
 
           <nav className="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-0.5">
-            {/* --- ДАШБОРДЫ --- */}
-            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider">Дашборды</div>
+            {/* --- ОБЩИЕ ДЕШБОРДЫ --- */}
+            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider">Общие дешборды</div>
             <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
             {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
-
             {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
             {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
             {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/quick-stats" />}
-
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
+
+
+            {/* --- ОТДЕЛ ПРОДАЖ --- */}
+            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Отдел продаж</div>
+            <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/sales/dashboard" />
+            <button onClick={() => setIsSalesOpen(!isSalesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isSalesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+              <div className="flex items-center gap-2.5"><Briefcase size={16} /><span>Отдел продаж</span></div>
+              <ChevronRight size={12} className={`transition-transform duration-200 ${isSalesOpen ? 'rotate-90' : ''}`} />
+            </button>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSalesOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+              <SidebarItem icon={CreditCard} label="Транзакции" path="/sales/payments" isChild />
+              <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/sales/quick-stats" isChild />
+              <SidebarItem icon={LayoutGrid} label="Матрица" path="/sales/matrix" isChild />
+              <SidebarItem icon={Globe} label="География" path="/sales/geo" isChild />
+              <SidebarItem icon={LineChart} label="Аналитика" path="/sales/stats" isChild />
+            </div>
+
+            {/* --- КОНСУЛЬТАЦИИ --- */}
+            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Консультации</div>
+            <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/cons/dashboard" />
+            <button onClick={() => setIsConsOpen(!isConsOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isConsOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+              <div className="flex items-center gap-2.5"><Headphones size={16} /><span>Консультации</span></div>
+              <ChevronRight size={12} className={`transition-transform duration-200 ${isConsOpen ? 'rotate-90' : ''}`} />
+            </button>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isConsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+              <SidebarItem icon={CreditCard} label="Транзакции" path="/cons/payments" isChild />
+              <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/cons/quick-stats" isChild />
+              <SidebarItem icon={LayoutGrid} label="Матрица" path="/cons/matrix" isChild />
+              <SidebarItem icon={Globe} label="География" path="/cons/geo" isChild />
+              <SidebarItem icon={LineChart} label="Аналитика" path="/cons/stats" isChild />
+            </div>
+
 
             {/* --- БАЗА ЗНАНИЙ --- */}
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">База знаний</div>
@@ -297,6 +354,22 @@ function App() {
               <Route path="/geo" element={<ProtectedRoute resource="geo"><GeoPage /></ProtectedRoute>} />
               <Route path="/managers" element={<ProtectedRoute resource="stats"><ManagersPage /></ProtectedRoute>} />
               <Route path="/geo-matrix" element={<ProtectedRoute resource="geo_matrix"><GeoMatrixPage /></ProtectedRoute>} />
+
+              {/* ✅ SALES DEPARTMENT ROUTES */}
+              <Route path="/sales/dashboard" element={<SalesDashboardPage />} />
+              <Route path="/sales/payments" element={<SalesPaymentsPage />} />
+              <Route path="/sales/quick-stats" element={<SalesQuickStatsPage />} />
+              <Route path="/sales/matrix" element={<SalesMatrixPage />} />
+              <Route path="/sales/geo" element={<SalesGeoPage />} />
+              <Route path="/sales/stats" element={<SalesStatsPage />} />
+
+              {/* ✅ CONSULTATIONS DEPARTMENT ROUTES */}
+              <Route path="/cons/dashboard" element={<ConsDashboardPage />} />
+              <Route path="/cons/payments" element={<ConsPaymentsPage />} />
+              <Route path="/cons/quick-stats" element={<ConsQuickStatsPage />} />
+              <Route path="/cons/matrix" element={<ConsMatrixPage />} />
+              <Route path="/cons/geo" element={<ConsGeoPage />} />
+              <Route path="/cons/stats" element={<ConsStatsPage />} />
 
               <Route path="/sales-team" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
               <Route path="/consultants" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
