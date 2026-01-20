@@ -7,6 +7,8 @@ import {
   BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart,
 } from 'lucide-react'
 
+import ThemeToggle from './components/ThemeToggle';
+
 import { supabase } from './services/supabaseClient';
 import { useAppStore } from './store/appStore';
 
@@ -131,6 +133,49 @@ function App() {
       localStorage.setItem('theme', 'light')
     }
   }, [darkMode])
+
+  const toggleTheme = async (e) => {
+    // 1. Check if View Transition API is supported
+    if (!document.startViewTransition) {
+      setDarkMode(!darkMode);
+      return;
+    }
+
+    // 2. Get click coordinates
+    const x = e.clientX;
+    const y = e.clientY;
+
+    // 3. Calculate radius to cover the screen
+    const endRadius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    );
+
+    // 4. Start the transition
+    const transition = document.startViewTransition(() => {
+      setDarkMode(!darkMode);
+    });
+
+    // 5. Animate the clip path
+    await transition.ready;
+
+    const clipPath = [
+      `circle(0px at ${x}px ${y}px)`,
+      `circle(${endRadius}px at ${x}px ${y}px)`,
+    ];
+
+    document.documentElement.animate(
+      {
+        clipPath: clipPath,
+      },
+      {
+        duration: 500,
+        easing: "ease-in-out",
+        pseudoElement: "::view-transition-new(root)",
+      }
+    );
+  };
+
 
   useEffect(() => {
     const initAuth = async () => {
@@ -343,10 +388,8 @@ function App() {
             )}
           </nav>
 
-          <div className="p-2 border-t border-gray-200 dark:border-[#222]">
-            <button onClick={() => setDarkMode(!darkMode)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[6px] text-xs font-medium text-gray-500 dark:text-[#666] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] hover:text-black dark:hover:text-white transition-all">
-              {darkMode ? <Sun size={14} /> : <Moon size={14} />}<span>{darkMode ? 'Светлая' : 'Темная'}</span>
-            </button>
+          <div className="p-2 border-t border-gray-200 dark:border-[#222] space-y-2">
+            <ThemeToggle isDark={darkMode} toggle={toggleTheme} />
             <button onClick={logout} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[6px] text-xs font-medium text-gray-500 dark:text-[#666] hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600 transition-all">
               <LogOut size={14} /><span>Выйти</span>
             </button>
