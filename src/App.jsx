@@ -33,6 +33,7 @@ import SchedulePage from './pages/SchedulePage';
 import TimeLogPage from './pages/TimeLogPage';
 import CLevelSettingsPage from './pages/CLevelSettingsPage';
 import ActivityLogsPage from './pages/ActivityLogsPage';
+import PaymentTimesPage from './pages/PaymentTimesPage';
 
 // Sales Department Pages
 import SalesDashboardPage from './pages/sales/SalesDashboardPage';
@@ -297,6 +298,7 @@ function App() {
             {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
             {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
             {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
+            {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
 
             <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
 
@@ -461,6 +463,9 @@ function App() {
               {/* ✅ C-LEVEL SETTINGS: ТОЛЬКО C-LEVEL */}
               <Route path="/c-level-settings" element={<ProtectedRoute allowedRoles={['C-level']}><CLevelSettingsPage /></ProtectedRoute>} />
               <Route path="/geo-settings" element={<ProtectedRoute allowedRoles={['C-level']}><GeoSettingsPage /></ProtectedRoute>} />
+
+              {/* ✅ NOVELTY: PAYMENT TIMES */}
+              <Route path="/payment-times" element={<ProtectedRoute resource="stats"><PaymentTimesPage /></ProtectedRoute>} />
 
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
