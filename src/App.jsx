@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 
 import ThemeToggle from './components/ThemeToggle';
+import Toast from './components/ui/Toast';
 
 import { supabase } from './services/supabaseClient';
 import { useAppStore } from './store/appStore';
@@ -237,11 +238,26 @@ function App() {
   // Special Check for C-level settings (Hardcoded security for safety)
   const isCLevel = user?.role === 'C-level';
 
+  // Global Toast State
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+
+  useEffect(() => {
+    const handleShowToast = (e) => {
+      setToast({ visible: true, message: e.detail.message, type: e.detail.type });
+    };
+
+    window.addEventListener('show-toast', handleShowToast);
+    return () => window.removeEventListener('show-toast', handleShowToast);
+  }, []);
+
+  const closeToast = () => setToast(prev => ({ ...prev, visible: false }));
+
   if (isAuthChecking) return <div className="min-h-screen bg-[#0A0A0A]" />
   if (!user) return <LoginPage onLoginSuccess={handleLoginSuccess} />
 
   return (
     <BrowserRouter>
+      <Toast visible={toast.visible} message={toast.message} type={toast.type} onClose={closeToast} />
       <div className="min-h-screen flex bg-[#F5F5F5] dark:bg-[#0A0A0A] font-sans transition-colors duration-300 text-[13px] overflow-x-hidden">
         {/* MOBILE OVERLAY */}
         {isMobileMenuOpen && (

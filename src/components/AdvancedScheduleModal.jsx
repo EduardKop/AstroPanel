@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, User } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+import { showToast } from '../utils/toastEvents';
 import { useAppStore } from '../store/appStore';
 
 const AdvancedScheduleModal = ({ isOpen, onClose, managers, countries, onSave }) => {
@@ -65,7 +66,7 @@ const AdvancedScheduleModal = ({ isOpen, onClose, managers, countries, onSave })
             onClose();
         } catch (error) {
             console.error('Error saving manager visibility:', error);
-            alert('Ошибка при сохранении настроек');
+            showToast('Ошибка при сохранении настроек', 'error');
         } finally {
             setIsSaving(false);
         }

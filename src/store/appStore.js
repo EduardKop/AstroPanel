@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabaseClient';
+import { showToast } from '../utils/toastEvents';
 
 // Хелпер для очистки никнейма (для сравнения)
 const normalizeNick = (raw) => {
@@ -217,7 +218,7 @@ export const useAppStore = create((set, get) => ({
 
     } catch (error) {
       console.error('Error updating settings:', error);
-      alert('Ошибка при сохранении настроек');
+      showToast('Ошибка при сохранении настроек', 'error');
     }
   },
 

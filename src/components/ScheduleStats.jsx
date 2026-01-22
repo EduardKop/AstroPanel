@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { showToast } from '../utils/toastEvents';
 import { Save, Loader2, Calculator } from 'lucide-react';
 
 const ScheduleStats = ({ rows, currentDate, onDataChange }) => {
@@ -67,7 +68,7 @@ const ScheduleStats = ({ rows, currentDate, onDataChange }) => {
         } catch (error) {
             console.error('Error saving adjustment:', error);
             console.error('Error details:', error.message, error.details, error.hint);
-            alert(`Ошибка при сохранении: ${error.message}`);
+            showToast(`Ошибка при сохранении: ${error.message}`, 'error');
         } finally {
             setSaving(null);
         }

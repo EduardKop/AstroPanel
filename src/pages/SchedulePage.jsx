@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
+import { showToast } from '../utils/toastEvents';
 import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, Users2 } from 'lucide-react';
 import AdvancedScheduleModal from '../components/AdvancedScheduleModal';
 import MultiGeoModal from '../components/MultiGeoModal';

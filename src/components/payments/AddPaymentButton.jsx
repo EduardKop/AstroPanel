@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import AddPaymentModal from './AddPaymentModal';
+import Toast from '../ui/Toast';
 import { useAppStore } from '../../store/appStore';
 
 const AddPaymentButton = () => {
     const { user, permissions } = useAppStore();
     const [isOpen, setIsOpen] = useState(false);
+    const [showToast, setShowToast] = useState(false);
 
     if (!user) return null;
 
@@ -17,6 +19,11 @@ const AddPaymentButton = () => {
 
     if (!isOwnerOrAdmin && !hasPermission) return null;
 
+    const handleSuccess = () => {
+        setShowToast(true);
+        setIsOpen(false);
+    };
+
     return (
         <>
             <button
@@ -27,7 +34,17 @@ const AddPaymentButton = () => {
                 <span className="font-bold text-sm uppercase tracking-wide">Добавить оплату</span>
             </button>
 
-            <AddPaymentModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+            <AddPaymentModal
+                isOpen={isOpen}
+                onClose={() => setIsOpen(false)}
+                onSuccess={handleSuccess}
+            />
+
+            <Toast
+                message="Успешно! Платеж добавлен"
+                visible={showToast}
+                onClose={() => setShowToast(false)}
+            />
         </>
     );
 };

@@ -370,7 +370,7 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
       onSave();
     } catch (error) {
       console.error(error);
-      alert('Ошибка при сохранении');
+      showToast('Ошибка при сохранении', 'error');
     } finally {
       setLoading(false);
     }

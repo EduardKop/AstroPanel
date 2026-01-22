@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { useAppStore } from '../store/appStore'; // ✅ Стор
+import { useAppStore } from '../store/appStore';
+import { showToast } from '../utils/toastEvents';
 import {
     Calendar, Plus, X, Globe, LayoutGrid, AlertCircle, Trash2, Filter,
     ArrowDownWideNarrow, ArrowUpNarrowWide, List, DollarSign, User, Activity, Coins,
@@ -368,6 +369,7 @@ const MobileDateRangePicker = ({ startDate, endDate, onChange }) => {
 const GeoMatrixPage = () => {
     // ✅ Достаем trafficStats и метод обновления
     const { payments, trafficStats, fetchTrafficStats } = useAppStore();
+
 
     const [countriesList, setCountriesList] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -1057,7 +1059,7 @@ const GeoManagerModal = ({ isOpen, onClose, countriesList, onUpdate }) => {
         setLoading(true);
         try {
             const { error } = await supabase.from('countries').insert([{ code: newGeoCode, name: lookup.name, emoji: lookup.emoji }]);
-            if (error) { console.error(error); alert('Ошибка.'); } else { setNewGeoCode(''); await onUpdate(); setActiveTab('list'); }
+            if (error) { console.error(error); showToast('Ошибка.', 'error'); } else { setNewGeoCode(''); await onUpdate(); setActiveTab('list'); }
         } finally { setLoading(false); }
     };
     const handleRemoveGeo = async (code) => {
@@ -1067,7 +1069,7 @@ const GeoManagerModal = ({ isOpen, onClose, countriesList, onUpdate }) => {
             const { error } = await supabase.from('countries').delete().eq('code', code);
             if (error) throw error;
             await onUpdate();
-        } catch (error) { console.error(error); alert('Ошибка.'); } finally { setLoading(false); }
+        } catch (error) { console.error(error); showToast('Ошибка.', 'error'); } finally { setLoading(false); }
     };
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">

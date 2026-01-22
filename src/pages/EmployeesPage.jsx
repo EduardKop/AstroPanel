@@ -89,7 +89,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
       await toggleManagerStatus(id, currentStatus);
       fetchAllData(true);
     } catch (e) {
-      alert('Ошибка при смене статуса');
+      showToast('Ошибка при смене статуса', 'error');
     }
   };
 

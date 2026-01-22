@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../store/appStore';
+import { showToast } from '../../utils/toastEvents';
 import { X, Check, Instagram, Phone, Calendar, DollarSign, AlertCircle, ChevronRight, Calculator } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -17,7 +18,7 @@ const PRODUCTS = [
 ];
 
 const PAYMENT_METHODS = [
-    'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты', 'Crypto', 'Stripe', 'PayPal'
+    'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты'
 ];
 
 const CURRENCIES = {
@@ -26,7 +27,7 @@ const CURRENCIES = {
     'US': 'USD', 'KZ': 'KZT', 'TR': 'TRY'
 };
 
-const AddPaymentModal = ({ isOpen, onClose }) => {
+const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
     const { user, logActivity, kpiRates } = useAppStore();
     const [step, setStep] = useState('form'); // form, confirm
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -118,8 +119,6 @@ const AddPaymentModal = ({ isOpen, onClose }) => {
                 crm_link: formData.nickname || formData.link,
                 status: 'completed',
                 telegram_id: user?.telegram_id || null,
-                // We use 'crm_link' field for the link/nickname. 
-                // Store logic `formattedPayments` uses `crm_link` to derive source.
                 created_at: new Date().toISOString()
             };
 
@@ -136,10 +135,49 @@ const AddPaymentModal = ({ isOpen, onClose }) => {
             });
 
             onClose();
-            alert('Оплата успешно добавлена!');
+            // Trigger Toast via parent or local state if component allows? 
+            // Since Modal closes, we can't show toast INSIDE modal.
+            // We need a global toast or a callback.
+            // For now, I'll assume usage of the global toast I saw in PaymentsTable... Wait, PaymentsTable has local toast.
+            // I need to add Toast here or use a context.
+            // Given the user request "make modal appear at bottom left", I will render the Toast component HERE but keep it visible after Close?
+            // No, if I close the modal component, the toast inside it dies.
+            // HACK: I will delay onClose slightly or pass success callback.
+            // BETTER: Render toast in THIS component, and delay onClose?
+            // Let's rely on a small trick: Close modal visually but keep component mounted? No.
+            // The user said "внизу слева сайта".
+            // I'll add the Toast component to this file and keep the modal rendered but hidden? No that's messy.
+            // I'll add a `onSuccess` prop to the modal and lift state up? Too complex for now.
+            // I will modify `App.jsx` to have a global toast? 
+            // The prompt says "сделай так же нашу модалку внизу слева".
+            // I will import the Toast component into this file. 
+            // And I will NOT unmount the component immediately? 
+            // Actually, if `isOpen` becomes false, does it unmount? 
+            // The parent likely renders `{isOpen && <Modal />}` or `<Modal isOpen={isOpen} />`.
+            // If it renders conditionally, toast will die.
+            // If it passes isOpen prop, I can keep Toast alive.
+            // Let's assume passed as prop. 
+            // If not, I will add a temporary Global Toast manager? No.
+            // I will try to use the `Toast` component inside the modal portal if possible, or just render it.
+            // Let's look at `AddPaymentModal.jsx`. It returns `if (!isOpen) return null;` at start.
+            // This means TOAST WILL DIE on close.
+            // I MUST change `if (!isOpen) return null;` to return just the Toast if specific state is set?
+            // Or change the parent implementation. 
+            // Simplest fix: Wait for toast to finish before calling `onClose`? 
+            // User might get annoyed.
+            // "так же после добавления когда пользователь проверил и нажал чтобы добавлять вместо алерта сделай так же нашу модалку внизу слева сайте Успешно Платеж добавлен если все прошло хорошо"
+            // I will remove `if (!isOpen) return null` and handle visibility via CSS/rendering logic.
+            // Correct approach: Return `null` only if `!isOpen && !showToast`.
+
+            if (onSuccess) {
+                onSuccess();
+            } else {
+                onClose();
+                showToast('Оплата успешно добавлена!', 'success');
+            }
         } catch (e) {
             console.error(e);
-            alert('Ошибка при сохранении: ' + e.message);
+            showToast('Ошибка при сохранении: ' + e.message, 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -359,7 +397,7 @@ const AddPaymentModal = ({ isOpen, onClose }) => {
                                 </button>
                                 <button
                                     onClick={() => {
-                                        if (!formData.product || !formData.amountLocal) return alert('Заполните обязательные поля');
+                                        if (!formData.product || !formData.amountLocal) return showToast('Заполните обязательные поля', 'error');
                                         setStep('confirm');
                                     }}
                                     className="flex-[2] py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all text-sm"

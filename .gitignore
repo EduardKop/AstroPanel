@@ -68,3 +68,6 @@ check_payment.js
 test_normalize.js
 export_leads_nicknames.js
 *.json.bak
+
+# Backups
+backups/
