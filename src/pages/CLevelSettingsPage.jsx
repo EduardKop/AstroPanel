@@ -16,6 +16,7 @@ const PERMISSION_KEYS = [
     { key: 'schedule', label: 'График' },
     { key: 'time_log', label: 'Учёт Времени' },
     { key: 'knowledge_base', label: 'База Знаний (Просмотр)' },
+    { key: 'manual_payment', label: 'Добавление Оплат (Кнопка)' },
     { key: 'products_manage', label: 'Продукты (Редактирование)' },
     { key: 'rules_manage', label: 'Правила (Редактирование)' },
 ];

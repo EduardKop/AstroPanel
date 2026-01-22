@@ -1,9 +1,9 @@
 {
-  "analyzedAt": "2026-01-20T08:24:43.734Z",
+  "analyzedAt": "2026-01-22T12:17:32.771Z",
   "tables": [
     {
       "name": "payments",
-      "rowCount": 66,
+      "rowCount": 78,
       "columns": [
         "id",
         "created_at",
@@ -37,7 +37,7 @@
     },
     {
       "name": "managers",
-      "rowCount": 9,
+      "rowCount": 10,
       "columns": [
         "id",
         "created_at",
@@ -54,21 +54,22 @@
         "show_in_schedule"
       ],
       "sample": {
-        "id": "b84ffcc6-9d4e-4cd4-9842-bfce60cbbc73",
-        "created_at": "2025-12-17T17:54:24.433464+00:00",
-        "name": "Анатолий Л. ",
-        "avatar_url": "https://jxrsojmqzwfofmaxqscl.supabase.co/storage/v1/object/public/avatars/1765994063090.png",
+        "id": "d5fa5195-c687-49af-b7c0-61ee0d21db7d",
+        "created_at": "2025-12-15T18:05:17.852619+00:00",
+        "name": "Юрий Собчик",
+        "avatar_url": null,
         "status": "active",
-        "telegram_id": "432916740",
-        "role": "C-level",
-        "birth_date": "2000-01-01",
-        "email": "example1243@gmail.com",
-        "phone": "+380000000000",
+        "telegram_id": "689181606",
+        "role": "Sales",
+        "birth_date": "1990-05-15",
+        "email": "yurii@example.com",
+        "phone": "+380501112233",
         "geo": [
-          "UA"
+          "RO",
+          "LV"
         ],
-        "telegram_username": "AnatoliiLokoshko",
-        "show_in_schedule": false
+        "telegram_username": "@yurissoo",
+        "show_in_schedule": true
       }
     },
     {
@@ -208,7 +209,7 @@
     },
     {
       "name": "countries",
-      "rowCount": 14,
+      "rowCount": 15,
       "columns": [
         "id",
         "code",
@@ -250,7 +251,7 @@
     },
     {
       "name": "leads",
-      "rowCount": 1606,
+      "rowCount": 1940,
       "columns": [
         "id",
         "wazzup_chat_id",
@@ -358,7 +359,7 @@
     },
     {
       "name": "activity_logs",
-      "rowCount": 9,
+      "rowCount": 20,
       "columns": [
         "id",
         "user_id",

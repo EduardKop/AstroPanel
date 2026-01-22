@@ -53,6 +53,7 @@ import ConsStatsPage from './pages/consultations/ConsStatsPage';
 import ConsConversionsPage from './pages/consultations/ConsConversionsPage';
 
 import GeoSettingsPage from './pages/GeoSettingsPage';
+import AddPaymentButton from './components/payments/AddPaymentButton';
 
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild, children, isOpen, onToggle }) => {
@@ -471,6 +472,7 @@ function App() {
             </Routes>
           </div>
         </main>
+        <AddPaymentButton />
       </div >
     </BrowserRouter >
   )
