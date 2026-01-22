@@ -270,10 +270,10 @@ const PaymentsPage = () => {
   };
 
   return (
-    <div className="animate-in fade-in zoom-in duration-300 pb-10 w-full max-w-full overflow-x-hidden">
+    <div className="animate-in fade-in zoom-in duration-300 pb-4 w-full max-w-full overflow-x-hidden">
 
       {/* HEADER + FILTERS */}
-      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent transition-colors duration-200 flex flex-col gap-3">
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-2 border-b border-transparent transition-colors duration-200 flex flex-col gap-3">
 
         {/* Заголовок */}
         <div className="flex items-center gap-2">

@@ -150,200 +150,226 @@ const AddPaymentModal = ({ isOpen, onClose }) => {
     // --- RENDER ---
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-[#111] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-[#222] bg-gray-50 dark:bg-[#151515] flex justify-between items-center shrink-0">
-                    <div>
-                        <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Менеджер</div>
-                        <div className="font-bold text-lg dark:text-white flex items-center gap-2">
-                            {user?.name}
-                            <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px]">{user?.role}</span>
+            <div className="relative w-full max-w-lg">
+                {/* Warning Side Panel (Desktop Only) - Positioned Absolutely to the Left */}
+                <div className="hidden lg:block absolute right-[105%] top-0 w-[280px]">
+                    <div className="bg-white/20 dark:bg-black/20 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-2xl p-6 text-gray-500 dark:text-gray-400 shadow-2xl">
+                        <div className="flex items-center gap-2 mb-4">
+                            <AlertCircle size={24} className="text-gray-400 dark:text-gray-500" />
+                            <h3 className="font-bold text-lg text-gray-700 dark:text-gray-300">Важно!</h3>
+                        </div>
+                        <div className="space-y-4 text-sm leading-relaxed font-medium">
+                            <p>
+                                Все платежи автоматически синхронизируются с банковскими счетами компании и системой Lava.
+                            </p>
+                            <p>
+                                <span className="font-bold text-gray-700 dark:text-gray-300">Категорически запрещено</span> вносить несуществующие или непроверенные оплаты.
+                            </p>
+                            <p>
+                                Любое расхождение нарушает целостность финансовой отчетности и требует значительных ресурсов для аудита и устранения неточностей.
+                            </p>
+                            <div className="bg-white/30 dark:bg-black/30 rounded-lg p-3 font-bold border border-white/20 shadow-sm text-gray-600 dark:text-gray-300">
+                                Будьте внимательны: вносите только подтвержденные поступления.
+                            </div>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-[#333] rounded-full transition-colors">
-                        <X size={20} className="text-gray-500" />
-                    </button>
                 </div>
 
-                {/* Confirm Step */}
-                {step === 'confirm' ? (
-                    <div className="p-6 flex flex-col gap-6 overflow-y-auto">
-                        <div className="text-center">
-                            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <Check size={24} />
-                            </div>
-                            <h3 className="text-xl font-bold dark:text-white">Подтверждение</h3>
-                            <p className="text-gray-500 text-sm">Проверьте данные перед сохранением</p>
-                        </div>
+                <div className="bg-white dark:bg-[#111] rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
 
-                        <div className="bg-gray-50 dark:bg-[#1A1A1A] rounded-xl p-4 space-y-3 border border-gray-100 dark:border-[#333]">
-                            <Row label="Продукт" value={formData.product === 'Other' ? formData.customProduct : formData.product} />
-                            <Row label="Источник" value={formData.source} icon={formData.source === 'instagram' ? <Instagram size={12} /> : <Phone size={12} />} />
-                            <Row label="Никнейм" value={formData.nickname} highlight />
-                            <Row label="Ссылка" value={formData.link} className="text-[10px] truncate max-w-[200px]" />
-                            <div className="h-px bg-gray-200 dark:bg-[#333] my-2" />
-                            <Row label="Сумма (Местная)" value={`${formData.amountLocal} ${formData.currency}`} />
-                            <Row label="Сумма (EUR)" value={`€${formData.amountEUR}`} bold />
-                            <Row label="Метод" value={formData.paymentMethod === 'Other' ? formData.customMethod : formData.paymentMethod} />
-                            <Row label="Дата" value={formData.date.toLocaleString('ru-RU')} />
-                            <Row label="Страна" value={formData.country} />
-                        </div>
-
-                        <div className="flex gap-3 mt-auto">
-                            <button onClick={() => setStep('form')} className="flex-1 py-3 bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold rounded-xl hover:bg-gray-200 transition-colors">
-                                Исправить
-                            </button>
-                            <button onClick={handleSubmit} disabled={isSubmitting} className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                                {isSubmitting ? 'Сохранение...' : 'Отправить'}
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    // FORM STEP
-                    <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-                        {/* Source Toggle */}
-                        <div className="grid grid-cols-2 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg">
-                            <button
-                                onClick={() => setFormData(p => ({ ...p, source: 'instagram' }))}
-                                className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${formData.source === 'instagram' ? 'bg-white dark:bg-[#333] text-pink-600 shadow-sm' : 'text-gray-500'}`}
-                            >
-                                <Instagram size={14} /> Instagram
-                            </button>
-                            <button
-                                onClick={() => setFormData(p => ({ ...p, source: 'whatsapp' }))}
-                                className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${formData.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 shadow-sm' : 'text-gray-500'}`}
-                            >
-                                <Phone size={14} /> WhatsApp
-                            </button>
-                        </div>
-
-                        {/* Link & Nickname */}
-                        <div className='bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30'>
-                            <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Ссылка на диалог / профиль</label>
-                            <input
-                                type="text"
-                                value={formData.link}
-                                onChange={e => setFormData(p => ({ ...p, link: e.target.value }))}
-                                placeholder={formData.source === 'instagram' ? 'https://instagram.com/username' : 'https://wa.me/1234567890'}
-                                className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
-                            {formData.nickname && (
-                                <div className="mt-2 flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400 animate-in slide-in-from-left-2 fade-in">
-                                    <Check size={14} /> @{formData.nickname}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Product Grid */}
+                    {/* Header */}
+                    <div className="px-6 py-4 border-b border-gray-100 dark:border-[#222] bg-gray-50 dark:bg-[#151515] flex justify-between items-center shrink-0">
                         <div>
-                            <label className="text-xs font-bold text-gray-500 block mb-2 uppercase">Продукт</label>
-                            <div className="grid grid-cols-3 gap-2">
-                                {PRODUCTS.map(prod => (
-                                    <button
-                                        key={prod}
-                                        onClick={() => setFormData(p => ({ ...p, product: prod }))}
-                                        className={`px-2 py-2 text-[10px] font-bold rounded-lg border transition-all truncate ${formData.product === prod ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-300 hover:border-gray-400'}`}
-                                    >
-                                        {prod}
-                                    </button>
-                                ))}
-                                <button
-                                    onClick={() => setFormData(p => ({ ...p, product: 'Other' }))}
-                                    className={`px-2 py-2 text-[10px] font-bold rounded-lg border transition-all ${formData.product === 'Other' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-300'}`}
-                                >
-                                    Другое
+                            <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Менеджер</div>
+                            <div className="font-bold text-lg dark:text-white flex items-center gap-2">
+                                {user?.name}
+                                <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px]">{user?.role}</span>
+                            </div>
+                        </div>
+                        <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-[#333] rounded-full transition-colors">
+                            <X size={20} className="text-gray-500" />
+                        </button>
+                    </div>
+
+                    {/* Confirm Step */}
+                    {step === 'confirm' ? (
+                        <div className="p-6 flex flex-col gap-6 overflow-y-auto">
+                            <div className="text-center">
+                                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Check size={24} />
+                                </div>
+                                <h3 className="text-xl font-bold dark:text-white">Подтверждение</h3>
+                                <p className="text-gray-500 text-sm">Проверьте данные перед сохранением</p>
+                            </div>
+
+                            <div className="bg-gray-50 dark:bg-[#1A1A1A] rounded-xl p-4 space-y-3 border border-gray-100 dark:border-[#333]">
+                                <Row label="Продукт" value={formData.product === 'Other' ? formData.customProduct : formData.product} />
+                                <Row label="Источник" value={formData.source} icon={formData.source === 'instagram' ? <Instagram size={12} /> : <Phone size={12} />} />
+                                <Row label="Никнейм" value={formData.nickname} highlight />
+                                <Row label="Ссылка" value={formData.link} className="text-[10px] truncate max-w-[200px]" />
+                                <div className="h-px bg-gray-200 dark:bg-[#333] my-2" />
+                                <Row label="Сумма (Местная)" value={`${formData.amountLocal} ${formData.currency}`} />
+                                <Row label="Сумма (EUR)" value={`€${formData.amountEUR}`} bold />
+                                <Row label="Метод" value={formData.paymentMethod === 'Other' ? formData.customMethod : formData.paymentMethod} />
+                                <Row label="Дата" value={formData.date.toLocaleString('ru-RU')} />
+                                <Row label="Страна" value={formData.country} />
+                            </div>
+
+                            <div className="flex gap-3 mt-auto">
+                                <button onClick={() => setStep('form')} className="flex-1 py-3 bg-gray-100 dark:bg-[#222] text-gray-700 dark:text-gray-300 font-bold rounded-xl hover:bg-gray-200 transition-colors">
+                                    Исправить
+                                </button>
+                                <button onClick={handleSubmit} disabled={isSubmitting} className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                                    {isSubmitting ? 'Сохранение...' : 'Отправить'}
                                 </button>
                             </div>
-                            {formData.product === 'Other' && (
+                        </div>
+                    ) : (
+                        // FORM STEP
+                        <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
+                            {/* Source Toggle */}
+                            <div className="grid grid-cols-2 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg">
+                                <button
+                                    onClick={() => setFormData(p => ({ ...p, source: 'instagram' }))}
+                                    className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${formData.source === 'instagram' ? 'bg-white dark:bg-[#333] text-pink-600 shadow-sm' : 'text-gray-500'}`}
+                                >
+                                    <Instagram size={14} /> Instagram
+                                </button>
+                                <button
+                                    onClick={() => setFormData(p => ({ ...p, source: 'whatsapp' }))}
+                                    className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${formData.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 shadow-sm' : 'text-gray-500'}`}
+                                >
+                                    <Phone size={14} /> WhatsApp
+                                </button>
+                            </div>
+
+                            {/* Link & Nickname */}
+                            <div className='bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30'>
+                                <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Ссылка на диалог / профиль</label>
                                 <input
                                     type="text"
-                                    placeholder="Введите название продукта"
-                                    value={formData.customProduct}
-                                    onChange={e => setFormData(p => ({ ...p, customProduct: e.target.value }))}
-                                    className="mt-2 w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm"
+                                    value={formData.link}
+                                    onChange={e => setFormData(p => ({ ...p, link: e.target.value }))}
+                                    placeholder={formData.source === 'instagram' ? 'https://instagram.com/username' : 'https://wa.me/1234567890'}
+                                    className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
-                            )}
-                        </div>
+                                {formData.nickname && (
+                                    <div className="mt-2 flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400 animate-in slide-in-from-left-2 fade-in">
+                                        <Check size={14} /> @{formData.nickname}
+                                    </div>
+                                )}
+                            </div>
 
-                        {/* Amounts */}
-                        <div className="grid grid-cols-2 gap-4">
+                            {/* Product Grid */}
                             <div>
-                                <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Сумма ({formData.currency})</label>
-                                <div className="relative">
+                                <label className="text-xs font-bold text-gray-500 block mb-2 uppercase">Продукт</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {PRODUCTS.map(prod => (
+                                        <button
+                                            key={prod}
+                                            onClick={() => setFormData(p => ({ ...p, product: prod }))}
+                                            className={`px-2 py-2 text-[10px] font-bold rounded-lg border transition-all truncate ${formData.product === prod ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-300 hover:border-gray-400'}`}
+                                        >
+                                            {prod}
+                                        </button>
+                                    ))}
+                                    <button
+                                        onClick={() => setFormData(p => ({ ...p, product: 'Other' }))}
+                                        className={`px-2 py-2 text-[10px] font-bold rounded-lg border transition-all ${formData.product === 'Other' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-300'}`}
+                                    >
+                                        Другое
+                                    </button>
+                                </div>
+                                {formData.product === 'Other' && (
+                                    <input
+                                        type="text"
+                                        placeholder="Введите название продукта"
+                                        value={formData.customProduct}
+                                        onChange={e => setFormData(p => ({ ...p, customProduct: e.target.value }))}
+                                        className="mt-2 w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm"
+                                    />
+                                )}
+                            </div>
+
+                            {/* Amounts */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Сумма ({formData.currency})</label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            value={formData.amountLocal}
+                                            onChange={e => handleLocalAmountChange(e.target.value)}
+                                            className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg pl-3 pr-8 py-2 text-sm font-bold"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">В Евро (€)</label>
                                     <input
                                         type="number"
-                                        value={formData.amountLocal}
-                                        onChange={e => handleLocalAmountChange(e.target.value)}
-                                        className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg pl-3 pr-8 py-2 text-sm font-bold"
+                                        value={formData.amountEUR}
+                                        onChange={e => setFormData(p => ({ ...p, amountEUR: e.target.value }))}
+                                        className="w-full bg-gray-100 dark:bg-[#222] border border-transparent rounded-lg px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300"
                                         placeholder="0.00"
                                     />
                                 </div>
                             </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">В Евро (€)</label>
-                                <input
-                                    type="number"
-                                    value={formData.amountEUR}
-                                    onChange={e => setFormData(p => ({ ...p, amountEUR: e.target.value }))}
-                                    className="w-full bg-gray-100 dark:bg-[#222] border border-transparent rounded-lg px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300"
-                                    placeholder="0.00"
-                                />
-                            </div>
-                        </div>
 
-                        {/* Date & Method */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Дата и время</label>
-                                <DatePicker
-                                    selected={formData.date}
-                                    onChange={date => setFormData(p => ({ ...p, date }))}
-                                    showTimeSelect
-                                    dateFormat="dd.MM.yyyy HH:mm"
-                                    className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-xs"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Метод</label>
-                                <select
-                                    value={formData.paymentMethod}
-                                    onChange={e => setFormData(p => ({ ...p, paymentMethod: e.target.value }))}
-                                    className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-xs cursor-pointer"
-                                >
-                                    <option value="">Выберите...</option>
-                                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                                    <option value="Other">Другое</option>
-                                </select>
-                                {formData.paymentMethod === 'Other' && (
-                                    <input
-                                        type="text"
-                                        placeholder="Какой метод?"
-                                        value={formData.customMethod}
-                                        onChange={e => setFormData(p => ({ ...p, customMethod: e.target.value }))}
-                                        className="mt-2 w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-1.5 text-xs"
+                            {/* Date & Method */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Дата и время</label>
+                                    <DatePicker
+                                        selected={formData.date}
+                                        onChange={date => setFormData(p => ({ ...p, date }))}
+                                        showTimeSelect
+                                        dateFormat="dd.MM.yyyy HH:mm"
+                                        className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-xs"
                                     />
-                                )}
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Метод</label>
+                                    <select
+                                        value={formData.paymentMethod}
+                                        onChange={e => setFormData(p => ({ ...p, paymentMethod: e.target.value }))}
+                                        className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-xs cursor-pointer"
+                                    >
+                                        <option value="">Выберите...</option>
+                                        {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                                        <option value="Other">Другое</option>
+                                    </select>
+                                    {formData.paymentMethod === 'Other' && (
+                                        <input
+                                            type="text"
+                                            placeholder="Какой метод?"
+                                            value={formData.customMethod}
+                                            onChange={e => setFormData(p => ({ ...p, customMethod: e.target.value }))}
+                                            className="mt-2 w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-1.5 text-xs"
+                                        />
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Footer Buttons */}
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={onClose} className="flex-1 py-3 text-red-500 font-bold hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors text-sm">
+                                    Отменить
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (!formData.product || !formData.amountLocal) return alert('Заполните обязательные поля');
+                                        setStep('confirm');
+                                    }}
+                                    className="flex-[2] py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all text-sm"
+                                >
+                                    Добавить оплату
+                                </button>
                             </div>
                         </div>
-
-                        {/* Footer Buttons */}
-                        <div className="flex gap-3 pt-2">
-                            <button onClick={onClose} className="flex-1 py-3 text-red-500 font-bold hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors text-sm">
-                                Отменить
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (!formData.product || !formData.amountLocal) return alert('Заполните обязательные поля');
-                                    setStep('confirm');
-                                }}
-                                className="flex-[2] py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all text-sm"
-                            >
-                                Добавить оплату
-                            </button>
-                        </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );
