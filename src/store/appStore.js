@@ -64,6 +64,7 @@ export const useAppStore = create((set, get) => ({
   managers: [],
   products: [],
   rules: [],
+  learningArticles: [], // NEW: Learning Center articles
   countries: [], // NEW: Countries with flags
   schedules: [], // NEW: Schedule data
   onlineUsers: [], // NEW: Realtime Online Users
@@ -102,6 +103,7 @@ export const useAppStore = create((set, get) => ({
       managers: [],
       products: [],
       rules: [],
+      learningArticles: [],
       countries: [],
       schedules: [],
       trafficStats: {},
@@ -245,6 +247,7 @@ export const useAppStore = create((set, get) => ({
       const paymentsData = await fetchAll('payments', '*', 'transaction_date', false);
       const productsData = await fetchAll('knowledge_products', '*', 'created_at', false);
       const rulesData = await fetchAll('knowledge_rules', '*', 'created_at', false);
+      const learningData = await fetchAll('knowledge_learning', '*', 'created_at', false);
       const countriesData = await fetchAll('countries', '*', 'code', true);
       const schedulesData = await fetchAll('schedules', '*', 'date', false);
 
@@ -366,6 +369,7 @@ export const useAppStore = create((set, get) => ({
         managers: managersData || [],
         products: productsData || [],
         rules: rulesData || [],
+        learningArticles: learningData || [],
         countries: countriesData || [],
         schedules: schedulesData || [],
         kpiRates: kpiRatesData || [],
@@ -389,6 +393,7 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'managers' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_products' }, () => get().fetchAllData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_learning' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_product_rates' }, () => get().fetchAllData(true))

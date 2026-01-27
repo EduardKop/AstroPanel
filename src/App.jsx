@@ -28,6 +28,7 @@ import BirthdaysPage from './pages/BirthdaysPage';
 import GeoMatrixPage from './pages/GeoMatrixPage';
 import ProductsPage from './pages/knowledge/ProductsPage';
 import RulesPage from './pages/knowledge/RulesPage';
+import LearningCenterPage from './pages/knowledge/LearningCenterPage';
 import SalariesPage from './pages/SalariesPage';
 import SchedulePage from './pages/SchedulePage';
 // TimerWidget removed - feature in development
@@ -121,9 +122,31 @@ function App() {
   const [isEmployeesOpen, setIsEmployeesOpen] = useState(false);
   const [isSalesOpen, setIsSalesOpen] = useState(false);
   const [isConsOpen, setIsConsOpen] = useState(false);
-  const [isCLevelOpen, setIsCLevelOpen] = useState(false); // New state for C-Level menu
+  const [isCLevelOpen, setIsCLevelOpen] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Collapsible sidebar sections with localStorage persistence
+  const [sectionStates, setSectionStates] = useState(() => {
+    const saved = localStorage.getItem('sidebarSections');
+    return saved ? JSON.parse(saved) : {
+      dashboards: true,      // Only this one open by default
+      sales: false,
+      consultations: false,
+      knowledge: false,
+      people: false,
+      admin: false,
+      clevel: false
+    };
+  });
+
+  const toggleSection = (section) => {
+    setSectionStates(prev => {
+      const newState = { ...prev, [section]: !prev[section] };
+      localStorage.setItem('sidebarSections', JSON.stringify(newState));
+      return newState;
+    });
+  };
 
   const { user, setUser, logout, fetchAllData, isLoading, permissions } = useAppStore();
 
@@ -310,99 +333,148 @@ function App() {
 
           <nav className="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-0.5">
             {/* --- ОБЩИЕ ДЕШБОРДЫ --- */}
-            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider">Общие дешборды</div>
-            <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
-            {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
-            {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
-            {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
-            {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
-
-            <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
-
+            <button
+              onClick={() => toggleSection('dashboards')}
+              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+            >
+              <span>Общие дешборды</span>
+              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.dashboards ? 'rotate-90' : ''}`} />
+            </button>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.dashboards ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+              <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
+              {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
+              {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
+              {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
+              {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
+              <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
+            </div>
 
             {/* --- ОТДЕЛ ПРОДАЖ --- */}
-            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Отдел продаж</div>
-            <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/sales/dashboard" />
-            <button onClick={() => setIsSalesOpen(!isSalesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isSalesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
-              <div className="flex items-center gap-2.5"><Briefcase size={16} /><span>Отдел продаж</span></div>
-              <ChevronRight size={12} className={`transition-transform duration-200 ${isSalesOpen ? 'rotate-90' : ''}`} />
+            <button
+              onClick={() => toggleSection('sales')}
+              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+            >
+              <span>Отдел продаж</span>
+              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.sales ? 'rotate-90' : ''}`} />
             </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSalesOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-              <SidebarItem icon={CreditCard} label="Транзакции" path="/sales/payments" isChild />
-              <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/sales/quick-stats" isChild />
-              <SidebarItem icon={LayoutGrid} label="Матрица" path="/sales/matrix" isChild />
-              <SidebarItem icon={Globe} label="География" path="/sales/geo" isChild />
-              <SidebarItem icon={LineChart} label="Аналитика" path="/sales/stats" isChild />
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.sales ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+              <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/sales/dashboard" />
+              <button onClick={() => setIsSalesOpen(!isSalesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isSalesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+                <div className="flex items-center gap-2.5"><Briefcase size={16} /><span>Отдел продаж</span></div>
+                <ChevronRight size={12} className={`transition-transform duration-200 ${isSalesOpen ? 'rotate-90' : ''}`} />
+              </button>
+              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSalesOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                <SidebarItem icon={CreditCard} label="Транзакции" path="/sales/payments" isChild />
+                <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/sales/quick-stats" isChild />
+                <SidebarItem icon={LayoutGrid} label="Матрица" path="/sales/matrix" isChild />
+                <SidebarItem icon={Globe} label="География" path="/sales/geo" isChild />
+                <SidebarItem icon={LineChart} label="Аналитика" path="/sales/stats" isChild />
+              </div>
             </div>
 
             {/* --- КОНСУЛЬТАЦИИ --- */}
-            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Консультации</div>
-            <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/cons/dashboard" />
-            <button onClick={() => setIsConsOpen(!isConsOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isConsOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
-              <div className="flex items-center gap-2.5"><Headphones size={16} /><span>Консультации</span></div>
-              <ChevronRight size={12} className={`transition-transform duration-200 ${isConsOpen ? 'rotate-90' : ''}`} />
+            <button
+              onClick={() => toggleSection('consultations')}
+              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+            >
+              <span>Консультации</span>
+              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.consultations ? 'rotate-90' : ''}`} />
             </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isConsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-              <SidebarItem icon={CreditCard} label="Транзакции" path="/cons/payments" isChild />
-              <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/cons/quick-stats" isChild />
-              <SidebarItem icon={LayoutGrid} label="Матрица" path="/cons/matrix" isChild />
-              <SidebarItem icon={Globe} label="География" path="/cons/geo" isChild />
-              <SidebarItem icon={LineChart} label="Аналитика" path="/cons/stats" isChild />
-              <SidebarItem icon={PieChart} label="Конверсии" path="/cons/conversions" isChild />
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.consultations ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+              <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/cons/dashboard" />
+              <button onClick={() => setIsConsOpen(!isConsOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isConsOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+                <div className="flex items-center gap-2.5"><Headphones size={16} /><span>Консультации</span></div>
+                <ChevronRight size={12} className={`transition-transform duration-200 ${isConsOpen ? 'rotate-90' : ''}`} />
+              </button>
+              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isConsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                <SidebarItem icon={CreditCard} label="Транзакции" path="/cons/payments" isChild />
+                <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/cons/quick-stats" isChild />
+                <SidebarItem icon={LayoutGrid} label="Матрица" path="/cons/matrix" isChild />
+                <SidebarItem icon={Globe} label="География" path="/cons/geo" isChild />
+                <SidebarItem icon={LineChart} label="Аналитика" path="/cons/stats" isChild />
+                <SidebarItem icon={PieChart} label="Конверсии" path="/cons/conversions" isChild />
+              </div>
             </div>
 
-
             {/* --- БАЗА ЗНАНИЙ --- */}
-            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">База знаний</div>
-            <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
-            <SidebarItem icon={Shield} label="Правила" path="/rules" />
+            <button
+              onClick={() => toggleSection('knowledge')}
+              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+            >
+              <span>База знаний</span>
+              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.knowledge ? 'rotate-90' : ''}`} />
+            </button>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.knowledge ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+              <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
+              <SidebarItem icon={Shield} label="Правила" path="/rules" />
+              <SidebarItem icon={FileText} label="Центр обучения" path="/learning" />
+              {hasAccess('kpi') && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
+            </div>
 
-            {hasAccess('kpi') && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
+            {/* --- ЛЮДИ --- */}
+            <button
+              onClick={() => toggleSection('people')}
+              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+            >
+              <span>Люди</span>
+              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.people ? 'rotate-90' : ''}`} />
+            </button>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.people ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+              {/* ГРАФИК */}
+              {hasAccess('schedule') && <SidebarItem icon={Calendar} label="График" path="/schedule" />}
+              {hasAccess('time_log') && <SidebarItem icon={Clock} label="Учёт времени" path="/time-log" />}
 
-            {/* --- ЛЮДИ (Только Админ и C-level видят раздел) --- */}
-            {/* --- ЛЮДИ (Общий раздел) --- */}
-            <div className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2">Люди</div>
-
-            {/* ГРАФИК */}
-            {hasAccess('schedule') && <SidebarItem icon={Calendar} label="График" path="/schedule" />}
-            {hasAccess('time_log') && <SidebarItem icon={Clock} label="Учёт времени" path="/time-log" />}
-
-            {/* УПРАВЛЕНИЕ */}
-            {(hasAccess('employees_manage') || hasAccess('employees_list')) && (
-              <>
-                <button onClick={() => setIsEmployeesOpen(!isEmployeesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isEmployeesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
-                  <div className="flex items-center gap-2.5"><Users size={16} /><span>Сотрудники</span></div>
-                  <ChevronRight size={12} className={`transition-transform duration-200 ${isEmployeesOpen ? 'rotate-90' : ''}`} />
-                </button>
-                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isEmployeesOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
-                  <SidebarItem icon={Contact} label="Все сотрудники" path="/all-employees" isChild />
-                  <SidebarItem icon={Briefcase} label="Отдел Продаж" path="/sales-team" isChild />
-                  <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
-                  <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
-
-                  {/* ✅ ЗАРПЛАТЫ */}
-                  {hasAccess('salaries') && (
-                    <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
-                  )}
-                </div>
-                {hasAccess('stats') && <SidebarItem icon={Users} label="Эффективность" path="/managers" />}
-              </>
-            )}
+              {/* УПРАВЛЕНИЕ */}
+              {(hasAccess('employees_manage') || hasAccess('employees_list')) && (
+                <>
+                  <button onClick={() => setIsEmployeesOpen(!isEmployeesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isEmployeesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+                    <div className="flex items-center gap-2.5"><Users size={16} /><span>Сотрудники</span></div>
+                    <ChevronRight size={12} className={`transition-transform duration-200 ${isEmployeesOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isEmployeesOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
+                    <SidebarItem icon={Contact} label="Все сотрудники" path="/all-employees" isChild />
+                    <SidebarItem icon={Briefcase} label="Отдел Продаж" path="/sales-team" isChild />
+                    <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
+                    <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
+                    {hasAccess('salaries') && (
+                      <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
+                    )}
+                  </div>
+                  {hasAccess('stats') && <SidebarItem icon={Users} label="Эффективность" path="/managers" />}
+                </>
+              )}
+            </div>
 
             {/* ✅ ADMIN TOOLS (BLUE) */}
             {(user?.role === 'Admin' || user?.role === 'C-level') && (
               <>
-                <div className="px-3 py-2 text-[10px] font-bold text-cyan-500 uppercase tracking-wider mt-2 border-t border-gray-100 dark:border-[#222] pt-4">Admin</div>
-                <SidebarItem icon={Activity} label="Логирование" path="/activity-logs" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />
+                <button
+                  onClick={() => toggleSection('admin')}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-cyan-500 uppercase tracking-wider mt-2 border-t border-gray-100 dark:border-[#222] pt-4 hover:text-cyan-400 transition-colors"
+                >
+                  <span>Admin</span>
+                  <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.admin ? 'rotate-90' : ''}`} />
+                </button>
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.admin ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <SidebarItem icon={Activity} label="Логирование" path="/activity-logs" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />
+                </div>
               </>
             )}
 
             {/* ✅ C-LEVEL SETTINGS: ONLY FOR C-LEVEL */}
             {user.role === 'C-level' && (
               <>
-                <div className="px-3 py-2 text-[10px] font-bold text-amber-500 dark:text-amber-500 uppercase tracking-wider mt-2 border-t border-gray-100 dark:border-[#222] pt-4">C-Level</div>
-                <SidebarItem icon={Settings} label="Настройки ролей" path="/c-level-settings" className="text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10" />
-                <SidebarItem icon={Globe} label="Управление ГЕО" path="/geo-settings" className="text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10" />
+                <button
+                  onClick={() => toggleSection('clevel')}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-amber-500 uppercase tracking-wider mt-2 border-t border-gray-100 dark:border-[#222] pt-4 hover:text-amber-400 transition-colors"
+                >
+                  <span>C-Level</span>
+                  <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.clevel ? 'rotate-90' : ''}`} />
+                </button>
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.clevel ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <SidebarItem icon={Settings} label="Настройки ролей" path="/c-level-settings" className="text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10" />
+                  <SidebarItem icon={Globe} label="Управление ГЕО" path="/geo-settings" className="text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10" />
+                </div>
               </>
             )}
           </nav>
@@ -473,6 +545,7 @@ function App() {
 
               <Route path="/products" element={<ProtectedRoute resource="knowledge_base"><ProductsPage /></ProtectedRoute>} />
               <Route path="/rules" element={<ProtectedRoute resource="knowledge_base"><RulesPage /></ProtectedRoute>} />
+              <Route path="/learning" element={<ProtectedRoute resource="knowledge_base"><LearningCenterPage /></ProtectedRoute>} />
 
               {/* ✅ ADMIN ROUTES */}
               <Route path="/activity-logs" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><ActivityLogsPage /></ProtectedRoute>} />

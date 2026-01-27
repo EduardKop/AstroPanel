@@ -5,7 +5,7 @@ import { showToast } from '../utils/toastEvents';
 import {
     Calendar, Plus, X, Globe, LayoutGrid, AlertCircle, Trash2, Filter,
     ArrowDownWideNarrow, ArrowUpNarrowWide, List, DollarSign, User, Activity, Coins,
-    ChevronUp, ChevronDown
+    ChevronUp, ChevronDown, Pin
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -381,6 +381,23 @@ const GeoMatrixPage = () => {
     const [filters, setFilters] = useState({ product: '', type: '', department: 'all', showMobileFilters: false });
     const [sortOrder, setSortOrder] = useState('default');
 
+    // 📌 Pinning Logic
+    const [pinnedGeos, setPinnedGeos] = useState(() => {
+        try {
+            const saved = localStorage.getItem('matrix_pinned_geos');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) { return []; }
+    });
+
+    const togglePin = (code) => {
+        setPinnedGeos(prev => {
+            const isPinned = prev.includes(code);
+            const newPinned = isPinned ? prev.filter(c => c !== code) : [...prev, code];
+            localStorage.setItem('matrix_pinned_geos', JSON.stringify(newPinned));
+            return newPinned;
+        });
+    };
+
     // Загрузка стран (справочник)
     const fetchCountries = async () => {
         try {
@@ -479,13 +496,25 @@ const GeoMatrixPage = () => {
 
     const sortedCountries = useMemo(() => {
         let sorted = [...countriesList];
-        if (sortOrder === 'desc') {
-            sorted.sort((a, b) => (totalsByCountry[b.code] || 0) - (totalsByCountry[a.code] || 0));
-        } else if (sortOrder === 'asc') {
-            sorted.sort((a, b) => (totalsByCountry[a.code] || 0) - (totalsByCountry[b.code] || 0));
-        }
+
+        sorted.sort((a, b) => {
+            // 1. Pinned prioritization
+            const isPinnedA = pinnedGeos.includes(a.code);
+            const isPinnedB = pinnedGeos.includes(b.code);
+            if (isPinnedA && !isPinnedB) return -1;
+            if (!isPinnedA && isPinnedB) return 1;
+
+            // 2. Normal sorting
+            if (sortOrder === 'desc') {
+                return (totalsByCountry[b.code] || 0) - (totalsByCountry[a.code] || 0);
+            } else if (sortOrder === 'asc') {
+                return (totalsByCountry[a.code] || 0) - (totalsByCountry[b.code] || 0);
+            }
+            return 0; // Default order (often alphabetical by code from DB if no other sort)
+        });
+
         return sorted;
-    }, [countriesList, totalsByCountry, sortOrder]);
+    }, [countriesList, totalsByCountry, sortOrder, pinnedGeos]);
 
     const uniqueProducts = useMemo(() => [...new Set(payments.map(p => p.product).filter(Boolean))], [payments]);
     const uniqueTypes = useMemo(() => [...new Set(payments.map(p => p.type).filter(Boolean))], [payments]);
@@ -899,12 +928,19 @@ const GeoMatrixPage = () => {
                                 {sortedCountries.map(country => (
                                     <tr key={country.code} className="group hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
                                         <td className="px-3 py-1 border-b border-r border-gray-200 dark:border-[#333] bg-white dark:bg-[#111] group-hover:bg-gray-50 dark:group-hover:bg-[#1A1A1A] sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                            <div className="flex items-center justify-between h-full w-full">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xl leading-none">{country.emoji}</span>
-                                                    <span className="font-bold text-gray-900 dark:text-gray-200 text-xs">{country.code}</span>
+                                            <div className="flex items-center justify-between h-full w-full gap-2">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); togglePin(country.code); }}
+                                                        className="hover:bg-gray-200 dark:hover:bg-[#333] p-0.5 rounded-full transition-colors shrink-0"
+                                                        title={pinnedGeos.includes(country.code) ? "Открепить" : "Закрепить"}
+                                                    >
+                                                        <Pin size={10} className={pinnedGeos.includes(country.code) ? "fill-blue-500 text-blue-500" : "text-gray-300 dark:text-gray-600"} />
+                                                    </button>
+                                                    <span className="text-xl leading-none shrink-0">{country.emoji}</span>
+                                                    <span className="font-bold text-gray-900 dark:text-gray-200 text-xs truncate">{country.code}</span>
                                                 </div>
-                                                <div className="px-1.5 py-0.5 bg-gray-50 dark:bg-[#222] rounded text-[10px] font-bold text-gray-900 dark:text-white border border-gray-100 dark:border-[#333]">{totalsByCountry[country.code]}</div>
+                                                <div className="px-1.5 py-0.5 bg-gray-50 dark:bg-[#222] rounded text-[10px] font-bold text-gray-900 dark:text-white border border-gray-100 dark:border-[#333] shrink-0">{totalsByCountry[country.code]}</div>
                                             </div>
                                         </td>
                                         {dateList.map(date => {

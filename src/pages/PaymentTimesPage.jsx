@@ -245,7 +245,7 @@ const TimeHeatmap = ({ payments }) => {
             </div>
             {hoveredSegment && (
                 <div
-                    className="absolute -top-10 -translate-x-1/2 transform bg-slate-800 text-white text-xs py-1.5 px-3 rounded shadow-xl flex flex-col items-center whitespace-nowrap z-[80]"
+                    className="absolute -top-10 -translate-x-1/2 transform bg-slate-800 text-white text-xs py-1.5 px-3 rounded shadow-xl flex flex-col items-center whitespace-nowrap z-[80] pointer-events-none"
                     style={{ left: `${hoveredSegment.centerPct}%` }}
                 >
                     <span className="font-bold">{hoveredSegment.label}</span>

@@ -5,7 +5,7 @@ import { useAppStore } from '../store/appStore';
 import { fetchManagerById, updateManagerProfile } from '../services/dataService';
 import {
   User, Mail, Phone, MapPin, Briefcase,
-  UploadCloud, ArrowLeft, Send, Calendar, Save, Loader2
+  UploadCloud, ArrowLeft, Send, Calendar, Save, Loader2, ChevronDown, Sparkles
 } from 'lucide-react';
 
 const ROLES = ['Sales', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manager'];
@@ -19,6 +19,16 @@ const EditEmployeePage = () => {
 
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [animationsDisabled, setAnimationsDisabled] = useState(() => {
+    return localStorage.getItem('disableAnimations') === 'true';
+  });
+
+  const toggleAnimations = () => {
+    const newValue = !animationsDisabled;
+    setAnimationsDisabled(newValue);
+    localStorage.setItem('disableAnimations', newValue.toString());
+  };
 
   // ✅ 1. Список стран из БД
   const [availableCountries, setAvailableCountries] = useState([]);
@@ -312,6 +322,45 @@ const EditEmployeePage = () => {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Additional Settings Section */}
+              <div className="pt-6 border-t border-gray-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                  className="flex items-center gap-2 text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                >
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${showAdvancedSettings ? 'rotate-180' : ''}`}
+                  />
+                  Дополнительные настройки
+                </button>
+
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${showAdvancedSettings ? 'max-h-48 opacity-100 mt-4' : 'max-h-0 opacity-0'}`}>
+                  <div className="bg-gray-50 dark:bg-black/20 rounded-xl p-4 space-y-4 border border-gray-100 dark:border-white/5">
+                    {/* Disable Animations Toggle */}
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                          <Sparkles size={16} className="text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Анимации</span>
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500">Конфетти при добавлении оплаты</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={toggleAnimations}
+                        className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${animationsDisabled ? 'bg-gray-300 dark:bg-gray-600' : 'bg-purple-600'}`}
+                      >
+                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${animationsDisabled ? '' : 'translate-x-5'}`} />
+                      </button>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               {/* SAVE BUTTON */}

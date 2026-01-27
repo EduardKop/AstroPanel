@@ -5,6 +5,91 @@ import { X, Check, Instagram, Phone, Calendar, DollarSign, AlertCircle, ChevronR
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { supabase } from '../../services/supabaseClient';
+import confetti from 'canvas-confetti';
+
+// --- CONFETTI EFFECTS ---
+const fireBasicConfetti = () => {
+    confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+    });
+};
+
+const fireSideCannons = () => {
+    const end = Date.now() + 3 * 1000;
+    const colors = ['#a786ff', '#fd8bbc', '#eca184', '#f8deb1'];
+
+    const frame = () => {
+        if (Date.now() > end) return;
+
+        confetti({
+            particleCount: 2,
+            angle: 60,
+            spread: 55,
+            startVelocity: 60,
+            origin: { x: 0, y: 0.5 },
+            colors: colors,
+        });
+        confetti({
+            particleCount: 2,
+            angle: 120,
+            spread: 55,
+            startVelocity: 60,
+            origin: { x: 1, y: 0.5 },
+            colors: colors,
+        });
+
+        requestAnimationFrame(frame);
+    };
+
+    frame();
+};
+
+const fireStars = () => {
+    const defaults = {
+        spread: 360,
+        ticks: 50,
+        gravity: 0,
+        decay: 0.94,
+        startVelocity: 30,
+        colors: ['#FFE400', '#FFBD00', '#E89400', '#FFCA6C', '#FDFFB8'],
+    };
+
+    const shoot = () => {
+        confetti({
+            ...defaults,
+            particleCount: 40,
+            scalar: 1.2,
+            shapes: ['star'],
+        });
+
+        confetti({
+            ...defaults,
+            particleCount: 10,
+            scalar: 0.75,
+            shapes: ['circle'],
+        });
+    };
+
+    setTimeout(shoot, 0);
+    setTimeout(shoot, 100);
+    setTimeout(shoot, 200);
+};
+
+const triggerConfetti = (todayPaymentsCount) => {
+    // Check if animations are disabled
+    const animationsDisabled = localStorage.getItem('disableAnimations') === 'true';
+    if (animationsDisabled) return;
+
+    if (todayPaymentsCount >= 10) {
+        fireStars();
+    } else if (todayPaymentsCount >= 8) {
+        fireSideCannons();
+    } else {
+        fireBasicConfetti();
+    }
+};
 
 const REQUIRED_ROLES = ['Owner', 'Admin', 'Sales', 'Retention', 'Consultant'];
 
@@ -124,6 +209,18 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
 
             const { data, error } = await supabase.from('payments').insert(payload).select();
             if (error) throw error;
+
+            // Count today's payments for this manager to determine confetti type
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const { count: todayCount } = await supabase
+                .from('payments')
+                .select('*', { count: 'exact', head: true })
+                .eq('manager_id', user.id)
+                .gte('transaction_date', today.toISOString());
+
+            // Fire confetti based on payment count
+            triggerConfetti(todayCount || 1);
 
             // Log
             await logActivity({
