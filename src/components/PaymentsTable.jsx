@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, Coins, Copy, Check } from 'lucide-react';
+import { DollarSign, Coins, Copy, Check, Filter } from 'lucide-react';
 import Toast from './ui/Toast';
 
 const FLAGS = {
@@ -20,13 +20,27 @@ const getPaymentBadgeStyle = (type) => {
   return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20';
 };
 
-const PaymentsTable = ({ payments, loading }) => {
+const PaymentsTable = ({ payments, loading, statusFilter, onStatusFilterChange }) => {
   const [toastVisible, setToastVisible] = useState(false);
 
   const handleCopy = (text) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
     setToastVisible(true);
+  };
+
+  const toggleStatusFilter = () => {
+    if (!onStatusFilterChange) return;
+    // Cycle: all -> unknown -> completed -> all
+    if (statusFilter === 'all') onStatusFilterChange('unknown');
+    else if (statusFilter === 'unknown') onStatusFilterChange('completed');
+    else onStatusFilterChange('all');
+  };
+
+  const getStatusLabel = () => {
+    if (statusFilter === 'unknown') return 'Статус ⚠️';
+    if (statusFilter === 'completed') return 'Статус ✓';
+    return <><span>Статус</span><Filter size={10} className="ml-1 inline opacity-50" /></>;
   };
 
   return (
@@ -46,7 +60,15 @@ const PaymentsTable = ({ payments, loading }) => {
                 {/* ✅ ДВЕ ОТДЕЛЬНЫЕ КОЛОНКИ ДЛЯ СУММ */}
                 <th className="px-4 py-3 text-right">Сумма (Local)</th>
                 <th className="px-4 py-3 text-right">Сумма (EUR)</th>
-                <th className="px-4 py-3 text-right">Статус</th>
+                <th className="px-4 py-3 text-right">
+                  <button
+                    onClick={toggleStatusFilter}
+                    className={`hover:text-blue-500 transition-colors cursor-pointer ${statusFilter !== 'all' ? 'text-blue-500 font-bold' : ''}`}
+                    title="Клик для фильтрации по статусу"
+                  >
+                    {getStatusLabel()}
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
@@ -93,8 +115,8 @@ const PaymentsTable = ({ payments, loading }) => {
                         <button
                           onClick={() => handleCopy(p.crm_link)}
                           className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all font-medium text-[11px] group-hover:shadow-sm ${p.source === 'whatsapp'
-                              ? 'bg-green-50 dark:bg-green-900/10 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/20'
-                              : 'bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20'
+                            ? 'bg-green-50 dark:bg-green-900/10 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/20'
+                            : 'bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/20'
                             }`}
                         >
                           <span className="">{p.crm_link.replace('https://', '').replace('instagram.com/', '@').replace('t.me/', '@')}</span>
@@ -122,9 +144,15 @@ const PaymentsTable = ({ payments, loading }) => {
                     </td>
 
                     <td className="px-4 py-2 text-right">
-                      <span className="text-emerald-500 text-[10px] font-bold uppercase bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        {p.status}
-                      </span>
+                      {p.source === 'unknown' ? (
+                        <span className="text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20" title="Контакт не найден в базе лидов">
+                          Lead not found
+                        </span>
+                      ) : (
+                        <span className="text-emerald-500 text-[10px] font-bold uppercase bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                          {p.status}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))

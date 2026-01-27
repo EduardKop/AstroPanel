@@ -175,6 +175,7 @@ const PaymentsPage = () => {
   const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all' });
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('all');
   const itemsPerPage = 30;
 
   // Авто-обновление при маунте для получения свежих данных
@@ -245,6 +246,12 @@ const PaymentsPage = () => {
         }
       }
 
+      // Status filter
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'unknown' && item.source !== 'unknown') return false;
+        if (statusFilter === 'completed' && item.source === 'unknown') return false;
+      }
+
       return true;
     });
 
@@ -256,7 +263,7 @@ const PaymentsPage = () => {
     });
 
     return data;
-  }, [payments, filters, startDate, endDate, sortOrder, isRestrictedUser, currentUser]);
+  }, [payments, filters, startDate, endDate, sortOrder, isRestrictedUser, currentUser, statusFilter]);
 
   // Пагинация
   const totalPages = Math.ceil(processedData.length / itemsPerPage);
@@ -344,7 +351,12 @@ const PaymentsPage = () => {
       </div>
 
       <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm overflow-hidden">
-        <PaymentsTable payments={currentData} loading={isLoading} />
+        <PaymentsTable
+          payments={currentData}
+          loading={isLoading}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+        />
       </div>
 
       {totalPages > 1 && (
