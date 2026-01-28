@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, Coins, Copy, Check, Filter } from 'lucide-react';
+import { DollarSign, Coins, Copy, Check, Filter, ArrowUpDown } from 'lucide-react';
 import Toast from './ui/Toast';
 
 const FLAGS = {
@@ -20,7 +20,7 @@ const getPaymentBadgeStyle = (type) => {
   return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20';
 };
 
-const PaymentsTable = ({ payments, loading, statusFilter, onStatusFilterChange }) => {
+const PaymentsTable = ({ payments, loading, statusFilter, onStatusFilterChange, paymentRanks, sortField, sortOrder, onSort }) => {
   const [toastVisible, setToastVisible] = useState(false);
 
   const handleCopy = (text) => {
@@ -51,15 +51,43 @@ const PaymentsTable = ({ payments, loading, statusFilter, onStatusFilterChange }
             <thead className="bg-gray-50 dark:bg-[#161616] font-medium border-b border-gray-200 dark:border-[#333] text-gray-500 dark:text-[#666]">
               <tr>
                 <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Дата</th>
+                <th className="px-4 py-3">
+                  <button
+                    onClick={() => onSort?.('date')}
+                    className={`flex items-center gap-1.5 hover:text-blue-500 transition-colors cursor-pointer group ${sortField === 'date' ? 'text-blue-500' : ''}`}
+                    title={sortField === 'date' ? (sortOrder === 'desc' ? 'Сначала новые' : 'Сначала старые') : 'Сортировать по дате'}
+                  >
+                    Дата
+                    <ArrowUpDown size={12} className={`opacity-50 group-hover:opacity-100 transition-all ${sortField === 'date' ? 'opacity-100' : ''} ${sortField === 'date' && sortOrder === 'asc' ? 'rotate-180' : ''}`} />
+                  </button>
+                </th>
                 <th className="px-4 py-3">Менеджер</th>
                 <th className="px-4 py-3">ГЕО</th>
                 <th className="px-4 py-3">Продукт</th>
                 <th className="px-4 py-3">Метод</th>
                 <th className="px-4 py-3">Контакт</th>
+                <th className="px-4 py-3 text-center" title="Какая по счету оплата от клиента">№ Оплаты</th>
                 {/* ✅ ДВЕ ОТДЕЛЬНЫЕ КОЛОНКИ ДЛЯ СУММ */}
-                <th className="px-4 py-3 text-right">Сумма (Local)</th>
-                <th className="px-4 py-3 text-right">Сумма (EUR)</th>
+                <th className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => onSort?.('amountLocal')}
+                    className={`flex items-center gap-1.5 justify-end hover:text-blue-500 transition-colors cursor-pointer group w-full ${sortField === 'amountLocal' ? 'text-blue-500' : ''}`}
+                    title="Сортировать по сумме (Local)"
+                  >
+                    Сумма (Local)
+                    <ArrowUpDown size={12} className={`opacity-50 group-hover:opacity-100 transition-all ${sortField === 'amountLocal' ? 'opacity-100' : ''} ${sortField === 'amountLocal' && sortOrder === 'asc' ? 'rotate-180' : ''}`} />
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => onSort?.('amountEUR')}
+                    className={`flex items-center gap-1.5 justify-end hover:text-blue-500 transition-colors cursor-pointer group w-full ${sortField === 'amountEUR' ? 'text-blue-500' : ''}`}
+                    title="Сортировать по сумме (EUR)"
+                  >
+                    Сумма (EUR)
+                    <ArrowUpDown size={12} className={`opacity-50 group-hover:opacity-100 transition-all ${sortField === 'amountEUR' ? 'opacity-100' : ''} ${sortField === 'amountEUR' && sortOrder === 'asc' ? 'rotate-180' : ''}`} />
+                  </button>
+                </th>
                 <th className="px-4 py-3 text-right">
                   <button
                     onClick={toggleStatusFilter}
@@ -73,9 +101,9 @@ const PaymentsTable = ({ payments, loading, statusFilter, onStatusFilterChange }
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
               {loading ? (
-                <tr><td colSpan="10" className="px-4 py-8 text-center">Загрузка...</td></tr>
+                <tr><td colSpan="11" className="px-4 py-8 text-center">Загрузка...</td></tr>
               ) : payments.length === 0 ? (
-                <tr><td colSpan="10" className="px-4 py-8 text-center">Нет данных</td></tr>
+                <tr><td colSpan="11" className="px-4 py-8 text-center">Нет данных</td></tr>
               ) : (
                 payments.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group">
@@ -125,6 +153,26 @@ const PaymentsTable = ({ payments, loading, statusFilter, onStatusFilterChange }
                       ) : (
                         <span className="text-gray-400 text-[10px]">-</span>
                       )}
+                    </td>
+
+                    {/* ✅ КОЛОНКА RANK (#) */}
+                    <td className="px-4 py-2 text-center">
+                      {(() => {
+                        const rank = paymentRanks ? paymentRanks.get(p.id) : null;
+                        if (!rank) return <span className="text-gray-300 dark:text-gray-600 text-[10px]">-</span>;
+                        return (
+                          <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${rank === 1
+                            ? 'bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-1 ring-blue-500/20'
+                            : rank === 2
+                              ? 'bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 ring-1 ring-purple-500/20'
+                              : rank === 3
+                                ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 ring-1 ring-amber-500/20'
+                                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                            }`} title={`${rank}-я оплата`}>
+                            {rank}
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* ✅ КОЛОНКА 1: LOCAL */}

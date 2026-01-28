@@ -167,11 +167,11 @@ function App() {
       return;
     }
 
-    // 2. Get click coordinates
-    const x = e.clientX;
-    const y = e.clientY;
+    // 2. Use top right corner as origin
+    const x = window.innerWidth;
+    const y = 0;
 
-    // 3. Calculate radius to cover the screen
+    // 3. Calculate radius to cover the screen from top right corner
     const endRadius = Math.hypot(
       Math.max(x, window.innerWidth - x),
       Math.max(y, window.innerHeight - y)
@@ -182,7 +182,7 @@ function App() {
       setDarkMode(!darkMode);
     });
 
-    // 5. Animate the clip path
+    // 5. Animate the clip path from top right corner
     await transition.ready;
 
     const clipPath = [
@@ -479,8 +479,7 @@ function App() {
             )}
           </nav>
 
-          <div className="p-2 border-t border-gray-200 dark:border-[#222] space-y-2">
-            <ThemeToggle isDark={darkMode} toggle={toggleTheme} />
+          <div className="p-2 border-t border-gray-200 dark:border-[#222]">
             <button onClick={logout} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[6px] text-xs font-medium text-gray-500 dark:text-[#666] hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600 transition-all">
               <LogOut size={14} /><span>Выйти</span>
             </button>
@@ -494,9 +493,12 @@ function App() {
                 {/* Status bar */}
               </div>
             </div>
-            <button onClick={() => fetchAllData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
-              <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />
-            </button>
+            <div className="flex items-center gap-2">
+              <ThemeToggle isDark={darkMode} toggle={toggleTheme} />
+              <button onClick={() => fetchAllData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
+                <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </header>
 
           <div className="p-3 md:p-6 pb-safe">{/* pb-safe for notch devices */}

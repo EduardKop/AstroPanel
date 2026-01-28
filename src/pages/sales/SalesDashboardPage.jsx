@@ -472,7 +472,7 @@ const SalesDashboardPage = () => {
 
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
-    const restrictedRoles = ['Sales', 'Retention', 'Consultant'];
+    const restrictedRoles = ['Sales', 'SalesTaro', 'Retention', 'Consultant'];
     return restrictedRoles.includes(currentUser.role);
   }, [currentUser]);
 

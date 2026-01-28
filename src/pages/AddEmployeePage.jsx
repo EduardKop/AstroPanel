@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 
-const ROLES = ['Sales', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manager'];
+const ROLES = ['Sales', 'SalesTaro', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manager'];
 
 const AddEmployeePage = () => {
   const navigate = useNavigate();
@@ -49,9 +49,9 @@ const AddEmployeePage = () => {
       return ROLES;
     }
 
-    // Admin: Может добавлять ТОЛЬКО Sales, Consultant, Manager, SeniorSales
+    // Admin: Может добавлять ТОЛЬКО Sales, SalesTaro, Consultant, Manager, SeniorSales
     if (currentUser.role === 'Admin') {
-      return ['Sales', 'Consultant', 'Manager', 'SeniorSales'];
+      return ['Sales', 'SalesTaro', 'Consultant', 'Manager', 'SeniorSales'];
     }
 
     // Остальные (на всякий случай, хотя у них нет доступа к этой странице)

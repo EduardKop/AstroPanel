@@ -91,7 +91,7 @@ const triggerConfetti = (todayPaymentsCount) => {
     }
 };
 
-const REQUIRED_ROLES = ['Owner', 'Admin', 'Sales', 'Retention', 'Consultant'];
+const REQUIRED_ROLES = ['Owner', 'Admin', 'Sales', 'SalesTaro', 'Retention', 'Consultant'];
 
 const PRODUCTS = [
     'Лич5', 'Лич1',
@@ -100,6 +100,10 @@ const PRODUCTS = [
     'Дети', 'Мандала лич', 'Мандала фин',
     'ТАРО', 'Соляр', 'Календарь',
     'Курс (с куратором)', 'Курс (без куратора)'
+];
+
+const TAROT_PRODUCTS = [
+    'ТАРО', 'Таро2', 'Таро3', 'Таро4', 'Таро5', 'Таро6'
 ];
 
 const PAYMENT_METHODS = [
@@ -113,9 +117,20 @@ const CURRENCIES = {
 };
 
 const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
-    const { user, logActivity, kpiRates } = useAppStore();
+    const { user, logActivity, kpiRates, countries } = useAppStore();
     const [step, setStep] = useState('form'); // form, confirm
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [productTab, setProductTab] = useState('general'); // general, tarot
+
+    // Check if user is SalesTaro (sees all countries) or has multiple geos
+    const isSalesTaro = user?.role === 'SalesTaro';
+    const userGeoCount = user?.geo?.length || 0;
+    const showGeoSelector = isSalesTaro || userGeoCount > 1;
+
+    // Get available countries: SalesTaro sees all, others see only their assigned
+    const availableCountries = isSalesTaro
+        ? countries
+        : countries.filter(c => user?.geo?.includes(c.code));
 
     // Form State
     const [formData, setFormData] = useState({
@@ -378,6 +393,33 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                 </button>
                             </div>
 
+                            {/* GEO Selector - shows for SalesTaro or users with multiple geos */}
+                            {showGeoSelector && availableCountries.length > 0 && (
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 block mb-2 uppercase">🌍 Страна (ГЕО)</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {availableCountries.map(c => (
+                                            <button
+                                                key={c.code}
+                                                type="button"
+                                                onClick={() => setFormData(p => ({
+                                                    ...p,
+                                                    country: c.code,
+                                                    currency: CURRENCIES[c.code] || 'EUR'
+                                                }))}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${formData.country === c.code
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30'
+                                                    : 'bg-gray-50 dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#333] hover:border-blue-400'
+                                                    }`}
+                                            >
+                                                <span>{c.emoji}</span>
+                                                <span>{c.code}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Link & Nickname */}
                             <div className='bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30'>
                                 <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Ссылка на диалог / профиль</label>
@@ -395,11 +437,29 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                 )}
                             </div>
 
-                            {/* Product Grid */}
+                            {/* Product Section with Tabs */}
                             <div>
                                 <label className="text-xs font-bold text-gray-500 block mb-2 uppercase">Продукт</label>
+
+                                {/* Tab Toggle */}
+                                <div className="grid grid-cols-2 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg mb-3">
+                                    <button
+                                        onClick={() => { setProductTab('general'); setFormData(p => ({ ...p, product: '' })); }}
+                                        className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'general' ? 'bg-white dark:bg-[#333] text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                                    >
+                                        🛒 Общие
+                                    </button>
+                                    <button
+                                        onClick={() => { setProductTab('tarot'); setFormData(p => ({ ...p, product: '' })); }}
+                                        className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'tarot' ? 'bg-white dark:bg-[#333] text-purple-600 shadow-sm' : 'text-gray-500'}`}
+                                    >
+                                        🔮 Таро
+                                    </button>
+                                </div>
+
+                                {/* Product Grid */}
                                 <div className="grid grid-cols-3 gap-2">
-                                    {PRODUCTS.map(prod => (
+                                    {(productTab === 'tarot' ? TAROT_PRODUCTS : PRODUCTS).map(prod => (
                                         <button
                                             key={prod}
                                             onClick={() => setFormData(p => ({ ...p, product: prod }))}

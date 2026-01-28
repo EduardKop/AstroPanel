@@ -2,10 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
 import {
   Filter, ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-  XCircle, RotateCcw, ArrowUpDown, LayoutList,
+  XCircle, RotateCcw, LayoutList,
   LayoutDashboard, MessageCircle, MessageSquare, Phone, X
 } from 'lucide-react';
 import PaymentsTable from '../components/PaymentsTable';
+import { SearchModal, SearchButton } from '../components/ui/SearchInput';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -173,9 +174,12 @@ const PaymentsPage = () => {
   const [startDate, endDate] = dateRange;
 
   const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all' });
+  const [sortField, setSortField] = useState('date'); // 'date' | 'amountEUR' | 'amountLocal'
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const itemsPerPage = 30;
 
   // Авто-обновление при маунте для получения свежих данных
@@ -205,8 +209,42 @@ const PaymentsPage = () => {
   const resetFilters = () => {
     setFilters({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all' });
     setDateRange(getLastWeekRange());
+    setSearchQuery('');
+    setIsSearchOpen(false);
+    setSortField('date');
+    setSortOrder('desc');
   };
-  const toggleSort = () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  };
+
+  // --- 📊 PAYMENT RANKING LOGIC ---
+  const paymentRanks = useMemo(() => {
+    const ranks = new Map(); // Map<PaymentID, RankNumber>
+    const grouped = {};
+
+    payments.forEach(p => {
+      const link = p.crm_link ? p.crm_link.trim().toLowerCase() : null;
+      if (!link || link === '—') return;
+      if (!grouped[link]) grouped[link] = [];
+      grouped[link].push(p);
+    });
+
+    Object.values(grouped).forEach(userPayments => {
+      // Sort by date ascending to determine order
+      userPayments.sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
+      userPayments.forEach((p, index) => {
+        ranks.set(p.id, index + 1);
+      });
+    });
+    return ranks;
+  }, [payments]);
 
   // --- ЛОГИКА ФИЛЬТРАЦИИ (RAW MODE) ---
   const processedData = useMemo(() => {
@@ -237,6 +275,12 @@ const PaymentsPage = () => {
       if (filters.type && item.type !== filters.type) return false;
       if (filters.source !== 'all' && item.source !== filters.source) return false;
 
+      // Search by contact (crm_link)
+      if (searchQuery) {
+        const link = item.crm_link ? item.crm_link.toLowerCase() : '';
+        if (!link.includes(searchQuery.toLowerCase())) return false;
+      }
+
       // Filter by Department
       if (filters.department !== 'all') {
         if (filters.department === 'sales') {
@@ -255,15 +299,28 @@ const PaymentsPage = () => {
       return true;
     });
 
-    // Сортировка по дате
+    // Сортировка по выбранному полю
     data.sort((a, b) => {
-      const dateA = new Date(a.transactionDate);
-      const dateB = new Date(b.transactionDate);
-      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+      let valA, valB;
+
+      if (sortField === 'date') {
+        valA = new Date(a.transactionDate);
+        valB = new Date(b.transactionDate);
+      } else if (sortField === 'amountEUR') {
+        valA = a.amountEUR || 0;
+        valB = b.amountEUR || 0;
+      } else if (sortField === 'amountLocal') {
+        valA = a.amountLocal || 0;
+        valB = b.amountLocal || 0;
+      }
+
+      if (valA < valB) return sortOrder === 'desc' ? 1 : -1;
+      if (valA > valB) return sortOrder === 'desc' ? -1 : 1;
+      return 0;
     });
 
     return data;
-  }, [payments, filters, startDate, endDate, sortOrder, isRestrictedUser, currentUser, statusFilter]);
+  }, [payments, filters, startDate, endDate, sortField, sortOrder, isRestrictedUser, currentUser, statusFilter, searchQuery]);
 
   // Пагинация
   const totalPages = Math.ceil(processedData.length / itemsPerPage);
@@ -314,17 +371,8 @@ const PaymentsPage = () => {
             </div>
           </div>
 
-          {/* Правая часть: Фильтры + Календарь + Sort */}
+          {/* Правая часть: Фильтры + Календарь */}
           <div className="flex flex-wrap items-center gap-2">
-
-            {/* Sort Toggle */}
-            <button
-              onClick={toggleSort}
-              className="h-[34px] px-3 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-[6px] text-xs font-medium dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors flex items-center gap-2"
-            >
-              <ArrowUpDown size={12} className={sortOrder === 'asc' ? 'rotate-180' : ''} />
-              <span className="hidden sm:inline">{sortOrder === 'desc' ? 'Сначала новые' : 'Сначала старые'}</span>
-            </button>
 
             {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
             <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
@@ -336,6 +384,12 @@ const PaymentsPage = () => {
               endDate={endDate}
               onChange={(update) => setDateRange(update)}
               onReset={() => setDateRange(getLastWeekRange())}
+            />
+
+            {/* Search Button */}
+            <SearchButton
+              onClick={() => setIsSearchOpen(true)}
+              isActive={!!searchQuery}
             />
 
             {/* Global Reset */}
@@ -356,8 +410,21 @@ const PaymentsPage = () => {
           loading={isLoading}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
+          paymentRanks={paymentRanks}
+          sortField={sortField}
+          sortOrder={sortOrder}
+          onSort={handleSort}
         />
       </div>
+
+      {/* Search Modal */}
+      <SearchModal
+        isOpen={isSearchOpen}
+        value={searchQuery}
+        onChange={setSearchQuery}
+        onClose={() => setIsSearchOpen(false)}
+        placeholder="Поиск по контакту..."
+      />
 
       {totalPages > 1 && (
         <div className="flex justify-center mt-6 gap-2">

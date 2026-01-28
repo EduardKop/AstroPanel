@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
 import { Settings, Save, Info, Shield, CheckCircle, XCircle } from 'lucide-react';
 
-const ROLES = ['C-level', 'Admin', 'SeniorSales', 'Sales', 'Consultant'];
+const ROLES = ['C-level', 'Admin', 'SeniorSales', 'Sales', 'SalesTaro', 'Consultant'];
 
 const PERMISSION_KEYS = [
     { key: 'stats', label: 'Аналитика (Основная)' },
