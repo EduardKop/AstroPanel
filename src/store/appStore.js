@@ -60,6 +60,7 @@ const fetchAll = async (table, select, orderBy = 'created_at', ascending = false
 export const useAppStore = create((set, get) => ({
   // --- STATE ---
   user: null,
+  originalUser: null, // For impersonation (backup)
   payments: [],
   managers: [],
   products: [],
@@ -80,8 +81,6 @@ export const useAppStore = create((set, get) => ({
   // Данные трафика
   trafficStats: {},
 
-  trafficStats: {},
-
   // Dynamic Settings (Role Permissions & Docs)
   permissions: {},
   roleDocs: {},
@@ -94,14 +93,41 @@ export const useAppStore = create((set, get) => ({
 
   setUser: (user) => set({ user }),
 
+  impersonateRole: (role) => {
+    const currentUser = get().user;
+    if (!currentUser) return;
+
+    // If already impersonating, just update the role (don't overwrite originalUser again)
+    const existingOriginal = get().originalUser;
+
+    set({
+      originalUser: existingOriginal || currentUser, // Save real user
+      user: { ...currentUser, role: role, isImpersonating: true }
+    });
+
+    showToast(`Режим просмотра: ${role}`, 'info');
+  },
+
+  stopImpersonation: () => {
+    const original = get().originalUser;
+    if (original) {
+      set({
+        user: original,
+        originalUser: null
+      });
+      showToast('Режим просмотра отключен', 'success');
+    }
+  },
+
   logout: async () => {
     await supabase.auth.signOut();
     localStorage.removeItem('astroUser');
     set({
       user: null,
+      originalUser: null,
       payments: [],
       managers: [],
-      products: [],
+      // ...      products: [],
       rules: [],
       learningArticles: [],
       countries: [],

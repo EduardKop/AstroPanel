@@ -29,8 +29,10 @@ const GEO_PALETTE = {
 
 const SchedulePage = () => {
     const navigate = useNavigate();
-    const { user, managers, countries, schedules, fetchAllData, onlineUsers, logActivity } = useAppStore();
-    const isAdmin = user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
+    const { user, managers, countries, schedules, fetchAllData, onlineUsers, logActivity, permissions } = useAppStore();
+    // isAdmin logic replaced with precise permission check
+    const canEdit = user?.role === 'C-level' || permissions?.[user?.role]?.['schedule_edit'];
+    const isAdmin = canEdit; // Keeping variable name for now to minimize refactor churn, but logic is new
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [isEditing, setIsEditing] = useState(false); // Edit mode (single GEO)

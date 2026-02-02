@@ -71,3 +71,5 @@ export_leads_nicknames.js
 
 # Backups
 backups/
+.vercel
+.env*.local

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart,
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff
 } from 'lucide-react'
 
 import ThemeToggle from './components/ThemeToggle';
@@ -100,6 +100,7 @@ const ProtectedRoute = ({ allowedRoles, resource, children }) => {
   // 2. Dynamic Permission Check
   if (resource) {
     // Basic permission check
+    if (user.role === 'C-level') return children;
     const hasPermission = permissions?.[user.role]?.[resource];
 
     // Self-Edit Exception: If resource is 'employees_manage' AND id matches user.id, ALLOW.
@@ -254,6 +255,11 @@ function App() {
 
   // Helper for dynamic access
   const hasAccess = (resource) => {
+    // C-level Master Key (Except specific exclusions)
+    if (user?.role === 'C-level') {
+      if (resource === 'manual_payment') return false; // Explicitly disabled for C-level
+      return true;
+    }
     if (!user || !permissions[user.role]) return false;
     return permissions[user.role][resource] === true;
   };
@@ -274,6 +280,17 @@ function App() {
   }, []);
 
   const closeToast = () => setToast(prev => ({ ...prev, visible: false }));
+
+  // --- SECTION VISIBILITY LOGIC ---
+  const showDashboardsSection = hasAccess('dashboard_view') || hasAccess('stats') || hasAccess('geo') || hasAccess('geo_matrix') || hasAccess('transactions_view');
+
+  const showSalesSection = hasAccess('sales_dashboard') || hasAccess('sales_payments') || hasAccess('sales_quick_stats') || hasAccess('sales_matrix') || hasAccess('sales_geo') || hasAccess('sales_stats');
+
+  const showConsSection = hasAccess('cons_dashboard') || hasAccess('cons_payments') || hasAccess('cons_quick_stats') || hasAccess('cons_matrix') || hasAccess('cons_geo') || hasAccess('cons_stats') || hasAccess('cons_conversions');
+
+  const showKnowledgeSection = hasAccess('knowledge_base') || hasAccess('kpi');
+
+  const showPeopleSection = hasAccess('schedule') || hasAccess('time_log') || hasAccess('employees_manage') || hasAccess('employees_list') || hasAccess('stats');
 
   if (isAuthChecking) return <div className="min-h-screen bg-[#0A0A0A]" />
   if (!user) return <LoginPage onLoginSuccess={handleLoginSuccess} />
@@ -333,117 +350,137 @@ function App() {
 
           <nav className="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-0.5">
             {/* --- ОБЩИЕ ДЕШБОРДЫ --- */}
-            <button
-              onClick={() => toggleSection('dashboards')}
-              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-            >
-              <span>Общие дешборды</span>
-              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.dashboards ? 'rotate-90' : ''}`} />
-            </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.dashboards ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-              <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />
-              {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
-              {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
-              {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
-              {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
-              <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />
-            </div>
+            {showDashboardsSection && (
+              <>
+                <button
+                  onClick={() => toggleSection('dashboards')}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                >
+                  <span>Общие дешборды</span>
+                  <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.dashboards ? 'rotate-90' : ''}`} />
+                </button>
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.dashboards ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  {hasAccess('dashboard_view') && <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />}
+                  {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
+                  {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
+                  {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
+                  {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
+                  {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
+                </div>
+              </>
+            )}
 
             {/* --- ОТДЕЛ ПРОДАЖ --- */}
-            <button
-              onClick={() => toggleSection('sales')}
-              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-            >
-              <span>Отдел продаж</span>
-              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.sales ? 'rotate-90' : ''}`} />
-            </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.sales ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-              <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/sales/dashboard" />
-              <button onClick={() => setIsSalesOpen(!isSalesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isSalesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
-                <div className="flex items-center gap-2.5"><Briefcase size={16} /><span>Отдел продаж</span></div>
-                <ChevronRight size={12} className={`transition-transform duration-200 ${isSalesOpen ? 'rotate-90' : ''}`} />
-              </button>
-              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSalesOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                <SidebarItem icon={CreditCard} label="Транзакции" path="/sales/payments" isChild />
-                <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/sales/quick-stats" isChild />
-                <SidebarItem icon={LayoutGrid} label="Матрица" path="/sales/matrix" isChild />
-                <SidebarItem icon={Globe} label="География" path="/sales/geo" isChild />
-                <SidebarItem icon={LineChart} label="Аналитика" path="/sales/stats" isChild />
-              </div>
-            </div>
+            {showSalesSection && (
+              <>
+                <button
+                  onClick={() => toggleSection('sales')}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                >
+                  <span>Отдел продаж</span>
+                  <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.sales ? 'rotate-90' : ''}`} />
+                </button>
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.sales ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  {hasAccess('sales_dashboard') && <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/sales/dashboard" />}
+                  <button onClick={() => setIsSalesOpen(!isSalesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isSalesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+                    <div className="flex items-center gap-2.5"><Briefcase size={16} /><span>Отдел продаж</span></div>
+                    <ChevronRight size={12} className={`transition-transform duration-200 ${isSalesOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSalesOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                    {hasAccess('sales_payments') && <SidebarItem icon={CreditCard} label="Транзакции" path="/sales/payments" isChild />}
+                    {hasAccess('sales_quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/sales/quick-stats" isChild />}
+                    {hasAccess('sales_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/sales/matrix" isChild />}
+                    {hasAccess('sales_geo') && <SidebarItem icon={Globe} label="География" path="/sales/geo" isChild />}
+                    {hasAccess('sales_stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/sales/stats" isChild />}
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* --- КОНСУЛЬТАЦИИ --- */}
-            <button
-              onClick={() => toggleSection('consultations')}
-              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-            >
-              <span>Консультации</span>
-              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.consultations ? 'rotate-90' : ''}`} />
-            </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.consultations ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-              <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/cons/dashboard" />
-              <button onClick={() => setIsConsOpen(!isConsOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isConsOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
-                <div className="flex items-center gap-2.5"><Headphones size={16} /><span>Консультации</span></div>
-                <ChevronRight size={12} className={`transition-transform duration-200 ${isConsOpen ? 'rotate-90' : ''}`} />
-              </button>
-              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isConsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                <SidebarItem icon={CreditCard} label="Транзакции" path="/cons/payments" isChild />
-                <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/cons/quick-stats" isChild />
-                <SidebarItem icon={LayoutGrid} label="Матрица" path="/cons/matrix" isChild />
-                <SidebarItem icon={Globe} label="География" path="/cons/geo" isChild />
-                <SidebarItem icon={LineChart} label="Аналитика" path="/cons/stats" isChild />
-                <SidebarItem icon={PieChart} label="Конверсии" path="/cons/conversions" isChild />
-              </div>
-            </div>
+            {showConsSection && (
+              <>
+                <button
+                  onClick={() => toggleSection('consultations')}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                >
+                  <span>Консультации</span>
+                  <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.consultations ? 'rotate-90' : ''}`} />
+                </button>
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.consultations ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  {hasAccess('cons_dashboard') && <SidebarItem icon={LayoutDashboard} label="Дашборд" path="/cons/dashboard" />}
+                  <button onClick={() => setIsConsOpen(!isConsOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isConsOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+                    <div className="flex items-center gap-2.5"><Headphones size={16} /><span>Консультации</span></div>
+                    <ChevronRight size={12} className={`transition-transform duration-200 ${isConsOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isConsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                    {hasAccess('cons_payments') && <SidebarItem icon={CreditCard} label="Транзакции" path="/cons/payments" isChild />}
+                    {hasAccess('cons_quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. анализ" path="/cons/quick-stats" isChild />}
+                    {hasAccess('cons_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/cons/matrix" isChild />}
+                    {hasAccess('cons_geo') && <SidebarItem icon={Globe} label="География" path="/cons/geo" isChild />}
+                    {hasAccess('cons_stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/cons/stats" isChild />}
+                    {hasAccess('cons_conversions') && <SidebarItem icon={PieChart} label="Конверсии" path="/cons/conversions" isChild />}
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* --- БАЗА ЗНАНИЙ --- */}
-            <button
-              onClick={() => toggleSection('knowledge')}
-              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-            >
-              <span>База знаний</span>
-              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.knowledge ? 'rotate-90' : ''}`} />
-            </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.knowledge ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-              <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
-              <SidebarItem icon={Shield} label="Правила" path="/rules" />
-              <SidebarItem icon={FileText} label="Центр обучения" path="/learning" />
-              {hasAccess('kpi') && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
-            </div>
+            {showKnowledgeSection && (
+              <>
+                <button
+                  onClick={() => toggleSection('knowledge')}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                >
+                  <span>База знаний</span>
+                  <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.knowledge ? 'rotate-90' : ''}`} />
+                </button>
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.knowledge ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
+                  <SidebarItem icon={Shield} label="Правила" path="/rules" />
+                  <SidebarItem icon={FileText} label="Центр обучения" path="/learning" />
+                  {hasAccess('kpi') && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
+                </div>
+              </>
+            )}
 
             {/* --- ЛЮДИ --- */}
-            <button
-              onClick={() => toggleSection('people')}
-              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
-            >
-              <span>Люди</span>
-              <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.people ? 'rotate-90' : ''}`} />
-            </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.people ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-              {/* ГРАФИК */}
-              {hasAccess('schedule') && <SidebarItem icon={Calendar} label="График" path="/schedule" />}
-              {hasAccess('time_log') && <SidebarItem icon={Clock} label="Учёт времени" path="/time-log" />}
+            {showPeopleSection && (
+              <>
+                <button
+                  onClick={() => toggleSection('people')}
+                  className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-wider mt-2 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                >
+                  <span>Люди</span>
+                  <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.people ? 'rotate-90' : ''}`} />
+                </button>
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.people ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  {/* ГРАФИК */}
+                  {hasAccess('schedule') && <SidebarItem icon={Calendar} label="График" path="/schedule" />}
+                  {hasAccess('time_log') && <SidebarItem icon={Clock} label="Учёт времени" path="/time-log" />}
 
-              {/* УПРАВЛЕНИЕ */}
-              {(hasAccess('employees_manage') || hasAccess('employees_list')) && (
-                <>
-                  <button onClick={() => setIsEmployeesOpen(!isEmployeesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isEmployeesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
-                    <div className="flex items-center gap-2.5"><Users size={16} /><span>Сотрудники</span></div>
-                    <ChevronRight size={12} className={`transition-transform duration-200 ${isEmployeesOpen ? 'rotate-90' : ''}`} />
-                  </button>
-                  <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isEmployeesOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
-                    <SidebarItem icon={Contact} label="Все сотрудники" path="/all-employees" isChild />
-                    <SidebarItem icon={Briefcase} label="Отдел Продаж" path="/sales-team" isChild />
-                    <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
-                    <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
-                    {hasAccess('salaries') && (
-                      <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
-                    )}
-                  </div>
-                  {hasAccess('stats') && <SidebarItem icon={Users} label="Эффективность" path="/managers" />}
-                </>
-              )}
-            </div>
+                  {/* УПРАВЛЕНИЕ */}
+                  {(hasAccess('employees_manage') || hasAccess('employees_list')) && (
+                    <>
+                      <button onClick={() => setIsEmployeesOpen(!isEmployeesOpen)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isEmployeesOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+                        <div className="flex items-center gap-2.5"><Users size={16} /><span>Сотрудники</span></div>
+                        <ChevronRight size={12} className={`transition-transform duration-200 ${isEmployeesOpen ? 'rotate-90' : ''}`} />
+                      </button>
+                      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isEmployeesOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        <SidebarItem icon={Contact} label="Все сотрудники" path="/all-employees" isChild />
+                        <SidebarItem icon={Briefcase} label="Отдел Продаж" path="/sales-team" isChild />
+                        <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
+                        <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
+                        {hasAccess('salaries') && (
+                          <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
+                        )}
+                      </div>
+                      {hasAccess('stats') && <SidebarItem icon={Users} label="Эффективность" path="/managers" />}
+                    </>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* ✅ ADMIN TOOLS (BLUE) */}
             {(user?.role === 'Admin' || user?.role === 'C-level') && (
@@ -503,10 +540,10 @@ function App() {
 
           <div className="p-3 md:p-6 pb-safe">{/* pb-safe for notch devices */}
             <Routes>
-              <Route path="/" element={<DashboardPage />} />
+              <Route path="/" element={<ProtectedRoute resource="dashboard_view"><DashboardPage /></ProtectedRoute>} />
               <Route path="/quick-stats" element={<ProtectedRoute resource="quick_stats"><QuickStatsPage /></ProtectedRoute>} />
               <Route path="/stats" element={<ProtectedRoute resource="stats"><StatsPage /></ProtectedRoute>} />
-              <Route path="/list" element={<PaymentsPage />} />
+              <Route path="/list" element={<ProtectedRoute resource="transactions_view"><PaymentsPage /></ProtectedRoute>} />
 
               <Route path="/kpi" element={<ProtectedRoute resource="kpi"><KPIPage /></ProtectedRoute>} />
               <Route path="/geo" element={<ProtectedRoute resource="geo"><GeoPage /></ProtectedRoute>} />
@@ -514,21 +551,21 @@ function App() {
               <Route path="/geo-matrix" element={<ProtectedRoute resource="geo_matrix"><GeoMatrixPage /></ProtectedRoute>} />
 
               {/* ✅ SALES DEPARTMENT ROUTES */}
-              <Route path="/sales/dashboard" element={<SalesDashboardPage />} />
-              <Route path="/sales/payments" element={<SalesPaymentsPage />} />
-              <Route path="/sales/quick-stats" element={<SalesQuickStatsPage />} />
-              <Route path="/sales/matrix" element={<SalesMatrixPage />} />
-              <Route path="/sales/geo" element={<SalesGeoPage />} />
-              <Route path="/sales/stats" element={<SalesStatsPage />} />
+              <Route path="/sales/dashboard" element={<ProtectedRoute resource="sales_dashboard"><SalesDashboardPage /></ProtectedRoute>} />
+              <Route path="/sales/payments" element={<ProtectedRoute resource="sales_payments"><SalesPaymentsPage /></ProtectedRoute>} />
+              <Route path="/sales/quick-stats" element={<ProtectedRoute resource="sales_quick_stats"><SalesQuickStatsPage /></ProtectedRoute>} />
+              <Route path="/sales/matrix" element={<ProtectedRoute resource="sales_matrix"><SalesMatrixPage /></ProtectedRoute>} />
+              <Route path="/sales/geo" element={<ProtectedRoute resource="sales_geo"><SalesGeoPage /></ProtectedRoute>} />
+              <Route path="/sales/stats" element={<ProtectedRoute resource="sales_stats"><SalesStatsPage /></ProtectedRoute>} />
 
               {/* ✅ CONSULTATIONS DEPARTMENT ROUTES */}
-              <Route path="/cons/dashboard" element={<ConsDashboardPage />} />
-              <Route path="/cons/payments" element={<ConsPaymentsPage />} />
-              <Route path="/cons/quick-stats" element={<ConsQuickStatsPage />} />
-              <Route path="/cons/matrix" element={<ConsMatrixPage />} />
-              <Route path="/cons/geo" element={<ConsGeoPage />} />
-              <Route path="/cons/stats" element={<ConsStatsPage />} />
-              <Route path="/cons/conversions" element={<ConsConversionsPage />} />
+              <Route path="/cons/dashboard" element={<ProtectedRoute resource="cons_dashboard"><ConsDashboardPage /></ProtectedRoute>} />
+              <Route path="/cons/payments" element={<ProtectedRoute resource="cons_payments"><ConsPaymentsPage /></ProtectedRoute>} />
+              <Route path="/cons/quick-stats" element={<ProtectedRoute resource="cons_quick_stats"><ConsQuickStatsPage /></ProtectedRoute>} />
+              <Route path="/cons/matrix" element={<ProtectedRoute resource="cons_matrix"><ConsMatrixPage /></ProtectedRoute>} />
+              <Route path="/cons/geo" element={<ProtectedRoute resource="cons_geo"><ConsGeoPage /></ProtectedRoute>} />
+              <Route path="/cons/stats" element={<ProtectedRoute resource="cons_stats"><ConsStatsPage /></ProtectedRoute>} />
+              <Route path="/cons/conversions" element={<ProtectedRoute resource="cons_conversions"><ConsConversionsPage /></ProtectedRoute>} />
 
               <Route path="/sales-team" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Отдел Продаж" targetRole="Sales" currentUser={user} /></ProtectedRoute>} />
               <Route path="/consultants" element={<ProtectedRoute resource="employees_list"><EmployeesPage pageTitle="Консультанты" targetRole="Consultant" currentUser={user} /></ProtectedRoute>} />
@@ -563,6 +600,24 @@ function App() {
             </Routes>
           </div>
         </main>
+        {/* ✅ IMPERSONATION BANNER */}
+        {user?.isImpersonating && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-3 bg-indigo-600 text-white rounded-lg shadow-xl shadow-indigo-500/20 animate-in slide-in-from-bottom-5 fade-in duration-300">
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase font-bold opacity-80 leading-none mb-0.5">Режим просмотра</span>
+              <span className="text-sm font-semibold">{user.role}</span>
+            </div>
+            <div className="h-8 w-px bg-white/20 mx-1"></div>
+            <button
+              onClick={() => useAppStore.getState().stopImpersonation()}
+              className="p-1.5 hover:bg-white/20 rounded-md transition-colors"
+              title="Вернуться к своему профилю"
+            >
+              <EyeOff size={18} />
+            </button>
+          </div>
+        )}
+
         <AddPaymentButton />
       </div >
     </BrowserRouter >
