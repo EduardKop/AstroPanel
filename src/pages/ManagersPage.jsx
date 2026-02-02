@@ -9,19 +9,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 // --- КОМПОНЕНТЫ ---
-const SelectFilter = ({ label, value, options, onChange }) => (
-  <div className="relative group">
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-300 dark:border-[#333] text-gray-900 dark:text-gray-200 py-1.5 pl-2.5 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer min-w-[100px]"
-    >
-      <option value="">{label}: Все</option>
-      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-    </select>
-    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
-  </div>
-);
+import { DenseSelect } from '../components/ui/FilterSelect';
 
 const getLastWeekRange = () => {
   const end = new Date();
@@ -161,7 +149,7 @@ const ManagersPage = () => {
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
-  const [filters, setFilters] = useState({ country: '', product: '', type: '' });
+  const [filters, setFilters] = useState({ country: [], product: [], type: [] });
   const [sortConfig, setSortConfig] = useState({ key: 'salesCount', direction: 'desc' });
 
   const uniqueValues = useMemo(() => {
@@ -174,7 +162,7 @@ const ManagersPage = () => {
   }, [payments]);
 
   const resetFilters = () => {
-    setFilters({ country: '', product: '', type: '' });
+    setFilters({ country: [], product: [], type: [] });
     setDateRange(getLastWeekRange());
   };
 
@@ -189,9 +177,9 @@ const ManagersPage = () => {
       const dbDateStr = item.transactionDate.slice(0, 10);
 
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
-      if (filters.country && item.country !== filters.country) return false;
-      if (filters.product && item.product !== filters.product) return false;
-      if (filters.type && item.type !== filters.type) return false;
+      if (filters.country.length > 0 && !filters.country.includes(item.country)) return false;
+      if (filters.product.length > 0 && !filters.product.includes(item.product)) return false;
+      if (filters.type.length > 0 && !filters.type.includes(item.type)) return false;
       return true;
     });
 
@@ -265,9 +253,9 @@ const ManagersPage = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <SelectFilter label="ГЕО" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-          <SelectFilter label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
-          <SelectFilter label="Тип" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
+          <DenseSelect label="ГЕО" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
+          <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+          <DenseSelect label="Тип" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
 
           <CustomDateRangePicker
             startDate={startDate}

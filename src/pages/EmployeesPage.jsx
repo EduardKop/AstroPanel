@@ -8,28 +8,12 @@ import {
   Pencil, Lock, Unlock, Ban, ShieldCheck
 } from 'lucide-react';
 
-const SelectFilter = ({ label, value, options, onChange }) => (
-  <div className="relative min-w-[120px] group">
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2.5 pr-7 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-all cursor-pointer"
-    >
-      <option value="">{label}: Все</option>
-      {options.map(opt => (
-        <option key={opt} value={opt}>{opt}</option>
-      ))}
-    </select>
-    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-      <Filter size={10} />
-    </div>
-  </div>
-);
+import { DenseSelect } from '../components/ui/FilterSelect';
 
 const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, excludeRole, showAddButton = false }) => {
   const navigate = useNavigate();
   const { managers, user: currentUser, fetchAllData, isLoading, onlineUsers } = useAppStore();
-  const [filters, setFilters] = useState({ geo: '' });
+  const [filters, setFilters] = useState({ geo: [], role: [] });
 
   // Фильтрация
   const processedManagers = useMemo(() => {
@@ -44,13 +28,13 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     }
 
     // 2. Фильтр по ГЕО (из выпадающего списка)
-    if (filters.geo) {
-      result = result.filter(mgr => mgr.geo && Array.isArray(mgr.geo) && mgr.geo.includes(filters.geo));
+    if (filters.geo.length > 0) {
+      result = result.filter(mgr => mgr.geo && Array.isArray(mgr.geo) && mgr.geo.some(g => filters.geo.includes(g)));
     }
 
     // 2.1 Фильтр по РОЛИ (из выпадающего списка)
-    if (filters.role) {
-      result = result.filter(m => m.role === filters.role);
+    if (filters.role.length > 0) {
+      result = result.filter(m => filters.role.includes(m.role));
     }
 
     // 3. Сортировка (Активные выше)
@@ -142,11 +126,11 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
           )}
 
           <div className="flex items-center gap-2">
-            <SelectFilter label="Роль" value={filters.role || ''} options={uniqueRoles} onChange={(val) => setFilters(prev => ({ ...prev, role: val }))} />
-            <SelectFilter label="ГЕО" value={filters.geo} options={uniqueGeos} onChange={(val) => setFilters(prev => ({ ...prev, geo: val }))} />
-            {(filters.geo || filters.role) && (
+            <DenseSelect label="Роль" value={filters.role} options={uniqueRoles} onChange={(val) => setFilters(prev => ({ ...prev, role: val }))} />
+            <DenseSelect label="ГЕО" value={filters.geo} options={uniqueGeos} onChange={(val) => setFilters(prev => ({ ...prev, geo: val }))} />
+            {(filters.geo.length > 0 || filters.role.length > 0) && (
               <button
-                onClick={() => setFilters({ geo: '', role: '' })}
+                onClick={() => setFilters({ geo: [], role: [] })}
                 className="text-red-500 bg-red-500/10 hover:bg-red-500/20 p-1.5 rounded-[6px] transition-colors"
                 title="Сбросить фильтры"
               >

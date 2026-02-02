@@ -308,7 +308,7 @@ const CustomPeriodPicker = ({ startDate, endDate, onChange, label, variant = 'pr
 };
 
 const SalesQuickStatsPage = () => {
-    const { payments, schedules, trafficStats, fetchAllData, fetchTrafficStats, managers } = useAppStore();
+    const { user, payments, schedules, trafficStats, fetchAllData, fetchTrafficStats, managers } = useAppStore();
 
     // Period 1 (left column)
     const [period1, setPeriod1] = useState(() => {
@@ -356,6 +356,15 @@ const SalesQuickStatsPage = () => {
         return Array.from(geos).sort();
     }, [payments, schedules, trafficStats]);
 
+    // ✅ Filter GEOs based on User's assigned GEOs
+    const filteredGeos = useMemo(() => {
+        if (!user || ['Admin', 'C-level', 'SeniorSales'].includes(user.role)) {
+            return uniqueGeos;
+        }
+        const userGeos = user.geo || [];
+        return uniqueGeos.filter(g => userGeos.includes(g));
+    }, [uniqueGeos, user]);
+
     const geoData = useMemo(() => {
         // Period 1 dates (left column)
         const p1StartStr = period1Start ? toYMD(period1Start) : toYMD(new Date());
@@ -394,7 +403,7 @@ const SalesQuickStatsPage = () => {
             }).join(' / ');
         };
 
-        return uniqueGeos.map(geo => {
+        return filteredGeos.map(geo => {
             const getMetrics = (start, end) => {
                 let salesCount = 0;
                 let transactionCount = 0;
@@ -458,7 +467,7 @@ const SalesQuickStatsPage = () => {
                 previous
             };
         });
-    }, [uniqueGeos, period1Start, period1End, period2Start, period2End, filters, payments, schedules, trafficStats, managers]);
+    }, [filteredGeos, period1Start, period1End, period2Start, period2End, filters, payments, schedules, trafficStats, managers]);
 
     const resetPeriods = () => {
         const today = new Date();

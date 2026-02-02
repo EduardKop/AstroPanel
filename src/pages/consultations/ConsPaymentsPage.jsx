@@ -9,20 +9,7 @@ import PaymentsTable from '../../components/PaymentsTable';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// --- КОМПОНЕНТЫ ---
-const DenseSelect = ({ label, value, options, onChange }) => (
-  <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[100px]">
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer truncate"
-    >
-      <option value="">{label}</option>
-      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-    </select>
-    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
-  </div>
-);
+import { DenseSelect } from '../../components/ui/FilterSelect';
 
 const getLastWeekRange = () => {
   const end = new Date();
@@ -172,7 +159,7 @@ const ConsPaymentsPage = () => {
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
 
-  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all' });
+  const [filters, setFilters] = useState({ manager: [], country: [], product: [], type: [], source: 'all' });
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
@@ -183,12 +170,12 @@ const ConsPaymentsPage = () => {
   }, [fetchAllData]);
 
   const hasActiveFilters = useMemo(() => {
-    return !!(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all');
+    return !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all');
   }, [filters]);
 
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
-    return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
+    return ['Sales', 'SalesTaro', 'Consultant', 'Retention'].includes(currentUser.role);
   }, [currentUser]);
 
   const uniqueValues = useMemo(() => {
@@ -202,7 +189,7 @@ const ConsPaymentsPage = () => {
   }, [payments]);
 
   const resetFilters = () => {
-    setFilters({ manager: '', country: '', product: '', type: '', source: 'all' });
+    setFilters({ manager: [], country: [], product: [], type: [], source: 'all' });
     setDateRange(getLastWeekRange());
   };
   const toggleSort = () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
@@ -220,7 +207,7 @@ const ConsPaymentsPage = () => {
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
       } else {
-        if (filters.manager && item.manager !== filters.manager) return false;
+        if (filters.manager.length > 0 && !filters.manager.includes(item.manager)) return false;
       }
 
       // 2. Дата (Строгое сравнение строк)
@@ -233,10 +220,16 @@ const ConsPaymentsPage = () => {
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
       // 3. Остальные фильтры
-      if (filters.country && item.country !== filters.country) return false;
-      if (filters.product && item.product !== filters.product) return false;
-      if (filters.type && item.type !== filters.type) return false;
+      if (filters.country.length > 0 && !filters.country.includes(item.country)) return false;
+      if (filters.product.length > 0 && !filters.product.includes(item.product)) return false;
+      if (filters.type.length > 0 && !filters.type.includes(item.type)) return false;
       if (filters.source !== 'all' && item.source !== filters.source) return false;
+
+      // 🔥 4. GEO FILTER FOR RESTRICTED ROLES
+      if (isRestrictedUser) {
+        const userGeos = currentUser.geo || [];
+        if (!item.country || !userGeos.includes(item.country)) return false;
+      }
 
       return true;
     });
@@ -304,7 +297,30 @@ const ConsPaymentsPage = () => {
 
             {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
             <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-            <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+            <DenseSelect
+              label="Продукт"
+              value={filters.product}
+              options={uniqueValues.products}
+              onChange={(val) => setFilters(p => ({ ...p, product: val }))}
+              gridCols={2}
+              customButtons={[
+                {
+                  label: 'Без Таро 2-3+',
+                  onClick: () => {
+                    const allowed = uniqueValues.products.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p)));
+                    setFilters(prev => ({ ...prev, product: allowed }));
+                  }
+                },
+                {
+                  label: 'Натальные',
+                  onClick: () => {
+                    const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети'];
+                    const allowed = uniqueValues.products.filter(p => natalList.includes(p));
+                    setFilters(prev => ({ ...prev, product: allowed }));
+                  }
+                }
+              ]}
+            />
             <DenseSelect label="Тип" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
 
             <CustomDateRangePicker

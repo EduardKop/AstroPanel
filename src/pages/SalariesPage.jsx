@@ -26,30 +26,7 @@ const getTeamName = (countryCode) => {
 };
 
 // --- КОМПОНЕНТЫ ---
-const MultiSelectFilter = ({ label, options, selectedValues, onChange }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const toggleOption = (value) => {
-    const newSelected = selectedValues.includes(value) ? selectedValues.filter(v => v !== value) : [...selectedValues, value];
-    onChange(newSelected);
-  };
-  return (
-    <div className="relative group">
-      <button onClick={() => setIsOpen(!isOpen)} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className={`flex items-center justify-between min-w-[140px] bg-white dark:bg-[#111] border ${selectedValues.length > 0 ? 'border-blue-500' : 'border-gray-300 dark:border-[#333]'} text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors`}>
-        <span className="truncate max-w-[100px]">{selectedValues.length === 0 ? label : `${label}: ${selectedValues.length}`}</span><ChevronDown size={10} className="ml-2 opacity-50" />
-      </button>
-      {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-[180px] bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 max-h-[200px] overflow-y-auto custom-scrollbar p-1">
-          {options.map(opt => (
-            <div key={opt} onClick={(e) => { e.stopPropagation(); toggleOption(opt); }} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-[#222] rounded cursor-pointer text-xs dark:text-gray-300">
-              <div className={`w-3.5 h-3.5 rounded-[3px] border flex items-center justify-center ${selectedValues.includes(opt) ? 'bg-blue-500 border-blue-500' : 'border-gray-300 dark:border-[#444]'}`}>{selectedValues.includes(opt) && <Check size={10} className="text-white" />}</div>
-              <span className="truncate">{opt}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+import { DenseSelect } from '../components/ui/FilterSelect';
 
 // Custom Month Picker (Desktop) with fixed positioning
 const CustomMonthPicker = ({ selectedMonth, onChange }) => {
@@ -356,8 +333,8 @@ const SalariesPage = () => {
             <ArrowUpDown size={10} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
 
-          <MultiSelectFilter label="ГЕО" options={options.geos} selectedValues={selectedGeos} onChange={setSelectedGeos} />
-          <MultiSelectFilter label="Менеджер" options={options.names} selectedValues={selectedManagers} onChange={setSelectedManagers} />
+          <DenseSelect label="ГЕО" options={options.geos} value={selectedGeos} onChange={setSelectedGeos} />
+          <DenseSelect label="Менеджер" options={options.names} value={selectedManagers} onChange={setSelectedManagers} />
 
           {(selectedGeos.length > 0 || selectedManagers.length > 0) && (
             <button onClick={() => { setSelectedGeos([]); setSelectedManagers([]); }} className="p-1.5 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 transition-colors h-[34px] w-[34px] flex items-center justify-center"><Filter size={14} /></button>

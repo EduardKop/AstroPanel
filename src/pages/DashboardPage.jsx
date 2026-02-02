@@ -61,84 +61,7 @@ const toYMD = (date) => {
   return `${y}-${m}-${d}`;
 };
 
-// Mobile Custom Dropdown
-const MobileSelect = ({ label, value, options, onChange }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const handleSelect = (val) => {
-    onChange(val);
-    setIsOpen(false);
-  };
-
-  return (
-    <div className="relative w-full">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center"
-      >
-        <span className={value ? '' : 'text-gray-400'}>{value || label}</span>
-        <Filter size={10} className="shrink-0 ml-2" />
-      </button>
-
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* Dropdown */}
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
-            <button
-              onClick={() => handleSelect('')}
-              className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${!value ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}
-            >
-              {label}
-            </button>
-            {options.map(opt => (
-              <button
-                key={opt}
-                onClick={() => handleSelect(opt)}
-                className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${value === opt ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
-// Desktop Native Select
-const DesktopSelect = ({ label, value, options, onChange }) => (
-  <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[100px]">
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer"
-    >
-      <option value="">{label}</option>
-      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-    </select>
-    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
-  </div>
-);
-
-// Adaptive Select Component
-const DenseSelect = (props) => (
-  <>
-    <div className="md:hidden w-full">
-      <MobileSelect {...props} />
-    </div>
-    <div className="hidden md:block">
-      <DesktopSelect {...props} />
-    </div>
-  </>
-);
+import { DenseSelect } from '../components/ui/FilterSelect';
 
 // Mobile Date Range Picker
 const MobileDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
@@ -452,10 +375,10 @@ const DashboardPage = () => {
     const savedSource = localStorage.getItem('dash_source_filter');
     const savedDept = localStorage.getItem('dash_dept_filter');
     return {
-      manager: '',
-      country: '',
-      product: '',
-      type: '',
+      manager: [],
+      country: [],
+      product: [],
+      type: [],
       source: savedSource || 'all',
       department: savedDept || 'all',
       showMobileFilters: false
@@ -464,7 +387,7 @@ const DashboardPage = () => {
   const [expandedId, setExpandedId] = useState(null);
 
   const hasActiveFilters = useMemo(() => {
-    return !!(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all');
+    return !!(filters.manager.length || filters.country.length || filters.product.length || filters.type.length || filters.source !== 'all');
   }, [filters]);
 
   // Save filters to LocalStorage
@@ -537,15 +460,20 @@ const DashboardPage = () => {
 
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
-      if (isRestrictedUser) {
-        if (item.manager !== currentUser.name) return false;
+      if (filters.manager.length > 0) {
+        if (isRestrictedUser) {
+          if (item.manager !== currentUser.name) return false;
+        } else {
+          if (!filters.manager.includes(item.manager)) return false;
+        }
       } else {
-        if (filters.manager && item.manager !== filters.manager) return false;
+        if (isRestrictedUser && item.manager !== currentUser.name) return false;
       }
 
-      if (filters.country && item.country !== filters.country) return false;
-      if (filters.product && item.product !== filters.product) return false;
-      if (filters.type && item.type !== filters.type) return false;
+
+      if (filters.country.length > 0 && !filters.country.includes(item.country)) return false;
+      if (filters.product.length > 0 && !filters.product.includes(item.product)) return false;
+      if (filters.type.length > 0 && !filters.type.includes(item.type)) return false;
 
       // Фильтр по источнику
       if (filters.source !== 'all') {
@@ -558,6 +486,9 @@ const DashboardPage = () => {
           if (item.managerRole !== 'Sales' && item.managerRole !== 'SeniorSales') return false;
         } else if (filters.department === 'consultant') {
           if (item.managerRole !== 'Consultant') return false;
+        } else if (filters.department === 'taro') {
+          // Показываем только Таро 2 / Таро 3 и т.д. (исключая первую продажу Таро)
+          if (!/(?:Taro|Таро)\s*[2-9]/.test(item.product)) return false;
         }
       }
 
@@ -610,8 +541,9 @@ const DashboardPage = () => {
         return sum;
       };
 
-      if (filters.country) {
-        traffic = countTrafficForGeo(filters.country);
+      if (filters.country && filters.country.length > 0) {
+        // If multiple countries selected, sum them up
+        traffic = filters.country.reduce((acc, c) => acc + countTrafficForGeo(c), 0);
       } else {
         traffic = Object.keys(trafficStats).reduce((acc, geo) => acc + countTrafficForGeo(geo), 0);
       }
@@ -742,7 +674,7 @@ const DashboardPage = () => {
 
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const resetFilters = () => {
-    setFilters({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all' });
+    setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all' });
     setDateRange(getLastWeekRange());
   };
 
@@ -781,6 +713,7 @@ const DashboardPage = () => {
                 <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
                 <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
                 <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: 'taro' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'taro' ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Таро</button>
               </div>
             </div>
 
@@ -806,7 +739,30 @@ const DashboardPage = () => {
                   <div className="space-y-2 p-3 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg">
                     {!isRestrictedUser && <DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />}
                     <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-                    <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+                    <DenseSelect
+                      label="Продукт"
+                      value={filters.product}
+                      options={uniqueValues.products}
+                      onChange={(val) => setFilters(p => ({ ...p, product: val }))}
+                      gridCols={2}
+                      customButtons={[
+                        {
+                          label: 'Без Таро 2-3+',
+                          onClick: () => {
+                            const allowed = uniqueValues.products.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p)));
+                            setFilters(prev => ({ ...prev, product: allowed }));
+                          }
+                        },
+                        {
+                          label: 'Натальные',
+                          onClick: () => {
+                            const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети'];
+                            const allowed = uniqueValues.products.filter(p => natalList.includes(p));
+                            setFilters(prev => ({ ...prev, product: allowed }));
+                          }
+                        }
+                      ]}
+                    />
                     <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
 
                     <MobileDateRangePicker
@@ -831,7 +787,30 @@ const DashboardPage = () => {
               <div className="hidden md:contents">
                 {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
                 <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-                <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+                <DenseSelect
+                  label="Продукт"
+                  value={filters.product}
+                  options={uniqueValues.products}
+                  onChange={(val) => setFilters(p => ({ ...p, product: val }))}
+                  gridCols={2}
+                  customButtons={[
+                    {
+                      label: 'Без Таро 2-3+',
+                      onClick: () => {
+                        const allowed = uniqueValues.products.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p)));
+                        setFilters(prev => ({ ...prev, product: allowed }));
+                      }
+                    },
+                    {
+                      label: 'Натальные',
+                      onClick: () => {
+                        const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети'];
+                        const allowed = uniqueValues.products.filter(p => natalList.includes(p));
+                        setFilters(prev => ({ ...prev, product: allowed }));
+                      }
+                    }
+                  ]}
+                />
                 <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
 
                 {/* Календарь + Reset */}
@@ -918,12 +897,12 @@ const DashboardPage = () => {
           <ProductCard
             title="Отдел Продаж"
             subtitle="Первые продажи"
-            mainValue={filters.source === 'whatsapp' ? kpiData.whatsapp.sales : filters.source === 'comments' ? 0 : filters.source === 'all' ? (kpiData.direct.sales + kpiData.whatsapp.sales) : kpiData.direct.sales}
+            mainValue={stats.count}
             mainType="count"
             data={[
-              { label: 'Активных менеджеров', val: filters.source === 'whatsapp' ? kpiData.whatsapp.active : filters.source === 'comments' ? 0 : filters.source === 'all' ? (kpiData.direct.active + kpiData.whatsapp.active) : kpiData.direct.active },
-              { label: 'Сумма депозитов', val: filters.source === 'whatsapp' ? `€${kpiData.whatsapp.depositSum}` : filters.source === 'comments' ? '€0.00' : filters.source === 'all' ? `€${(Number(kpiData.direct.depositSum) + Number(kpiData.whatsapp.depositSum)).toFixed(2)}` : `€${kpiData.direct.depositSum}` },
-              { label: 'Средний чек', val: filters.source === 'whatsapp' ? `€${kpiData.whatsapp.sales > 0 ? (Number(kpiData.whatsapp.depositSum) / kpiData.whatsapp.sales).toFixed(2) : '0.00'}` : filters.source === 'comments' ? '€0.00' : filters.source === 'all' ? `€${(kpiData.direct.sales + kpiData.whatsapp.sales) > 0 ? ((Number(kpiData.direct.depositSum) + Number(kpiData.whatsapp.depositSum)) / (kpiData.direct.sales + kpiData.whatsapp.sales)).toFixed(2) : '0.00'}` : `€${kpiData.direct.sales > 0 ? (Number(kpiData.direct.depositSum) / kpiData.direct.sales).toFixed(2) : '0.00'}` }
+              { label: 'Активных менеджеров', val: stats.activeManagers },
+              { label: 'Сумма депозитов', val: `€${stats.totalEur}` },
+              { label: 'Средний чек', val: `€${stats.avgCheck}` }
             ]}
           />
 

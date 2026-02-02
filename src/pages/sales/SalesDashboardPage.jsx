@@ -38,13 +38,6 @@ const getPaymentBadgeStyle = (type) => {
   return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20';
 };
 
-const getRankEmoji = (index) => {
-  if (index === 0) return '🥇';
-  if (index === 1) return '🥈';
-  if (index === 2) return '🥉';
-  return <span className="text-gray-400 text-[10px] font-mono">#{index + 1}</span>;
-}
-
 const getLastWeekRange = () => {
   const end = new Date();
   const start = new Date();
@@ -61,84 +54,7 @@ const toYMD = (date) => {
   return `${y}-${m}-${d}`;
 };
 
-// Mobile Custom Dropdown
-const MobileSelect = ({ label, value, options, onChange }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const handleSelect = (val) => {
-    onChange(val);
-    setIsOpen(false);
-  };
-
-  return (
-    <div className="relative w-full">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center"
-      >
-        <span className={value ? '' : 'text-gray-400'}>{value || label}</span>
-        <Filter size={10} className="shrink-0 ml-2" />
-      </button>
-
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* Dropdown */}
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
-            <button
-              onClick={() => handleSelect('')}
-              className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${!value ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}
-            >
-              {label}
-            </button>
-            {options.map(opt => (
-              <button
-                key={opt}
-                onClick={() => handleSelect(opt)}
-                className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${value === opt ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
-// Desktop Native Select
-const DesktopSelect = ({ label, value, options, onChange }) => (
-  <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[100px]">
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer"
-    >
-      <option value="">{label}</option>
-      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-    </select>
-    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
-  </div>
-);
-
-// Adaptive Select Component
-const DenseSelect = (props) => (
-  <>
-    <div className="md:hidden w-full">
-      <MobileSelect {...props} />
-    </div>
-    <div className="hidden md:block">
-      <DesktopSelect {...props} />
-    </div>
-  </>
-);
+import { DenseSelect } from '../../components/ui/FilterSelect';
 
 // Mobile Date Range Picker
 const MobileDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
@@ -448,11 +364,11 @@ const SalesDashboardPage = () => {
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
 
-  const [filters, setFilters] = useState({ manager: '', country: '', product: '', type: '', source: 'all', showMobileFilters: false });
+  const [filters, setFilters] = useState({ manager: [], country: [], product: [], type: [], source: 'all', showMobileFilters: false });
   const [expandedId, setExpandedId] = useState(null);
 
   const hasActiveFilters = useMemo(() => {
-    return !!(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all');
+    return !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all');
   }, [filters]);
 
   // 🔄 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ДАННЫХ ПРИ МОНТИРОВАНИИ
@@ -525,12 +441,12 @@ const SalesDashboardPage = () => {
       if (isRestrictedUser) {
         if (item.manager !== currentUser.name) return false;
       } else {
-        if (filters.manager && item.manager !== filters.manager) return false;
+        if (filters.manager.length > 0 && !filters.manager.includes(item.manager)) return false;
       }
 
-      if (filters.country && item.country !== filters.country) return false;
-      if (filters.product && item.product !== filters.product) return false;
-      if (filters.type && item.type !== filters.type) return false;
+      if (filters.country.length > 0 && !filters.country.includes(item.country)) return false;
+      if (filters.product.length > 0 && !filters.product.includes(item.product)) return false;
+      if (filters.type.length > 0 && !filters.type.includes(item.type)) return false;
 
       // Фильтр по источнику
       if (filters.source !== 'all') {
@@ -586,8 +502,8 @@ const SalesDashboardPage = () => {
         return sum;
       };
 
-      if (filters.country) {
-        traffic = countTrafficForGeo(filters.country);
+      if (filters.country.length > 0) {
+        traffic = filters.country.reduce((acc, geo) => acc + countTrafficForGeo(geo), 0);
       } else {
         traffic = Object.keys(trafficStats).reduce((acc, geo) => acc + countTrafficForGeo(geo), 0);
       }
@@ -664,61 +580,11 @@ const SalesDashboardPage = () => {
     return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredData]);
 
-  const topManagers = useMemo(() => {
-    const statsByName = {};
-    filteredData.forEach(p => {
-      const name = p.manager || 'Unknown';
-      if (!statsByName[name]) statsByName[name] = { count: 0, sum: 0 };
-      statsByName[name].count += 1;
-      statsByName[name].sum += (p.amountEUR || 0);
-    });
-    return Object.entries(statsByName).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.sum - a.sum).slice(0, 5);
-  }, [filteredData]);
-
-  const topCountries = useMemo(() => {
-    const statsByGeo = {};
-    filteredData.forEach(p => {
-      const code = p.country || 'Unk';
-      if (!statsByGeo[code]) statsByGeo[code] = { count: 0, sum: 0 };
-      statsByGeo[code].count += 1;
-      statsByGeo[code].sum += (p.amountEUR || 0);
-    });
-
-    return Object.entries(statsByGeo).map(([code, data]) => {
-      let realTraffic = 0;
-      if (trafficStats && trafficStats[code]) {
-        const startStr = startDate ? toYMD(startDate) : '0000-00-00';
-        const endStr = endDate ? toYMD(endDate) : '9999-99-99';
-
-        Object.entries(trafficStats[code]).forEach(([dateStr, val]) => {
-          if (dateStr < startStr || dateStr > endStr) return;
-          if (typeof val === 'object' && val !== null) {
-            if (filters.source === 'all') realTraffic += (val.all || 0);
-            else if (filters.source === 'direct') realTraffic += (val.direct || 0);
-            else if (filters.source === 'comments') realTraffic += (val.comments || 0);
-          } else {
-            realTraffic += (Number(val) || 0);
-          }
-        });
-      }
-
-      const cr = realTraffic > 0
-        ? ((data.count / realTraffic) * 100).toFixed(1)
-        : "0.0";
-
-      return {
-        code,
-        salesCount: data.count,
-        salesSum: data.sum,
-        traffic: realTraffic,
-        cr: cr
-      };
-    }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 5);
-  }, [filteredData, trafficStats, startDate, endDate, filters.source]);
-
   const resetDateRange = () => setDateRange(getLastWeekRange());
+
+
   const resetFilters = () => {
-    setFilters({ manager: '', country: '', product: '', type: '', source: 'all' });
+    setFilters({ manager: [], country: [], product: [], type: [], source: 'all' });
     setDateRange(getLastWeekRange());
   };
 
@@ -772,7 +638,17 @@ const SalesDashboardPage = () => {
                   <div className="space-y-2 p-3 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg">
                     {!isRestrictedUser && <DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />}
                     <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-                    <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+                    <DenseSelect
+                      label="Продукт"
+                      value={filters.product}
+                      options={uniqueValues.products}
+                      onChange={(val) => setFilters(p => ({ ...p, product: val }))}
+                      gridCols={2}
+                      customButtons={[
+                        { label: 'Без Таро 2-3+', onClick: () => { const allowed = uniqueValues.products.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p))); setFilters(prev => ({ ...prev, product: allowed })); } },
+                        { label: 'Натальные', onClick: () => { const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети']; const allowed = uniqueValues.products.filter(p => natalList.includes(p)); setFilters(prev => ({ ...prev, product: allowed })); } }
+                      ]}
+                    />
                     <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
 
                     <MobileDateRangePicker
@@ -797,7 +673,17 @@ const SalesDashboardPage = () => {
               <div className="hidden md:contents">
                 {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
                 <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-                <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+                <DenseSelect
+                  label="Продукт"
+                  value={filters.product}
+                  options={uniqueValues.products}
+                  onChange={(val) => setFilters(p => ({ ...p, product: val }))}
+                  gridCols={2}
+                  customButtons={[
+                    { label: 'Без Таро 2-3+', onClick: () => { const allowed = uniqueValues.products.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p))); setFilters(prev => ({ ...prev, product: allowed })); } },
+                    { label: 'Натальные', onClick: () => { const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети']; const allowed = uniqueValues.products.filter(p => natalList.includes(p)); setFilters(prev => ({ ...prev, product: allowed })); } }
+                  ]}
+                />
                 <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
 
                 {/* Календарь + Reset */}
@@ -829,7 +715,8 @@ const SalesDashboardPage = () => {
       <div className="grid grid-cols-12 gap-3 md:gap-4 mb-6 mt-4 w-full min-w-0">
 
         {/* 1. ГЛАВНЫЙ БЛОК */}
-        <div className="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0">
+        {/* 1. ГЛАВНЫЙ БЛОК */}
+        <div className="col-span-12 lg:col-span-8 flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0">
           <div className="absolute inset-0 bg-white dark:bg-[#0F0F11] transition-colors duration-200"></div>
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5 pointer-events-none"></div>
 
@@ -878,8 +765,8 @@ const SalesDashboardPage = () => {
           </div>
         </div>
 
-        {/* 2. KPI CARDS (First Dynamic, Second Static) */}
-        <div className="col-span-12 md:col-span-6 lg:col-span-3 xl:col-span-4 flex flex-col gap-3 min-w-0">
+        {/* 2. KPI CARDS (Sales Only) */}
+        <div className="col-span-12 lg:col-span-4 flex flex-col gap-3 min-w-0">
 
           <ProductCard
             title="Отдел Продаж"
@@ -893,79 +780,10 @@ const SalesDashboardPage = () => {
             ]}
           />
 
-          <ProductCard
-            title="Консультанты"
-            subtitle="Продажи с Консультаций"
-            mainValue={(filters.source === 'comments' || filters.source === 'all') ? kpiData.comments.sales : 0}
-            mainType="count"
-            data={[
-              { label: 'Активных менеджеров', val: (filters.source === 'comments' || filters.source === 'all') ? kpiData.comments.active : 0 },
-              { label: 'Сумма депозитов', val: (filters.source === 'comments' || filters.source === 'all') ? `€${kpiData.comments.depositSum}` : '€0.00' },
-              { label: 'Средний чек', val: (filters.source === 'comments' || filters.source === 'all') ? `€${kpiData.comments.sales > 0 ? (Number(kpiData.comments.depositSum) / kpiData.comments.sales).toFixed(2) : '0.00'}` : '€0.00' }
-            ]}
-          />
-
         </div>
 
-        {/* 3. LEADERBOARDS */}
-        <div className="col-span-12 md:col-span-6 lg:col-span-4 flex flex-col gap-3 min-w-0">
 
-          {/* Top Managers */}
-          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
-              <div className="flex items-center gap-2 min-w-0">
-                <Trophy size={14} className="text-amber-500 shrink-0" />
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ менеджеры</span>
-              </div>
-            </div>
-            <div className="p-2 space-y-1">
-              {topManagers.map((mgr, i) => (
-                <div key={mgr.name} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
-                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate leading-none">{mgr.name}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-right">
-                    <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{mgr.count} Lead</span>
-                    <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[60px]">€{mgr.sum.toFixed(0)}</span>
-                  </div>
-                </div>
-              ))}
-              {topManagers.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
-            </div>
-          </div>
 
-          {/* Top Geo */}
-          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
-              <div className="flex items-center gap-2 min-w-0">
-                <Globe size={14} className="text-blue-500 shrink-0" />
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ ГЕО</span>
-              </div>
-            </div>
-            <div className="p-2 space-y-1">
-              {topCountries.map((geo, i) => (
-                <div key={geo.code} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
-                    <div className="flex items-center gap-1.5 leading-none">
-                      <span className="text-base">{getFlag(geo.code)}</span>
-                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{geo.code}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-right">
-                    <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{geo.salesCount} Lead</span>
-                    <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[50px]">€{geo.salesSum.toFixed(0)}</span>
-                    <span className={`text-[10px] font-bold w-[35px] text-right ${getCRColor(geo.cr)}`}>{geo.cr}%</span>
-                  </div>
-                </div>
-              ))}
-              {topCountries.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
-            </div>
-          </div>
-
-        </div>
       </div>
 
       {/* --- BOTTOM TABLE --- */}
@@ -1097,7 +915,7 @@ const SalesDashboardPage = () => {
           )}
         </div>
       </div>
-    </div >
+    </div>
   );
 };
 

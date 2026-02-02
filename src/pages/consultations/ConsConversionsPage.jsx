@@ -32,56 +32,7 @@ const getLastWeekRange = () => {
     return [start, end];
 };
 
-// Reusable Components
-// Custom Select Component to ensure dropdown opens downwards
-const CustomSelect = ({ label, value, options, onChange }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const containerRef = React.useRef(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (containerRef.current && !containerRef.current.contains(event.target)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    return (
-        <div className="relative w-full sm:w-auto flex-1 sm:flex-none min-w-[140px]" ref={containerRef}>
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-3 pr-2 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors h-[34px]"
-            >
-                <span className="truncate mr-2">{value || label}</span>
-                <Filter size={10} className="text-gray-400 shrink-0" />
-            </button>
-
-            {isOpen && (
-                <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 overflow-hidden min-w-[160px]">
-                    <div className="max-h-[200px] overflow-y-auto py-1">
-                        <button
-                            onClick={() => { onChange(''); setIsOpen(false); }}
-                            className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors ${value === '' ? 'font-bold text-blue-600' : 'text-gray-700 dark:text-gray-200'}`}
-                        >
-                            {label}
-                        </button>
-                        {options.map(opt => (
-                            <button
-                                key={opt}
-                                onClick={() => { onChange(opt); setIsOpen(false); }}
-                                className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors ${value === opt ? 'font-bold text-blue-600' : 'text-gray-700 dark:text-gray-200'}`}
-                            >
-                                {opt}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
+import { DenseSelect } from '../../components/ui/FilterSelect';
 
 const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -184,16 +135,21 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
 };
 
 const ConsConversionsPage = () => {
-    const { payments, fetchAllData } = useAppStore();
+    const { user, payments, fetchAllData } = useAppStore();
     const [dateRange, setDateRange] = useState(getLastWeekRange());
     const [startDate, endDate] = dateRange;
-    const [filters, setFilters] = useState({ country: '', department: 'Консультанты' });
+    const [filters, setFilters] = useState({ country: [], department: ['Консультанты'] });
 
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
     const uniqueGeos = useMemo(() => {
-        return [...new Set(payments.map(p => p.country).filter(Boolean))].sort();
-    }, [payments]);
+        const allGeos = [...new Set(payments.map(p => p.country).filter(Boolean))].sort();
+        if (!user || ['Admin', 'C-level', 'SeniorSales'].includes(user.role)) {
+            return allGeos;
+        }
+        const userGeos = user.geo || [];
+        return allGeos.filter(g => userGeos.includes(g));
+    }, [payments, user]);
 
     // 1. GLOBAL RANKING LOGIC
     // Group ALL payments by user (crm_link) to determine the absolute rank of each payment
@@ -227,7 +183,15 @@ const ConsConversionsPage = () => {
         const filtered = payments.filter(p => {
             const pDate = p.transactionDate.slice(0, 10);
             if (pDate < startStr || pDate > endStr) return false;
-            if (filters.country && p.country !== filters.country) return false;
+            // Array filter for country
+            if (filters.country.length > 0 && !filters.country.includes(p.country)) return false;
+
+            // 🔥 GEO RESTRICTION
+            if (user && !['Admin', 'C-level', 'SeniorSales'].includes(user.role)) {
+                const userGeos = user.geo || [];
+                if (!p.country || !userGeos.includes(p.country)) return false;
+            }
+
             return true;
         });
 
@@ -245,13 +209,17 @@ const ConsConversionsPage = () => {
                 statsByGeo[geo].sales1++;
             } else {
                 // For ranks 2, 3, 4 - apply Department filter
+                // Multi-select logic for department
                 let matchesRole = false;
-                if (filters.department === 'Все') {
+                const depts = filters.department;
+
+                // If 'Все' is selected or no dept selected (should not happen if default is set), imply all? 
+                // Adjusting logic: 'Все' covers both.
+                if (depts.includes('Все') || depts.length === 0) {
                     matchesRole = true;
-                } else if (filters.department === 'Консультанты') {
-                    matchesRole = p.managerRole === 'Consultant';
-                } else if (filters.department === 'Отдел продаж') {
-                    matchesRole = p.managerRole === 'Sales' || p.managerRole === 'SeniorSales';
+                } else {
+                    if (depts.includes('Консультанты') && p.managerRole === 'Consultant') matchesRole = true;
+                    if (depts.includes('Отдел продаж') && (p.managerRole === 'Sales' || p.managerRole === 'SeniorSales')) matchesRole = true;
                 }
 
                 if (matchesRole) {
@@ -296,13 +264,13 @@ const ConsConversionsPage = () => {
                 </div>
 
                 <div className="flex items-center gap-2 w-full md:w-auto">
-                    <CustomSelect
+                    <DenseSelect
                         label="Отдел"
                         value={filters.department}
                         options={['Все', 'Консультанты', 'Отдел продаж']}
                         onChange={val => setFilters(p => ({ ...p, department: val }))}
                     />
-                    <CustomSelect
+                    <DenseSelect
                         label="ГЕО"
                         value={filters.country}
                         options={uniqueGeos}
@@ -319,7 +287,7 @@ const ConsConversionsPage = () => {
                         </div>
                         <button
                             onClick={() => {
-                                setFilters({ country: '', department: 'Консультанты' });
+                                setFilters({ country: [], department: ['Консультанты'] });
                                 setDateRange(getLastWeekRange());
                             }}
                             className="bg-gray-200 dark:bg-[#1A1A1A] hover:bg-gray-300 dark:hover:bg-[#333] text-gray-500 dark:text-gray-400 p-1.5 rounded-[6px] transition-colors h-[34px] w-[34px] flex items-center justify-center shrink-0"

@@ -70,72 +70,7 @@ const getLocalDateKey = (date) => {
     return `${year}-${month}-${day}`;
 };
 
-// Mobile Custom Dropdown
-const MobileSelect = ({ label, value, options, onChange }) => {
-    const [isOpen, setIsOpen] = useState(false);
-
-    const handleSelect = (val) => {
-        onChange(val);
-        setIsOpen(false);
-    };
-
-    return (
-        <div className="relative w-full">
-            <button
-                type="button"
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center"
-            >
-                <span className={value ? '' : 'text-gray-400'}>{value || label}</span>
-                <Filter size={10} className="shrink-0 ml-2" />
-            </button>
-
-            {isOpen && (
-                <>
-                    <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setIsOpen(false)}
-                    />
-
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
-                        <button
-                            onClick={() => handleSelect('')}
-                            className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${!value ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}
-                        >
-                            {label}
-                        </button>
-                        {options.map(opt => (
-                            <button
-                                key={opt}
-                                onClick={() => handleSelect(opt)}
-                                className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${value === opt ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}
-                            >
-                                {opt}
-                            </button>
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
-    );
-};
-
-// Desktop Native Select
-// Desktop Native Select
-// Desktop Native Select with styling matching GeoPage
-const DesktopSelect = ({ label, value, options, onChange }) => (
-    <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[100px]">
-        <select
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer truncate"
-        >
-            <option value="">{label}</option>
-            {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-        </select>
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
-    </div>
-);
+import { DenseSelect } from '../components/ui/FilterSelect';
 
 // Custom Desktop Date Range Picker
 const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
@@ -378,7 +313,7 @@ const GeoMatrixPage = () => {
     const [selectedCell, setSelectedCell] = useState(null);
     const [dateRange, setDateRange] = useState(getCurrentMonthRange());
     const [startDate, endDate] = dateRange;
-    const [filters, setFilters] = useState({ product: '', type: '', department: 'all', showMobileFilters: false });
+    const [filters, setFilters] = useState({ product: [], type: [], department: 'all', showMobileFilters: false });
     const [sortOrder, setSortOrder] = useState('default');
 
     // 📌 Pinning Logic
@@ -448,8 +383,8 @@ const GeoMatrixPage = () => {
             payments.forEach(p => {
                 if (!p.transactionDate) return;
                 // Фильтры
-                if (filters.product && p.product !== filters.product) return;
-                if (filters.type && p.type !== filters.type) return;
+                if (filters.product.length > 0 && !filters.product.includes(p.product)) return;
+                if (filters.type.length > 0 && !filters.type.includes(p.type)) return;
 
                 // Filter by Department
                 if (filters.department !== 'all') {
@@ -520,7 +455,7 @@ const GeoMatrixPage = () => {
     const uniqueTypes = useMemo(() => [...new Set(payments.map(p => p.type).filter(Boolean))], [payments]);
 
     const resetFilters = () => {
-        setFilters({ product: '', type: '', department: 'all' });
+        setFilters({ product: [], type: [], department: 'all' });
         setDateRange([null, null]);
     };
 
@@ -537,8 +472,8 @@ const GeoMatrixPage = () => {
             } catch (e) { return false; }
 
             // Важно: Применяем те же фильтры, что и в матрице
-            if (filters.product && p.product !== filters.product) return false;
-            if (filters.type && p.type !== filters.type) return false;
+            if (filters.product.length > 0 && !filters.product.includes(p.product)) return false;
+            if (filters.type.length > 0 && !filters.type.includes(p.type)) return false;
 
             // Filter by Department
             if (filters.department !== 'all') {
@@ -593,8 +528,8 @@ const GeoMatrixPage = () => {
                 payments.forEach(p => {
                     if (p.country === country.code && p.transactionDate) {
                         // Apply filters
-                        if (filters.product && p.product !== filters.product) return;
-                        if (filters.type && p.type !== filters.type) return;
+                        if (filters.product.length > 0 && !filters.product.includes(p.product)) return;
+                        if (filters.type.length > 0 && !filters.type.includes(p.type)) return;
 
                         // Filter by Department
                         if (filters.department !== 'all') {
@@ -783,17 +718,35 @@ const GeoMatrixPage = () => {
 
                                 {filters.showMobileFilters && (
                                     <div className="space-y-2 p-3 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg">
-                                        <MobileSelect
-                                            label="Продукты"
+                                        <DenseSelect
+                                            label="Продукт"
                                             value={filters.product}
                                             options={uniqueProducts}
-                                            onChange={(val) => setFilters({ ...filters, product: val })}
+                                            onChange={(val) => setFilters(prev => ({ ...prev, product: val }))}
+                                            gridCols={2}
+                                            customButtons={[
+                                                {
+                                                    label: 'Без Таро 2-3+',
+                                                    onClick: () => {
+                                                        const allowed = uniqueProducts.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p)));
+                                                        setFilters(prev => ({ ...prev, product: allowed }));
+                                                    }
+                                                },
+                                                {
+                                                    label: 'Натальные',
+                                                    onClick: () => {
+                                                        const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети'];
+                                                        const allowed = uniqueProducts.filter(p => natalList.includes(p));
+                                                        setFilters(prev => ({ ...prev, product: allowed }));
+                                                    }
+                                                }
+                                            ]}
                                         />
-                                        <MobileSelect
+                                        <DenseSelect
                                             label="Методы"
                                             value={filters.type}
                                             options={uniqueTypes}
-                                            onChange={(val) => setFilters({ ...filters, type: val })}
+                                            onChange={(val) => setFilters(prev => ({ ...prev, type: val }))}
                                         />
 
                                         <MobileDateRangePicker
@@ -839,8 +792,36 @@ const GeoMatrixPage = () => {
 
                             {/* DESKTOP - Filters RIGHT */}
                             <div className="hidden md:flex items-center gap-2">
-                                <DesktopSelect label="Продукты" value={filters.product} options={uniqueProducts} onChange={(val) => setFilters({ ...filters, product: val })} />
-                                <DesktopSelect label="Методы" value={filters.type} options={uniqueTypes} onChange={(val) => setFilters({ ...filters, type: val })} />
+                                <DenseSelect
+                                    label="Продукты"
+                                    value={filters.product}
+                                    options={uniqueProducts}
+                                    onChange={(val) => setFilters(prev => ({ ...prev, product: val }))}
+                                    gridCols={2}
+                                    customButtons={[
+                                        {
+                                            label: 'Без Таро 2-3+',
+                                            onClick: () => {
+                                                const allowed = uniqueProducts.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p)));
+                                                setFilters(prev => ({ ...prev, product: allowed }));
+                                            }
+                                        },
+                                        {
+                                            label: 'Натальные',
+                                            onClick: () => {
+                                                const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети'];
+                                                const allowed = uniqueProducts.filter(p => natalList.includes(p));
+                                                setFilters(prev => ({ ...prev, product: allowed }));
+                                            }
+                                        }
+                                    ]}
+                                />
+                                <DenseSelect
+                                    label="Методы"
+                                    value={filters.type}
+                                    options={uniqueTypes}
+                                    onChange={(val) => setFilters(prev => ({ ...prev, type: val }))}
+                                />
 
                                 <div className="flex items-center gap-2">
                                     <CustomDateRangePicker

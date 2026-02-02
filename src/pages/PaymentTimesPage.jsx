@@ -31,47 +31,7 @@ const toYMD = (date) => {
     return `${y}-${m}-${d}`;
 };
 
-// --- REUSED COMPONENTS (Selects, DatePickers) ---
-const MobileSelect = ({ label, value, options, onChange }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const handleSelect = (val) => { onChange(val); setIsOpen(false); };
-    return (
-        <div className="relative w-full">
-            <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 px-3 rounded-[6px] text-xs font-medium hover:border-gray-400 dark:hover:border-[#555] transition-colors text-left flex justify-between items-center">
-                <span className={value ? '' : 'text-gray-400'}>{value || label}</span>
-                <Filter size={10} className="shrink-0 ml-2" />
-            </button>
-            {isOpen && (
-                <>
-                    <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-lg max-h-60 overflow-y-auto z-[70]">
-                        <button onClick={() => handleSelect('')} className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${!value ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}>{label}</button>
-                        {options.map(opt => (
-                            <button key={opt} onClick={() => handleSelect(opt)} className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-[#222] transition-colors ${value === opt ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''}`}>{opt}</button>
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
-    );
-};
-
-const DesktopSelect = ({ label, value, options, onChange }) => (
-    <div className="relative group w-full sm:w-auto flex-1 sm:flex-none min-w-[100px]">
-        <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-2 pr-6 rounded-[6px] text-xs font-medium focus:outline-none focus:border-blue-500 hover:border-gray-400 dark:hover:border-[#555] transition-colors cursor-pointer">
-            <option value="">{label}</option>
-            {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-        </select>
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"><Filter size={10} /></div>
-    </div>
-);
-
-const DenseSelect = (props) => (
-    <>
-        <div className="md:hidden w-full"><MobileSelect {...props} /></div>
-        <div className="hidden md:block"><DesktopSelect {...props} /></div>
-    </>
-);
+import { DenseSelect } from '../components/ui/FilterSelect';
 
 const MobileDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
     const formatDate = (date) => { if (!date) return ''; const y = date.getFullYear(); const m = String(date.getMonth() + 1).padStart(2, '0'); const d = String(date.getDate()).padStart(2, '0'); return `${y}-${m}-${d}`; };
@@ -397,10 +357,10 @@ const PaymentTimesPage = () => {
     const { payments, user: currentUser, isLoading, fetchAllData } = useAppStore();
     const [dateRange, setDateRange] = useState(getLastWeekRange());
     const [startDate, endDate] = dateRange;
-    const [filters, setFilters] = useState(() => ({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all', showMobileFilters: false }));
+    const [filters, setFilters] = useState(() => ({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all', showMobileFilters: false }));
     const [expandedGeo, setExpandedGeo] = useState(null);
 
-    const hasActiveFilters = useMemo(() => !!(filters.manager || filters.country || filters.product || filters.type || filters.source !== 'all'), [filters]);
+    const hasActiveFilters = useMemo(() => !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all'), [filters]);
     useEffect(() => { if (fetchAllData) fetchAllData(true); }, [fetchAllData]);
     const isRestrictedUser = useMemo(() => { if (!currentUser) return false; return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role); }, [currentUser]);
 
@@ -417,10 +377,10 @@ const PaymentTimesPage = () => {
             const dbDateStr = item.transactionDate.slice(0, 10);
             if (dbDateStr < startStr || dbDateStr > endStr) return false;
             if (isRestrictedUser) { if (item.manager !== currentUser.name) return false; }
-            else { if (filters.manager && item.manager !== filters.manager) return false; }
-            if (filters.country && item.country !== filters.country) return false;
-            if (filters.product && item.product !== filters.product) return false;
-            if (filters.type && item.type !== filters.type) return false;
+            else { if (filters.manager.length > 0 && !filters.manager.includes(item.manager)) return false; }
+            if (filters.country.length > 0 && !filters.country.includes(item.country)) return false;
+            if (filters.product.length > 0 && !filters.product.includes(item.product)) return false;
+            if (filters.type.length > 0 && !filters.type.includes(item.type)) return false;
             if (filters.source !== 'all' && item.source !== filters.source) return false;
             if (filters.department !== 'all') {
                 if (filters.department === 'sales') { if (item.managerRole !== 'Sales' && item.managerRole !== 'SeniorSales') return false; }
@@ -453,7 +413,7 @@ const PaymentTimesPage = () => {
     }, [filteredData]);
 
     const resetDateRange = () => setDateRange(getLastWeekRange());
-    const resetFilters = () => { setFilters({ manager: '', country: '', product: '', type: '', source: 'all', department: 'all' }); setDateRange(getLastWeekRange()); };
+    const resetFilters = () => { setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all' }); setDateRange(getLastWeekRange()); };
 
     return (
         <div className="pb-10 transition-colors duration-200 w-full max-w-full">
@@ -489,7 +449,17 @@ const PaymentTimesPage = () => {
                                     <div className="space-y-2 p-3 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg">
                                         {!isRestrictedUser && <DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />}
                                         <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-                                        <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+                                        <DenseSelect
+                                            label="Продукт"
+                                            value={filters.product}
+                                            options={uniqueValues.products}
+                                            onChange={(val) => setFilters(p => ({ ...p, product: val }))}
+                                            gridCols={2}
+                                            customButtons={[
+                                                { label: 'Без Таро 2-3+', onClick: () => { const allowed = uniqueValues.products.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p))); setFilters(prev => ({ ...prev, product: allowed })); } },
+                                                { label: 'Натальные', onClick: () => { const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети']; const allowed = uniqueValues.products.filter(p => natalList.includes(p)); setFilters(prev => ({ ...prev, product: allowed })); } }
+                                            ]}
+                                        />
                                         <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
                                         <MobileDateRangePicker startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)} onReset={resetDateRange} />
                                         <button onClick={resetFilters} disabled={!hasActiveFilters} className={`w-full p-2 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 text-xs font-bold transition-opacity ${hasActiveFilters ? 'opacity-100' : 'opacity-50 cursor-not-allowed'}`}>Сбросить фильтры</button>
@@ -499,7 +469,17 @@ const PaymentTimesPage = () => {
                             <div className="hidden md:contents">
                                 {!isRestrictedUser && (<DenseSelect label="Менеджер" value={filters.manager} options={uniqueValues.managers} onChange={(val) => setFilters(p => ({ ...p, manager: val }))} />)}
                                 <DenseSelect label="Страна" value={filters.country} options={uniqueValues.countries} onChange={(val) => setFilters(p => ({ ...p, country: val }))} />
-                                <DenseSelect label="Продукт" value={filters.product} options={uniqueValues.products} onChange={(val) => setFilters(p => ({ ...p, product: val }))} />
+                                <DenseSelect
+                                    label="Продукт"
+                                    value={filters.product}
+                                    options={uniqueValues.products}
+                                    onChange={(val) => setFilters(p => ({ ...p, product: val }))}
+                                    gridCols={2}
+                                    customButtons={[
+                                        { label: 'Без Таро 2-3+', onClick: () => { const allowed = uniqueValues.products.filter(p => !(/Taro\s*[2-9]/.test(p) || /Таро\s*[2-9]/.test(p))); setFilters(prev => ({ ...prev, product: allowed })); } },
+                                        { label: 'Натальные', onClick: () => { const natalList = ['Ли1', 'Лич5', 'Общий1', 'Общий5', 'Финансы1', 'Финансы5', 'Дети']; const allowed = uniqueValues.products.filter(p => natalList.includes(p)); setFilters(prev => ({ ...prev, product: allowed })); } }
+                                    ]}
+                                />
                                 <DenseSelect label="Платежки" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
                                 <div className="flex items-center gap-2 w-full md:w-auto">
                                     <div className="flex flex-1"><CustomDateRangePicker startDate={startDate} endDate={endDate} onChange={(update) => setDateRange(update)} onReset={resetDateRange} /></div>
