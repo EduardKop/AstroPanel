@@ -422,7 +422,9 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
 
                             {/* Link & Nickname */}
                             <div className='bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30'>
-                                <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Ссылка на диалог / профиль</label>
+                                <label className="text-xs font-bold text-gray-500 block mb-1.5">
+                                    {formData.source === 'whatsapp' ? 'ССЫЛКА НА WHATSAPP ПОЛНАЯ (https://wa.me/НомерТелефона)' : 'ССЫЛКА НА ИНСТАГРАМ ПОЛНАЯ'}
+                                </label>
                                 <input
                                     type="text"
                                     value={formData.link}
