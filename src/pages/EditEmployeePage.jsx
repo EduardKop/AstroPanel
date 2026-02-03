@@ -106,8 +106,8 @@ const EditEmployeePage = () => {
 
       if (avatarFile) {
         const fileExt = avatarFile.name.split('.').pop();
-        const fileName = `${Date.now()}.${fileExt} `;
-        const filePath = `${fileName} `;
+        const fileName = `${Date.now()}.${fileExt}`;
+        const filePath = `${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('avatars')
