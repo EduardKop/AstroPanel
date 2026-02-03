@@ -483,7 +483,7 @@ const DashboardPage = () => {
       // Фильтр по отделу
       if (filters.department !== 'all') {
         if (filters.department === 'sales') {
-          if (item.managerRole !== 'Sales' && item.managerRole !== 'SeniorSales') return false;
+          if (item.managerRole !== 'Sales' && item.managerRole !== 'SeniorSales' && item.managerRole !== 'SalesTaro') return false;
         } else if (filters.department === 'consultant') {
           if (item.managerRole !== 'Consultant') return false;
         } else if (filters.department === 'taro') {
@@ -610,6 +610,25 @@ const DashboardPage = () => {
     };
   }, [filteredData]);
 
+  // --- STATIC EMPLOYEE COUNTS ---
+  const employeeCounts = useMemo(() => {
+    // Безопасное чтение managers из стора (нужно добавить в destructure)
+    const allManagers = useAppStore.getState().managers || [];
+
+    // Counts by role
+    const salesCount = allManagers.filter(m => m.role === 'Sales').length;
+    const consCount = allManagers.filter(m => m.role === 'Consultant').length;
+
+    // For Key Metrics: Sales + Consultant + SeniorSales + SalesTaro
+    const totalCount = allManagers.filter(m => ['Sales', 'Consultant', 'SeniorSales', 'SalesTaro'].includes(m.role)).length;
+
+    return {
+      sales: salesCount,
+      consultants: consCount,
+      total: totalCount
+    };
+  }, [useAppStore.getState().managers]); // Subscribe to changes if managers update
+
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
@@ -628,7 +647,7 @@ const DashboardPage = () => {
       statsByName[name].count += 1;
       statsByName[name].sum += (p.amountEUR || 0);
     });
-    return Object.entries(statsByName).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.sum - a.sum).slice(0, 5);
+    return Object.entries(statsByName).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.sum - a.sum).slice(0, 50);
   }, [filteredData]);
 
   const topCountries = useMemo(() => {
@@ -669,7 +688,7 @@ const DashboardPage = () => {
         traffic: realTraffic,
         cr: cr
       };
-    }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 5);
+    }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 50);
   }, [filteredData, trafficStats, startDate, endDate, filters.source]);
 
   const resetDateRange = () => setDateRange(getLastWeekRange());
@@ -867,7 +886,7 @@ const DashboardPage = () => {
               {/* Row 3 */}
               <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
               <TechStatItem icon={DollarSign} label="Средний чек" value={`€${Number(stats.avgCheck).toLocaleString()}`} />
-              <TechStatItem icon={Users} label="Кол-во менеджеров" value={stats.activeManagers} />
+              <TechStatItem icon={Users} label="Кол-во менеджеров" value={employeeCounts.total} />
             </div>
 
             <div className="flex-1 min-h-[100px] w-full min-w-0">
@@ -900,7 +919,7 @@ const DashboardPage = () => {
             mainValue={stats.count}
             mainType="count"
             data={[
-              { label: 'Активных менеджеров', val: stats.activeManagers },
+              { label: 'Активных менеджеров', val: employeeCounts.sales },
               { label: 'Сумма депозитов', val: `€${stats.totalEur}` },
               { label: 'Средний чек', val: `€${stats.avgCheck}` }
             ]}
@@ -912,7 +931,7 @@ const DashboardPage = () => {
             mainValue={(filters.source === 'comments' || filters.source === 'all') ? kpiData.comments.sales : 0}
             mainType="count"
             data={[
-              { label: 'Активных менеджеров', val: (filters.source === 'comments' || filters.source === 'all') ? kpiData.comments.active : 0 },
+              { label: 'Активных менеджеров', val: employeeCounts.consultants },
               { label: 'Сумма депозитов', val: (filters.source === 'comments' || filters.source === 'all') ? `€${kpiData.comments.depositSum}` : '€0.00' },
               { label: 'Средний чек', val: (filters.source === 'comments' || filters.source === 'all') ? `€${kpiData.comments.sales > 0 ? (Number(kpiData.comments.depositSum) / kpiData.comments.sales).toFixed(2) : '0.00'}` : '€0.00' }
             ]}
@@ -931,7 +950,7 @@ const DashboardPage = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ менеджеры</span>
               </div>
             </div>
-            <div className="p-2 space-y-1">
+            <div className="p-2 space-y-1 max-h-[160px] overflow-y-auto custom-scrollbar">
               {topManagers.map((mgr, i) => (
                 <div key={mgr.name} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
                   <div className="flex items-center gap-3 min-w-0">
@@ -956,7 +975,7 @@ const DashboardPage = () => {
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ ГЕО</span>
               </div>
             </div>
-            <div className="p-2 space-y-1">
+            <div className="p-2 space-y-1 max-h-[160px] overflow-y-auto custom-scrollbar">
               {topCountries.map((geo, i) => (
                 <div key={geo.code} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
                   <div className="flex items-center gap-3 min-w-0">
