@@ -392,6 +392,9 @@ const GeoMatrixPage = () => {
                         if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return;
                     } else if (filters.department === 'consultant') {
                         if (p.managerRole !== 'Consultant') return;
+                    } else if (filters.department === 'taro') {
+                        // Показываем только Таро 2 / Таро 3 и т.д. (исключая первую продажу Таро)
+                        if (!/(?:Taro|Таро)\s*[2-9]/.test(p.product)) return;
                     }
                 }
 
@@ -481,6 +484,8 @@ const GeoMatrixPage = () => {
                     if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
                 } else if (filters.department === 'consultant') {
                     if (p.managerRole !== 'Consultant') return false;
+                } else if (filters.department === 'taro') {
+                    if (!/(?:Taro|Таро)\s*[2-9]/.test(p.product)) return false;
                 }
             }
 
@@ -787,6 +792,7 @@ const GeoMatrixPage = () => {
                                     <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
                                     <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
                                     <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
+                                    <button onClick={() => setFilters(prev => ({ ...prev, department: 'taro' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'taro' ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Таро</button>
                                 </div>
                             </div>
 
