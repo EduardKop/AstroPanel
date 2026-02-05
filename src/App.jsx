@@ -128,10 +128,27 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Collapsible sidebar sections with localStorage persistence
-  const [sectionStates, setSectionStates] = useState(() => {
-    const saved = localStorage.getItem('sidebarSections');
-    return saved ? JSON.parse(saved) : {
-      dashboards: true,      // Only this one open by default
+  // Default open sections based on role
+  const getDefaultSectionStates = () => {
+    const savedUserStr = localStorage.getItem('astroUser');
+    const userRole = savedUserStr ? JSON.parse(savedUserStr)?.role : null;
+
+    // For Sales role: open sales and knowledge by default
+    if (userRole === 'Sales' || userRole === 'SalesTaro' || userRole === 'SeniorSales') {
+      return {
+        dashboards: false,
+        sales: true,          // Open for Sales
+        consultations: false,
+        knowledge: true,      // Open for Sales
+        people: false,
+        admin: false,
+        clevel: false
+      };
+    }
+
+    // Default: only dashboards open
+    return {
+      dashboards: true,
       sales: false,
       consultations: false,
       knowledge: false,
@@ -139,6 +156,11 @@ function App() {
       admin: false,
       clevel: false
     };
+  };
+
+  const [sectionStates, setSectionStates] = useState(() => {
+    const saved = localStorage.getItem('sidebarSections');
+    return saved ? JSON.parse(saved) : getDefaultSectionStates();
   });
 
   const toggleSection = (section) => {

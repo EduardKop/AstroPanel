@@ -45,6 +45,7 @@ const EditEmployeePage = () => {
     telegram_id: '',
     telegram_username: '',
     birth_date: '',
+    started_at: '',
     geo: [],
     avatar_url: null
   });
@@ -131,6 +132,7 @@ const EditEmployeePage = () => {
         telegram_id: formData.telegram_id,
         telegram_username: formData.telegram_username,
         birth_date: formData.birth_date || null,
+        started_at: formData.started_at || null,
         geo: formData.geo,
         avatar_url: finalAvatarUrl
       });
@@ -311,8 +313,9 @@ const EditEmployeePage = () => {
                   </div>
                 </div>
 
-                <div className="w-full md:w-1/2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <GlassInput label="Дата рождения" icon={Calendar} name="birth_date" value={formData.birth_date} onChange={handleChange} type="date" />
+                  <GlassInput label="Начало работы" icon={Calendar} name="started_at" value={formData.started_at} onChange={handleChange} type="date" />
                 </div>
 
                 {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН (Скрываем для Admin/C-level) */}

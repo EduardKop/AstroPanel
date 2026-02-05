@@ -27,9 +27,9 @@ const BirthdaysPage = () => {
 
       const diffTime = nextBirthday - today;
       const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      // Считаем стаж
-      const workStart = new Date(mgr.created_at);
+
+      // Считаем стаж (используем started_at если есть, иначе created_at)
+      const workStart = new Date(mgr.started_at || mgr.created_at);
       const workDiff = Math.abs(today - workStart);
       const workDays = Math.ceil(workDiff / (1000 * 60 * 60 * 24));
 
@@ -43,7 +43,7 @@ const BirthdaysPage = () => {
 
   return (
     <div className="pb-10">
-      
+
       {/* HEADER */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -69,37 +69,36 @@ const BirthdaysPage = () => {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
               {processedList.length === 0 ? (
-                 <tr>
-                   <td colSpan="5" className="px-6 py-8 text-center text-gray-400">
-                     Нет данных о днях рождения
-                   </td>
-                 </tr>
+                <tr>
+                  <td colSpan="5" className="px-6 py-8 text-center text-gray-400">
+                    Нет данных о днях рождения
+                  </td>
+                </tr>
               ) : (
                 processedList.map((mgr) => {
                   const isToday = mgr.daysUntil === 0;
                   const isSoon = mgr.daysUntil > 0 && mgr.daysUntil <= 14;
 
                   return (
-                    <tr 
-                      key={mgr.id} 
-                      className={`transition-colors duration-200 ${
-                        isToday 
-                          ? 'bg-pink-50/40 dark:bg-pink-900/10 hover:bg-pink-50/60 dark:hover:bg-pink-900/20' 
-                          : 'hover:bg-gray-50 dark:hover:bg-[#1A1A1A]'
-                      }`}
+                    <tr
+                      key={mgr.id}
+                      className={`transition-colors duration-200 ${isToday
+                        ? 'bg-pink-50/40 dark:bg-pink-900/10 hover:bg-pink-50/60 dark:hover:bg-pink-900/20'
+                        : 'hover:bg-gray-50 dark:hover:bg-[#1A1A1A]'
+                        }`}
                     >
                       {/* Сотрудник */}
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-3">
                           <div className="relative">
                             {mgr.avatar_url ? (
-                              <img 
-                                src={mgr.avatar_url} 
-                                className={`w-9 h-9 rounded-lg object-cover border ${isToday ? 'border-pink-300 dark:border-pink-700' : 'border-gray-200 dark:border-[#444]'}`} 
+                              <img
+                                src={mgr.avatar_url}
+                                className={`w-9 h-9 rounded-lg object-cover border ${isToday ? 'border-pink-300 dark:border-pink-700' : 'border-gray-200 dark:border-[#444]'}`}
                               />
                             ) : (
                               <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-[#222] flex items-center justify-center text-gray-500">
-                                  <User size={14}/>
+                                <User size={14} />
                               </div>
                             )}
                             {isToday && (
@@ -109,22 +108,21 @@ const BirthdaysPage = () => {
                             )}
                           </div>
                           <div>
-                              <div className={`font-bold flex items-center gap-2 ${isToday ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-200'}`}>
-                                {mgr.name}
-                                {isToday && <Sparkles size={12} className="text-yellow-500 fill-yellow-500 animate-pulse" />}
-                              </div>
-                              <div className="text-[10px] text-gray-400">{mgr.role}</div>
+                            <div className={`font-bold flex items-center gap-2 ${isToday ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-200'}`}>
+                              {mgr.name}
+                              {isToday && <Sparkles size={12} className="text-yellow-500 fill-yellow-500 animate-pulse" />}
+                            </div>
+                            <div className="text-[10px] text-gray-400">{mgr.role}</div>
                           </div>
                         </div>
                       </td>
-                      
+
                       {/* Возраст */}
                       <td className="px-6 py-3 text-center">
-                        <span className={`px-2 py-1 rounded-md font-mono font-bold ${
-                          isToday 
-                            ? 'bg-white dark:bg-pink-500/20 text-pink-600 dark:text-pink-300' 
-                            : 'text-gray-600 dark:text-gray-400'
-                        }`}>
+                        <span className={`px-2 py-1 rounded-md font-mono font-bold ${isToday
+                          ? 'bg-white dark:bg-pink-500/20 text-pink-600 dark:text-pink-300'
+                          : 'text-gray-600 dark:text-gray-400'
+                          }`}>
                           {mgr.ageTurning}
                         </span>
                       </td>
@@ -141,9 +139,14 @@ const BirthdaysPage = () => {
 
                       {/* Стаж */}
                       <td className="px-6 py-3 font-mono text-gray-500 text-[11px]">
-                        <div className="flex items-center gap-1.5" title="Дней в компании">
+                        <div className="flex items-center gap-1.5" title="Время в компании">
                           <Clock size={12} className="opacity-50" />
-                          {mgr.workDays} дн.
+                          {mgr.workDays >= 365
+                            ? `${Math.floor(mgr.workDays / 365)} г. ${Math.floor((mgr.workDays % 365) / 30)} мес.`
+                            : mgr.workDays >= 30
+                              ? `${Math.floor(mgr.workDays / 30)} мес.`
+                              : `${mgr.workDays} дн.`
+                          }
                         </div>
                       </td>
 
