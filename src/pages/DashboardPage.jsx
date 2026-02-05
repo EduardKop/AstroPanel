@@ -10,6 +10,8 @@ import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
+import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
+
 // --- КОНФИГУРАЦИЯ ---
 const TIMEZONE = 'Europe/Kyiv';
 
@@ -52,13 +54,11 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
-// ХЕЛПЕР ДЛЯ ВРЕМЕНИ (Raw Mode)
+// ХЕЛПЕР ДЛЯ ВРЕМЕНИ (Kyiv Timezone)
+// Используем Kyiv timezone для picker отображения
 const toYMD = (date) => {
   if (!date) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return getKyivDateString(date);
 };
 
 import { DenseSelect } from '../components/ui/FilterSelect';
@@ -456,7 +456,8 @@ const DashboardPage = () => {
 
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
-      const dbDateStr = item.transactionDate.slice(0, 10);
+      // Извлекаем дату оплаты в Kyiv timezone
+      const dbDateStr = extractKyivDate(item.transactionDate);
 
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 

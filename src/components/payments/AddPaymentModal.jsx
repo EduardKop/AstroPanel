@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { showToast } from '../../utils/toastEvents';
+import { toKyivISOString, getKyivDateString, getKyivTimeString } from '../../utils/kyivTime';
 import { X, Check, Instagram, Phone, Calendar, DollarSign, AlertCircle, ChevronRight, Calculator } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -209,7 +210,7 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
         setIsSubmitting(true);
         try {
             const payload = {
-                transaction_date: formData.date.toISOString(),
+                transaction_date: toKyivISOString(formData.date),
                 amount_eur: parseFloat(formData.amountEUR),
                 amount_local: parseFloat(formData.amountLocal),
                 manager_id: formData.managerId,
@@ -219,20 +220,21 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                 crm_link: formData.nickname || formData.link,
                 status: 'completed',
                 telegram_id: user?.telegram_id || null,
-                created_at: new Date().toISOString()
+                created_at: toKyivISOString()
             };
 
             const { data, error } = await supabase.from('payments').insert(payload).select();
             if (error) throw error;
 
             // Count today's payments for this manager to determine confetti type
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            // Используем Kyiv дату для подсчёта сегодняшних оплат
+            const todayKyiv = getKyivDateString();
             const { count: todayCount } = await supabase
                 .from('payments')
                 .select('*', { count: 'exact', head: true })
                 .eq('manager_id', user.id)
-                .gte('transaction_date', today.toISOString());
+                .gte('transaction_date', `${todayKyiv}T00:00:00`)
+                .lte('transaction_date', `${todayKyiv}T23:59:59`);
 
             // Fire confetti based on payment count
             triggerConfetti(todayCount || 1);

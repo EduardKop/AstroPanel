@@ -9,6 +9,7 @@ import PaymentsTable from '../components/PaymentsTable';
 import { SearchModal, SearchButton } from '../components/ui/SearchInput';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- КОМПОНЕНТЫ ---
 import { DenseSelect } from '../components/ui/FilterSelect';
@@ -146,13 +147,10 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
   );
 };
 
-// ХЕЛПЕР: Превращает объект Date из календаря в строку "YYYY-MM-DD"
+// ХЕЛПЕР: Превращает объект Date из календаря в строку "YYYY-MM-DD" в Kyiv timezone
 const toYMD = (date) => {
   if (!date) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return getKyivDateString(date);
 };
 
 const PaymentsPage = () => {
@@ -253,11 +251,11 @@ const PaymentsPage = () => {
         if (filters.manager.length > 0 && !filters.manager.includes(item.manager)) return false;
       }
 
-      // 2. Дата (Строгое сравнение строк)
+      // 2. Дата (Строгое сравнение строк в Kyiv timezone)
       if (!item.transactionDate) return false;
 
-      // Берем дату из базы (например "2026-01-15T14:30:00") и отрезаем время -> "2026-01-15"
-      const dbDateStr = item.transactionDate.slice(0, 10);
+      // Извлекаем дату оплаты в Kyiv timezone
+      const dbDateStr = extractKyivDate(item.transactionDate);
 
       // Сравниваем строки лексикографически (работает для формата YYYY-MM-DD)
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
