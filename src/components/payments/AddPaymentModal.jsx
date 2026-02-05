@@ -443,21 +443,23 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                             <div>
                                 <label className="text-xs font-bold text-gray-500 block mb-2 uppercase">Продукт</label>
 
-                                {/* Tab Toggle */}
-                                <div className="grid grid-cols-2 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg mb-3">
-                                    <button
-                                        onClick={() => { setProductTab('general'); setFormData(p => ({ ...p, product: '' })); }}
-                                        className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'general' ? 'bg-white dark:bg-[#333] text-blue-600 shadow-sm' : 'text-gray-500'}`}
-                                    >
-                                        🛒 Общие
-                                    </button>
-                                    <button
-                                        onClick={() => { setProductTab('tarot'); setFormData(p => ({ ...p, product: '' })); }}
-                                        className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'tarot' ? 'bg-white dark:bg-[#333] text-purple-600 shadow-sm' : 'text-gray-500'}`}
-                                    >
-                                        🔮 Таро
-                                    </button>
-                                </div>
+                                {/* Tab Toggle - Tarot tab only for SalesTaro and SeniorSales */}
+                                {['SalesTaro', 'SeniorSales'].includes(user?.role) ? (
+                                    <div className="grid grid-cols-2 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg mb-3">
+                                        <button
+                                            onClick={() => { setProductTab('general'); setFormData(p => ({ ...p, product: '' })); }}
+                                            className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'general' ? 'bg-white dark:bg-[#333] text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                                        >
+                                            🛒 Общие
+                                        </button>
+                                        <button
+                                            onClick={() => { setProductTab('tarot'); setFormData(p => ({ ...p, product: '' })); }}
+                                            className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'tarot' ? 'bg-white dark:bg-[#333] text-purple-600 shadow-sm' : 'text-gray-500'}`}
+                                        >
+                                            🔮 Таро
+                                        </button>
+                                    </div>
+                                ) : null}
 
                                 {/* Product Grid */}
                                 <div className="grid grid-cols-3 gap-2">
@@ -470,22 +472,7 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                             {prod}
                                         </button>
                                     ))}
-                                    <button
-                                        onClick={() => setFormData(p => ({ ...p, product: 'Other' }))}
-                                        className={`px-2 py-2 text-[10px] font-bold rounded-lg border transition-all ${formData.product === 'Other' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-300'}`}
-                                    >
-                                        Другое
-                                    </button>
                                 </div>
-                                {formData.product === 'Other' && (
-                                    <input
-                                        type="text"
-                                        placeholder="Введите название продукта"
-                                        value={formData.customProduct}
-                                        onChange={e => setFormData(p => ({ ...p, customProduct: e.target.value }))}
-                                        className="mt-2 w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm"
-                                    />
-                                )}
                             </div>
 
                             {/* Amounts */}
@@ -535,17 +522,7 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                     >
                                         <option value="">Выберите...</option>
                                         {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                                        <option value="Other">Другое</option>
                                     </select>
-                                    {formData.paymentMethod === 'Other' && (
-                                        <input
-                                            type="text"
-                                            placeholder="Какой метод?"
-                                            value={formData.customMethod}
-                                            onChange={e => setFormData(p => ({ ...p, customMethod: e.target.value }))}
-                                            className="mt-2 w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-1.5 text-xs"
-                                        />
-                                    )}
                                 </div>
                             </div>
 
@@ -557,6 +534,9 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                 <button
                                     onClick={() => {
                                         if (!formData.product || !formData.amountLocal) return showToast('Заполните обязательные поля', 'error');
+                                        if (formData.source === 'instagram' && !formData.link.toLowerCase().includes('instagram')) {
+                                            return showToast('Ссылка должна содержать instagram.com', 'error');
+                                        }
                                         setStep('confirm');
                                     }}
                                     className="flex-[2] py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all text-sm"
