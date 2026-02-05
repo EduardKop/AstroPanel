@@ -9,6 +9,7 @@ import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- КОНФИГУРАЦИЯ ---
 const TIMEZONE = 'Europe/Kyiv';
@@ -45,13 +46,10 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
-// ХЕЛПЕР ДЛЯ ВРЕМЕНИ (Raw Mode)
+// ХЕЛПЕР ДЛЯ ВРЕМЕНИ (Kyiv timezone)
 const toYMD = (date) => {
   if (!date) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return getKyivDateString(date);
 };
 
 import { DenseSelect } from '../../components/ui/FilterSelect';
@@ -434,7 +432,7 @@ const SalesDashboardPage = () => {
       if (!['Sales', 'SeniorSales'].includes(item.managerRole)) return false;
 
       if (!item.transactionDate) return false;
-      const dbDateStr = item.transactionDate.slice(0, 10);
+      const dbDateStr = extractKyivDate(item.transactionDate);
 
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
@@ -573,7 +571,7 @@ const SalesDashboardPage = () => {
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
-      const dateKey = item.transactionDate.slice(0, 10); // "YYYY-MM-DD"
+      const dateKey = extractKyivDate(item.transactionDate); // "YYYY-MM-DD" Kyiv
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey, count: 0 };
       grouped[dateKey].count += 1;
     });

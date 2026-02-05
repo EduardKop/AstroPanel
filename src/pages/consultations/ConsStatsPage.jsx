@@ -9,6 +9,7 @@ import {
 import { Calendar as CalendarIcon, BarChart2, PieChart, RotateCcw, Maximize2, X, Filter, LayoutDashboard, MessageCircle, MessageSquare, Phone } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
 
 const THEME_COLORS = [
   { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] }, // Indigo
@@ -47,13 +48,10 @@ const getCurrentMonthRange = () => {
   return [start, end];
 };
 
-// ХЕЛПЕР: Дату в YYYY-MM-DD (локально)
+// ХЕЛПЕР: Дату в YYYY-MM-DD (Kyiv timezone)
 const toYMD = (date) => {
   if (!date) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return getKyivDateString(date);
 };
 
 // Mobile Custom Dropdown
@@ -490,7 +488,7 @@ const ConsStatsPage = () => {
       const grouped = {};
       const allKeys = new Set();
       data.forEach(item => {
-        const d = item.transactionDate.slice(0, 10);
+        const d = extractKyivDate(item.transactionDate);
         const k = item[key];
         allKeys.add(k);
         if (!grouped[d]) grouped[d] = { date: d };
@@ -547,8 +545,8 @@ const ConsStatsPage = () => {
       if (item.managerRole !== 'Consultant') return false;
       if (!item.transactionDate) return false;
 
-      // Берем дату из базы как строку "YYYY-MM-DD"
-      const dbDateStr = item.transactionDate.slice(0, 10);
+      // Берем дату из базы в Kyiv timezone
+      const dbDateStr = extractKyivDate(item.transactionDate);
 
       // Строгое сравнение строк
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
@@ -584,7 +582,7 @@ const ConsStatsPage = () => {
       if (!p.transactionDate) return false;
 
       // Date check
-      const dbDateStr = p.transactionDate.slice(0, 10);
+      const dbDateStr = extractKyivDate(p.transactionDate);
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
       // Apply same filters as main (except manager, as we want overall traffic?)
@@ -604,8 +602,8 @@ const ConsStatsPage = () => {
     const allKeys = new Set();
 
     sourceData.forEach(item => {
-      // Ключ группировки - "YYYY-MM-DD" из базы (без сдвигов времени)
-      const dateKey = item.transactionDate.slice(0, 10);
+      // Ключ группировки в Kyiv timezone
+      const dateKey = extractKyivDate(item.transactionDate);
       const key = item[dataKey] || 'Unknown';
       allKeys.add(key);
 
@@ -994,7 +992,7 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
 
     let data = rawPayments.filter(item => {
       if (!item.transactionDate) return false;
-      const dbDateStr = item.transactionDate.slice(0, 10);
+      const dbDateStr = extractKyivDate(item.transactionDate);
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
       return true;
     });
@@ -1006,7 +1004,7 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
     const allKeys = new Set();
 
     filteredData.forEach(item => {
-      const dateKey = item.transactionDate.slice(0, 10);
+      const dateKey = extractKyivDate(item.transactionDate);
       const key = item[chartKey] || 'Unknown';
       allKeys.add(key);
 

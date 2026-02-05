@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore';
 import {
   Filter, ChevronLeft, ChevronRight, Calendar as CalendarIcon,
   XCircle, RotateCcw, LayoutList,
-  LayoutDashboard, MessageCircle, MessageSquare, Phone, X, Edit2
+  LayoutDashboard, MessageCircle, MessageSquare, Phone, X, Edit2, Trash2, Pencil
 } from 'lucide-react';
 import PaymentsTable from '../components/PaymentsTable';
 import { SearchModal, SearchButton } from '../components/ui/SearchInput';
@@ -154,13 +154,13 @@ const toYMD = (date) => {
 };
 
 const PaymentsPage = () => {
-  const { payments, user: currentUser, isLoading, fetchAllData, managers, updatePayment, permissions } = useAppStore();
+  const { payments, user: currentUser, isLoading, fetchAllData, managers, updatePayment, bulkUpdatePayments, bulkDeletePayments, permissions } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
 
   const [filters, setFilters] = useState({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all' });
-  const [sortField, setSortField] = useState('date'); // 'date' | 'amountEUR' | 'amountLocal'
+  const [sortField, setSortField] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -168,6 +168,14 @@ const PaymentsPage = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const itemsPerPage = 30;
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [bulkEditField, setBulkEditField] = useState('manager_id');
+  const [bulkEditValue, setBulkEditValue] = useState('');
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
   // Check if user has edit permission (C-Level always has access OR role has transactions_edit permission)
   const isCLevel = currentUser?.role === 'C-level';
@@ -212,6 +220,66 @@ const PaymentsPage = () => {
     } else {
       setSortField(field);
       setSortOrder('desc');
+    }
+  };
+
+  // --- BULK SELECTION HANDLERS ---
+  const handleSelectionChange = (id) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = (visiblePayments) => {
+    const allSelected = visiblePayments.every(p => selectedIds.has(p.id));
+    if (allSelected) {
+      // Deselect all visible
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        visiblePayments.forEach(p => newSet.delete(p.id));
+        return newSet;
+      });
+    } else {
+      // Select all visible
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        visiblePayments.forEach(p => newSet.add(p.id));
+        return newSet;
+      });
+    }
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Bulk edit handler
+  const handleBulkEdit = async () => {
+    if (!bulkEditValue || selectedIds.size === 0) return;
+    setIsBulkProcessing(true);
+    const updates = { [bulkEditField]: bulkEditValue };
+    const success = await bulkUpdatePayments(Array.from(selectedIds), updates);
+    setIsBulkProcessing(false);
+    if (success) {
+      setShowBulkEditModal(false);
+      clearSelection();
+      setBulkEditValue('');
+    }
+  };
+
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setIsBulkProcessing(true);
+    const success = await bulkDeletePayments(Array.from(selectedIds));
+    setIsBulkProcessing(false);
+    if (success) {
+      setShowDeleteConfirm(false);
+      clearSelection();
     }
   };
 
@@ -432,6 +500,36 @@ const PaymentsPage = () => {
         </div>
       </div>
 
+      {/* Bulk Actions Toolbar */}
+      {isEditMode && selectedIds.size > 0 && (
+        <div className="sticky top-[120px] z-10 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2 mb-3 flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">
+            Выбрано: {selectedIds.size}
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => setShowBulkEditModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-[6px] text-xs font-bold hover:bg-amber-600 transition-colors"
+          >
+            <Pencil size={12} />
+            Изменить
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white rounded-[6px] text-xs font-bold hover:bg-red-600 transition-colors"
+          >
+            <Trash2 size={12} />
+            Удалить
+          </button>
+          <button
+            onClick={clearSelection}
+            className="px-3 py-1.5 bg-gray-200 dark:bg-[#333] text-gray-600 dark:text-gray-300 rounded-[6px] text-xs font-bold hover:bg-gray-300 dark:hover:bg-[#444] transition-colors"
+          >
+            Снять выделение
+          </button>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm overflow-hidden">
         <PaymentsTable
           payments={currentData}
@@ -445,6 +543,9 @@ const PaymentsPage = () => {
           isEditMode={isEditMode}
           managers={managers}
           onPaymentUpdate={updatePayment}
+          selectedIds={selectedIds}
+          onSelectionChange={handleSelectionChange}
+          onSelectAll={handleSelectAll}
         />
       </div>
 
@@ -478,6 +579,107 @@ const PaymentsPage = () => {
           >
             <ChevronRight size={16} />
           </button>
+        </div>
+      )}
+
+      {/* Bulk Edit Modal */}
+      {showBulkEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowBulkEditModal(false)}>
+          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+              Массовое редактирование ({selectedIds.size} платежей)
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Поле для изменения
+                </label>
+                <select
+                  value={bulkEditField}
+                  onChange={(e) => { setBulkEditField(e.target.value); setBulkEditValue(''); }}
+                  className="w-full px-3 py-2 bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg text-sm"
+                >
+                  <option value="manager_id">Менеджер</option>
+                  <option value="country">Страна</option>
+                  <option value="product">Продукт</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Новое значение
+                </label>
+                {bulkEditField === 'manager_id' ? (
+                  <select
+                    value={bulkEditValue}
+                    onChange={(e) => setBulkEditValue(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg text-sm"
+                  >
+                    <option value="">-- Выберите менеджера --</option>
+                    {managers.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={bulkEditValue}
+                    onChange={(e) => setBulkEditValue(bulkEditField === 'country' ? e.target.value.toUpperCase() : e.target.value)}
+                    placeholder={bulkEditField === 'country' ? 'UA, PL, DE...' : 'Введите продукт...'}
+                    maxLength={bulkEditField === 'country' ? 2 : undefined}
+                    className="w-full px-3 py-2 bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg text-sm"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setShowBulkEditModal(false)}
+                className="px-4 py-2 bg-gray-200 dark:bg-[#333] text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-[#444] transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleBulkEdit}
+                disabled={!bulkEditValue || isBulkProcessing}
+                className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-bold hover:bg-amber-600 disabled:opacity-50 transition-colors"
+              >
+                {isBulkProcessing ? 'Сохранение...' : 'Применить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">
+              ⚠️ Подтверждение удаления
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Вы уверены, что хотите удалить <strong>{selectedIds.size}</strong> платежей? Это действие нельзя отменить.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 bg-gray-200 dark:bg-[#333] text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-[#444] transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkProcessing}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {isBulkProcessing ? 'Удаление...' : 'Удалить'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

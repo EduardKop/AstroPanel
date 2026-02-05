@@ -5,6 +5,7 @@ import {
     Users, Calendar as CalendarIcon,
     Clock, ChevronDown, ChevronUp, MessageCircle, MessageSquare, Phone, Percent, List, AlignJustify
 } from 'lucide-react';
+import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- CONFIGURATION ---
 const FLAGS = {
@@ -25,10 +26,7 @@ const getLastWeekRange = () => {
 
 const toYMD = (date) => {
     if (!date) return '';
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return getKyivDateString(date);
 };
 
 import { DenseSelect } from '../components/ui/FilterSelect';
@@ -374,7 +372,7 @@ const PaymentTimesPage = () => {
         const endStr = endDate ? toYMD(endDate) : '9999-99-99';
         return payments.filter(item => {
             if (!item.transactionDate) return false;
-            const dbDateStr = item.transactionDate.slice(0, 10);
+            const dbDateStr = extractKyivDate(item.transactionDate);
             if (dbDateStr < startStr || dbDateStr > endStr) return false;
             if (isRestrictedUser) { if (item.manager !== currentUser.name) return false; }
             else { if (filters.manager.length > 0 && !filters.manager.includes(item.manager)) return false; }

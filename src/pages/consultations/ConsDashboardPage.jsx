@@ -9,6 +9,7 @@ import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- КОНФИГУРАЦИЯ ---
 const TIMEZONE = 'Europe/Kyiv';
@@ -52,13 +53,10 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
-// ХЕЛПЕР ДЛЯ ВРЕМЕНИ (Raw Mode)
+// ХЕЛПЕР ДЛЯ ВРЕМЕНИ (Kyiv timezone)
 const toYMD = (date) => {
   if (!date) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return getKyivDateString(date);
 };
 
 // Mobile Custom Dropdown
@@ -495,7 +493,7 @@ const ConsDashboardPage = () => {
       // 🔥 ФИЛЬТР ПО РОЛИ: Только Consultant
       if (item.managerRole !== 'Consultant') return false;
       if (!item.transactionDate) return false;
-      const dbDateStr = item.transactionDate.slice(0, 10);
+      const dbDateStr = extractKyivDate(item.transactionDate);
 
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
@@ -529,7 +527,7 @@ const ConsDashboardPage = () => {
       // Role check
       if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
       // Date check
-      const pDate = p.transactionDate.slice(0, 10);
+      const pDate = extractKyivDate(p.transactionDate);
       if (pDate < startStr || pDate > endStr) return false;
       // Country filter (if applied)
       if (filters.country && p.country !== filters.country) return false;
@@ -597,7 +595,7 @@ const ConsDashboardPage = () => {
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
-      const dateKey = item.transactionDate.slice(0, 10); // "YYYY-MM-DD"
+      const dateKey = extractKyivDate(item.transactionDate); // "YYYY-MM-DD"
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey, count: 0 };
       grouped[dateKey].count += 1;
     });

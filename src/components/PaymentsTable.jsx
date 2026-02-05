@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, Coins, Copy, Check, Filter, ArrowUpDown, Save, X } from 'lucide-react';
+import { DollarSign, Coins, Copy, Check, Filter, ArrowUpDown, Save, X, Square, CheckSquare } from 'lucide-react';
 import Toast from './ui/Toast';
 import { formatKyivDate, formatKyivTime } from '../utils/kyivTime';
 
@@ -32,7 +32,11 @@ const PaymentsTable = ({
   onSort,
   isEditMode = false,
   managers = [],
-  onPaymentUpdate
+  onPaymentUpdate,
+  // Bulk selection props
+  selectedIds = new Set(),
+  onSelectionChange,
+  onSelectAll
 }) => {
   const [toastVisible, setToastVisible] = useState(false);
   const [editingRow, setEditingRow] = useState(null); // ID of row being edited
@@ -106,6 +110,24 @@ const PaymentsTable = ({
           <table className="w-full text-left text-xs text-gray-600 dark:text-[#888] whitespace-nowrap">
             <thead className="bg-gray-50 dark:bg-[#161616] font-medium border-b border-gray-200 dark:border-[#333] text-gray-500 dark:text-[#666]">
               <tr>
+                {/* Checkbox Column for Bulk Selection */}
+                {isEditMode && onSelectionChange && (
+                  <th className="px-3 py-3 w-10">
+                    <button
+                      onClick={() => onSelectAll && onSelectAll(payments)}
+                      className="p-1 hover:bg-gray-200 dark:hover:bg-[#333] rounded transition-colors"
+                      title={selectedIds.size === payments.length ? 'Снять выделение' : 'Выделить все'}
+                    >
+                      {selectedIds.size > 0 && selectedIds.size === payments.length ? (
+                        <CheckSquare size={16} className="text-blue-500" />
+                      ) : selectedIds.size > 0 ? (
+                        <CheckSquare size={16} className="text-blue-300" />
+                      ) : (
+                        <Square size={16} className="text-gray-400" />
+                      )}
+                    </button>
+                  </th>
+                )}
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">
                   <button
@@ -163,9 +185,25 @@ const PaymentsTable = ({
               ) : (
                 payments.map((p) => {
                   const isEditing = editingRow === p.id;
+                  const isSelected = selectedIds.has(p.id);
 
                   return (
-                    <tr key={p.id} className={`hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group ${isEditing ? 'bg-amber-50 dark:bg-amber-900/10' : ''}`}>
+                    <tr key={p.id} className={`hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group ${isEditing ? 'bg-amber-50 dark:bg-amber-900/10' : ''} ${isSelected ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
+                      {/* Checkbox for Bulk Selection */}
+                      {isEditMode && onSelectionChange && (
+                        <td className="px-3 py-2">
+                          <button
+                            onClick={() => onSelectionChange(p.id)}
+                            className="p-1 hover:bg-gray-200 dark:hover:bg-[#333] rounded transition-colors"
+                          >
+                            {isSelected ? (
+                              <CheckSquare size={16} className="text-blue-500" />
+                            ) : (
+                              <Square size={16} className="text-gray-400" />
+                            )}
+                          </button>
+                        </td>
+                      )}
                       <td className="px-4 py-2 font-mono text-[10px] text-gray-400 max-w-[80px] truncate" title={p.id}>
                         #{p.id.slice(0, 8)}
                       </td>

@@ -507,6 +507,139 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  // --- BULK UPDATE PAYMENTS ---
+  bulkUpdatePayments: async (paymentIds, updates) => {
+    try {
+      const user = get().user;
+      const permissions = get().permissions;
+      const hasEditPermission = user?.role === 'C-level' || permissions?.[user?.role]?.transactions_edit === true;
+
+      if (!user || !hasEditPermission) {
+        showToast('Недостаточно прав для редактирования', 'error');
+        return false;
+      }
+
+      if (!paymentIds || paymentIds.length === 0) {
+        showToast('Не выбраны платежи', 'error');
+        return false;
+      }
+
+      // Map frontend fields to database columns
+      const dbUpdates = {};
+      if (updates.manager_id !== undefined) dbUpdates.manager_id = updates.manager_id;
+      if (updates.country !== undefined) dbUpdates.country = updates.country;
+      if (updates.product !== undefined) dbUpdates.product = updates.product;
+      if (updates.type !== undefined) dbUpdates.payment_type = updates.type;
+
+      if (Object.keys(dbUpdates).length === 0) {
+        showToast('Нет полей для обновления', 'error');
+        return false;
+      }
+
+      console.log('📝 Attempting to update payments:', paymentIds, dbUpdates);
+
+      const { data, error } = await supabase
+        .from('payments')
+        .update(dbUpdates)
+        .in('id', paymentIds)
+        .select();
+
+      console.log('📝 Update result:', { data, error });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        console.warn('⚠️ Update returned no affected rows - RLS may be blocking');
+        showToast('Обновление заблокировано (RLS)', 'error');
+        return false;
+      }
+
+      // Log activity
+      get().logActivity({
+        action: 'bulk_edit_payments',
+        entity: 'payment',
+        entityId: null,
+        details: {
+          payment_ids: paymentIds,
+          count: paymentIds.length,
+          updated_fields: Object.keys(dbUpdates),
+          updated_by: user.name
+        },
+        importance: 'high'
+      });
+
+      showToast(`Обновлено ${paymentIds.length} платежей`, 'success');
+
+      // Refresh data
+      await get().fetchAllData(true);
+      return true;
+    } catch (error) {
+      console.error('Error bulk updating payments:', error);
+      showToast('Ошибка при массовом обновлении', 'error');
+      return false;
+    }
+  },
+
+  // --- BULK DELETE PAYMENTS ---
+  bulkDeletePayments: async (paymentIds) => {
+    try {
+      const user = get().user;
+      const permissions = get().permissions;
+      const hasEditPermission = user?.role === 'C-level' || permissions?.[user?.role]?.transactions_edit === true;
+
+      if (!user || !hasEditPermission) {
+        showToast('Недостаточно прав для удаления', 'error');
+        return false;
+      }
+
+      if (!paymentIds || paymentIds.length === 0) {
+        showToast('Не выбраны платежи', 'error');
+        return false;
+      }
+
+      console.log('🗑️ Attempting to delete payments:', paymentIds);
+
+      const { data, error } = await supabase
+        .from('payments')
+        .delete()
+        .in('id', paymentIds)
+        .select();
+
+      console.log('🗑️ Delete result:', { data, error });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        console.warn('⚠️ Delete returned no affected rows - RLS may be blocking');
+        showToast('Удаление заблокировано (RLS)', 'error');
+        return false;
+      }
+
+      // Log activity
+      get().logActivity({
+        action: 'bulk_delete_payments',
+        entity: 'payment',
+        entityId: null,
+        details: {
+          payment_ids: paymentIds,
+          count: paymentIds.length,
+          deleted_by: user.name
+        },
+        importance: 'high'
+      });
+
+      showToast(`Удалено ${paymentIds.length} платежей`, 'success');
+
+      // Refresh data
+      await get().fetchAllData(true);
+      return true;
+    } catch (error) {
+      console.error('Error bulk deleting payments:', error);
+      showToast('Ошибка при массовом удалении', 'error');
+      return false;
+    }
+  },
+
   logActivity: async ({ action, entity, entityId = null, details = {}, importance = 'low' }) => {
     try {
       const user = get().user;

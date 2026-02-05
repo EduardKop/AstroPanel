@@ -10,6 +10,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 import { DenseSelect } from '../../components/ui/FilterSelect';
+import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
 
 const getLastWeekRange = () => {
   const end = new Date();
@@ -144,13 +145,10 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
   );
 };
 
-// ХЕЛПЕР: Превращает объект Date из календаря в строку "YYYY-MM-DD"
+// ХЕЛПЕР: Превращает объект Date из календаря в строку "YYYY-MM-DD" (Kyiv timezone)
 const toYMD = (date) => {
   if (!date) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return getKyivDateString(date);
 };
 
 const SalesPaymentsPage = () => {
@@ -215,7 +213,7 @@ const SalesPaymentsPage = () => {
       if (!item.transactionDate) return false;
 
       // Берем дату из базы (например "2026-01-15T14:30:00") и отрезаем время -> "2026-01-15"
-      const dbDateStr = item.transactionDate.slice(0, 10);
+      const dbDateStr = extractKyivDate(item.transactionDate);
 
       // Сравниваем строки лексикографически (работает для формата YYYY-MM-DD)
       if (dbDateStr < startStr || dbDateStr > endStr) return false;

@@ -9,6 +9,7 @@ import {
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- КОМПОНЕНТЫ ---
 
@@ -334,14 +335,10 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
-// ХЕЛПЕР: Превращает объект Date в строку "YYYY-MM-DD"
-// Важно использовать локальные методы (getFullYear и т.д.), так как DatePicker возвращает локальное время 00:00
+// ХЕЛПЕР: Превращает объект Date в строку "YYYY-MM-DD" (Kyiv timezone)
 const toYMD = (date) => {
   if (!date) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return getKyivDateString(date);
 };
 
 const SalesGeoPage = () => {
@@ -398,7 +395,7 @@ const SalesGeoPage = () => {
       if (!item.transactionDate) return false;
 
       // Берем дату из базы как строку "YYYY-MM-DD"
-      const dbDateStr = item.transactionDate.slice(0, 10);
+      const dbDateStr = extractKyivDate(item.transactionDate);
 
       // Строгое сравнение строк
       if (dbDateStr < startStr || dbDateStr > endStr) return false;

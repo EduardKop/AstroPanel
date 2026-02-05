@@ -633,7 +633,7 @@ const DashboardPage = () => {
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
-      const dateKey = item.transactionDate.slice(0, 10); // "YYYY-MM-DD"
+      const dateKey = extractKyivDate(item.transactionDate); // "YYYY-MM-DD" Kyiv
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey, count: 0 };
       grouped[dateKey].count += 1;
     });

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- CONFIG ---
 const FLAGS = {
@@ -26,13 +27,10 @@ const toDateStr = (date) => {
     return `${d}.${m}`;
 };
 
-// Helper YYYY-MM-DD
+// Helper YYYY-MM-DD (Kyiv timezone)
 const toYMD = (date) => {
     if (!date) return '';
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return getKyivDateString(date);
 };
 
 
@@ -402,7 +400,7 @@ const QuickStatsPage = () => {
 
                 // Sales
                 payments.forEach(p => {
-                    const pDate = p.transactionDate.slice(0, 10);
+                    const pDate = extractKyivDate(p.transactionDate);
                     if (p.country === geo && pDate >= start && pDate <= end) {
                         if (filters.source !== 'all' && p.source !== filters.source) return;
                         salesCount++;

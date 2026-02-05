@@ -5,6 +5,7 @@ import {
     TrendingUp, ArrowRight, Layers, Users, Calendar as CalendarIcon, PieChart
 } from 'lucide-react';
 import "react-datepicker/dist/react-datepicker.css";
+import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- CONFIG ---
 const FLAGS = {
@@ -19,10 +20,7 @@ const getFlag = (code) => FLAGS[code] || '🏳️';
 
 const toYMD = (date) => {
     if (!date) return '';
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return getKyivDateString(date);
 };
 
 const getLastWeekRange = () => {
@@ -181,7 +179,7 @@ const ConsConversionsPage = () => {
 
         // Filter payments for the CURRENT VIEW
         const filtered = payments.filter(p => {
-            const pDate = p.transactionDate.slice(0, 10);
+            const pDate = extractKyivDate(p.transactionDate);
             if (pDate < startStr || pDate > endStr) return false;
             // Array filter for country
             if (filters.country.length > 0 && !filters.country.includes(p.country)) return false;

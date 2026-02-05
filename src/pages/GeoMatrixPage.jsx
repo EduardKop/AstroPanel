@@ -10,6 +10,7 @@ import {
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { motion, AnimatePresence } from 'framer-motion';
+import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- СПРАВОЧНИК ---
 const STATIC_GEO_LOOKUP = {
@@ -61,13 +62,9 @@ const getCurrentMonthRange = () => {
     return [start, end];
 };
 
-// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ЛОКАЛЬНЫХ ДАТ ---
+// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ДАТ В KYIV TIMEZONE ---
 const getLocalDateKey = (date) => {
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return getKyivDateString(date);
 };
 
 import { DenseSelect } from '../components/ui/FilterSelect';
@@ -400,9 +397,7 @@ const GeoMatrixPage = () => {
 
                 let pDate;
                 try {
-                    pDate = typeof p.transactionDate === 'string'
-                        ? p.transactionDate.split(/[T ]/)[0]
-                        : new Date(p.transactionDate).toISOString().split('T')[0];
+                    pDate = extractKyivDate(p.transactionDate);
                 } catch (e) { return; }
 
                 const geo = p.country;
@@ -469,9 +464,7 @@ const GeoMatrixPage = () => {
             if (!p.transactionDate) return false;
             let pDate;
             try {
-                pDate = typeof p.transactionDate === 'string'
-                    ? p.transactionDate.split(/[T ]/)[0]
-                    : new Date(p.transactionDate).toISOString().split('T')[0];
+                pDate = extractKyivDate(p.transactionDate);
             } catch (e) { return false; }
 
             // Важно: Применяем те же фильтры, что и в матрице
@@ -548,9 +541,7 @@ const GeoMatrixPage = () => {
                         // Date check
                         let pDate;
                         try {
-                            pDate = typeof p.transactionDate === 'string'
-                                ? p.transactionDate.split(/[T ]/)[0]
-                                : new Date(p.transactionDate).toISOString().split('T')[0];
+                            pDate = extractKyivDate(p.transactionDate);
                         } catch (e) { return; }
 
                         const dKey = getLocalDateKey(new Date(pDate));
