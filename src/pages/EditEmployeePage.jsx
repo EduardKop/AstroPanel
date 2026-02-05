@@ -17,6 +17,10 @@ const EditEmployeePage = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Check if current user is C-level and if they're editing their own profile
+  const isCLevel = ['C-level', 'Admin', 'Owner'].includes(currentUser?.role);
+  const isEditingSelf = currentUser?.id === id;
+
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
@@ -194,10 +198,10 @@ const EditEmployeePage = () => {
                   </div>
                 )}
 
-                <label className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white opacity-0 group-hover/avatar:opacity-100 rounded-full cursor-pointer transition-all duration-300 backdrop-blur-sm scale-95 group-hover/avatar:scale-100">
+                <label className={`absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white opacity-0 rounded-full transition-all duration-300 backdrop-blur-sm scale-95 ${isEditingSelf && !isCLevel ? 'hidden' : 'group-hover/avatar:opacity-100 group-hover/avatar:scale-100 cursor-pointer'}`}>
                   <UploadCloud size={28} className="mb-2" />
                   <span className="text-xs font-bold uppercase tracking-wider">Изменить</span>
-                  <input type="file" accept="image/jpeg, image/png, image/webp" onChange={handleFileChange} className="hidden" />
+                  <input type="file" accept="image/jpeg, image/png, image/webp" onChange={handleFileChange} className="hidden" disabled={isEditingSelf && !isCLevel} />
                 </label>
               </div>
 
@@ -232,16 +236,33 @@ const EditEmployeePage = () => {
 
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <GlassInput label="Имя и Фамилия" icon={User} name="name" value={formData.name} onChange={handleChange} required />
+                  <GlassInput
+                    label="Имя и Фамилия"
+                    icon={User}
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                    disabled={isEditingSelf && !isCLevel}
+                    className={isEditingSelf && !isCLevel ? 'opacity-60' : ''}
+                  />
 
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase ml-1">Роль</label>
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase ml-1 flex items-center gap-2">
+                      Роль
+                      {isEditingSelf && !isCLevel && (
+                        <span className="text-[10px] text-yellow-600 dark:text-yellow-500 normal-case">
+                          (Только для просмотра)
+                        </span>
+                      )}
+                    </label>
                     <div className="relative group/select">
                       <select
                         name="role"
                         value={formData.role}
                         onChange={handleChange}
-                        className="w-full appearance-none bg-gray-50 dark:bg-black/20 hover:bg-gray-100 dark:hover:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3.5 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all cursor-pointer"
+                        disabled={isEditingSelf && !isCLevel}
+                        className={`w-full appearance-none bg-gray-50 dark:bg-black/20 hover:bg-gray-100 dark:hover:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3.5 text-sm font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all ${isEditingSelf && !isCLevel ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                       >
                         {ROLES.map(r => <option key={r} value={r} className="bg-white dark:bg-[#1A1A1A] text-gray-900 dark:text-gray-300">{r}</option>)}
                       </select>
@@ -261,10 +282,31 @@ const EditEmployeePage = () => {
                     <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-6">
                       <Send size={18} />
                       <span className="font-bold text-sm tracking-wide">TELEGRAM ИНТЕГРАЦИЯ</span>
+                      {isEditingSelf && !isCLevel && (
+                        <span className="text-[10px] text-yellow-600 dark:text-yellow-500 font-normal">
+                          (Только для просмотра)
+                        </span>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <GlassInput label="Telegram ID" name="telegram_id" value={formData.telegram_id} onChange={handleChange} placeholder="Например: 12345678" />
-                      <GlassInput label="Username" name="telegram_username" value={formData.telegram_username} onChange={handleChange} placeholder="@username" />
+                      <GlassInput
+                        label="Telegram ID"
+                        name="telegram_id"
+                        value={formData.telegram_id}
+                        onChange={handleChange}
+                        placeholder="Например: 12345678"
+                        disabled={isEditingSelf && !isCLevel}
+                        className={isEditingSelf && !isCLevel ? 'opacity-60' : ''}
+                      />
+                      <GlassInput
+                        label="Username"
+                        name="telegram_username"
+                        value={formData.telegram_username}
+                        onChange={handleChange}
+                        placeholder="@username"
+                        disabled={isEditingSelf && !isCLevel}
+                        className={isEditingSelf && !isCLevel ? 'opacity-60' : ''}
+                      />
                     </div>
                   </div>
                 </div>
@@ -387,15 +429,16 @@ const EditEmployeePage = () => {
   );
 };
 
-const GlassInput = ({ label, icon: Icon, className, ...props }) => (
-  <div className={`space-y-2 ${className}`}>
+const GlassInput = ({ label, icon: Icon, className, disabled, ...props }) => (
+  <div className={`space-y-2 ${className || ''}`}>
     <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase ml-1">{label}</label>
     <div className="relative group/input">
       <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 rounded-xl blur opacity-0 group-focus-within/input:opacity-100 transition-opacity duration-500" />
-      <div className="relative flex items-center gap-3 bg-gray-50 dark:bg-black/20 hover:bg-gray-100 dark:hover:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3.5 focus-within:border-blue-500/50 focus-within:bg-white dark:focus-within:bg-black/40 transition-all">
+      <div className={`relative flex items-center gap-3 bg-gray-50 dark:bg-black/20 hover:bg-gray-100 dark:hover:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3.5 focus-within:border-blue-500/50 focus-within:bg-white dark:focus-within:bg-black/40 transition-all ${disabled ? 'cursor-not-allowed' : ''}`}>
         {Icon && <Icon size={18} className="text-gray-400 dark:text-gray-500 group-focus-within/input:text-blue-500 dark:group-focus-within/input:text-blue-400 transition-colors shrink-0" />}
         <input
-          className="w-full bg-transparent outline-none text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 font-medium"
+          className={`w-full bg-transparent outline-none text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 font-medium ${disabled ? 'cursor-not-allowed' : ''}`}
+          disabled={disabled}
           {...props}
         />
       </div>
