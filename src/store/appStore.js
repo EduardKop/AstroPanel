@@ -456,6 +456,57 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  // --- UPDATE PAYMENT (C-Level or users with transactions_edit permission) ---
+  updatePayment: async (paymentId, updates) => {
+    try {
+      const user = get().user;
+      const permissions = get().permissions;
+      const hasEditPermission = user?.role === 'C-level' || permissions?.[user?.role]?.transactions_edit === true;
+
+      if (!user || !hasEditPermission) {
+        showToast('Недостаточно прав для редактирования', 'error');
+        return false;
+      }
+
+      // Map frontend fields to database columns
+      const dbUpdates = {};
+      if (updates.transactionDate !== undefined) dbUpdates.transaction_date = updates.transactionDate;
+      if (updates.manager_id !== undefined) dbUpdates.manager_id = updates.manager_id;
+      if (updates.country !== undefined) dbUpdates.country = updates.country;
+      if (updates.product !== undefined) dbUpdates.product = updates.product;
+      if (updates.type !== undefined) dbUpdates.payment_type = updates.type;
+      if (updates.crm_link !== undefined) dbUpdates.crm_link = updates.crm_link;
+      if (updates.amountLocal !== undefined) dbUpdates.amount_local = updates.amountLocal;
+      if (updates.amountEUR !== undefined) dbUpdates.amount_eur = updates.amountEUR;
+
+      const { error } = await supabase
+        .from('payments')
+        .update(dbUpdates)
+        .eq('id', paymentId);
+
+      if (error) throw error;
+
+      // Log activity
+      get().logActivity({
+        action: 'edit_payment',
+        entity: 'payment',
+        entityId: paymentId,
+        details: { updated_fields: Object.keys(dbUpdates), updated_by: user.name },
+        importance: 'high'
+      });
+
+      showToast('Платёж обновлён', 'success');
+
+      // Refresh data
+      await get().fetchAllData(true);
+      return true;
+    } catch (error) {
+      console.error('Error updating payment:', error);
+      showToast('Ошибка при обновлении платежа', 'error');
+      return false;
+    }
+  },
+
   logActivity: async ({ action, entity, entityId = null, details = {}, importance = 'low' }) => {
     try {
       const user = get().user;

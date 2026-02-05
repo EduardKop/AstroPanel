@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore';
 import {
   Filter, ChevronLeft, ChevronRight, Calendar as CalendarIcon,
   XCircle, RotateCcw, LayoutList,
-  LayoutDashboard, MessageCircle, MessageSquare, Phone, X
+  LayoutDashboard, MessageCircle, MessageSquare, Phone, X, Edit2
 } from 'lucide-react';
 import PaymentsTable from '../components/PaymentsTable';
 import { SearchModal, SearchButton } from '../components/ui/SearchInput';
@@ -156,7 +156,7 @@ const toYMD = (date) => {
 };
 
 const PaymentsPage = () => {
-  const { payments, user: currentUser, isLoading, fetchAllData } = useAppStore();
+  const { payments, user: currentUser, isLoading, fetchAllData, managers, updatePayment, permissions } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
@@ -168,7 +168,12 @@ const PaymentsPage = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   const itemsPerPage = 30;
+
+  // Check if user has edit permission (C-Level always has access OR role has transactions_edit permission)
+  const isCLevel = currentUser?.role === 'C-level';
+  const canEditTransactions = isCLevel || (permissions?.[currentUser?.role]?.transactions_edit === true);
 
   // Авто-обновление при маунте для получения свежих данных
   useEffect(() => {
@@ -336,6 +341,20 @@ const PaymentsPage = () => {
           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-200 dark:bg-[#1A1A1A] text-gray-500 dark:text-gray-400">
             {processedData.length}
           </span>
+
+          {/* C-Level Edit Mode Toggle */}
+          {canEditTransactions && (
+            <button
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[10px] font-bold transition-all ${isEditMode
+                ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20'
+                : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/20 hover:text-amber-600'
+                }`}
+            >
+              <Edit2 size={12} />
+              {isEditMode ? 'Выключить редактирование' : 'Режим редактирования'}
+            </button>
+          )}
         </div>
 
         {/* Все фильтры в один ряд */}
@@ -425,6 +444,9 @@ const PaymentsPage = () => {
           sortField={sortField}
           sortOrder={sortOrder}
           onSort={handleSort}
+          isEditMode={isEditMode}
+          managers={managers}
+          onPaymentUpdate={updatePayment}
         />
       </div>
 
