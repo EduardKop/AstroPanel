@@ -5,7 +5,7 @@ import {
     LayoutDashboard, Users, Globe, CreditCard,
     BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
     Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-    BookOpen, Coins, Calendar, Clock, Lock, CheckSquare, Square, PieChart, Eye
+    BookOpen, Coins, Calendar, Clock, Lock, CheckSquare, Square, PieChart, Eye, ShieldAlert
 } from 'lucide-react';
 
 const ROLES = ['C-level', 'Admin', 'SeniorSales', 'Sales', 'SalesTaro', 'Consultant'];
@@ -23,6 +23,7 @@ const SECTIONS = [
             { key: 'geo', label: 'География', icon: Globe },
             { key: 'geo_matrix', label: 'Матрица ГЕО', icon: LayoutGrid },
             { key: 'transactions_view', editKey: 'transactions_edit', label: 'Транзакции', icon: CreditCard },
+            { key: 'payment_audit', label: 'Проверка платежей', icon: ShieldAlert },
         ]
     },
     {

@@ -243,7 +243,25 @@ const PaymentsTable = ({
                             ))}
                           </select>
                         ) : (
-                          <span className="font-bold text-gray-800 dark:text-gray-200">{p.manager}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-gray-800 dark:text-gray-200">{p.manager}</span>
+                            {(() => {
+                              const mgr = managers.find(m => m.name === p.manager || m.id === p.managerId);
+                              if (mgr?.telegram_username) {
+                                return (
+                                  <button
+                                    onClick={() => handleCopy('@' + mgr.telegram_username.replace('@', ''))}
+                                    className="text-gray-400 hover:text-blue-500 text-[10px] flex items-center gap-0.5 transition-colors"
+                                    title="Копировать @username"
+                                  >
+                                    @{mgr.telegram_username.replace('@', '')}
+                                    <Copy size={9} />
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                         )}
                       </td>
 
