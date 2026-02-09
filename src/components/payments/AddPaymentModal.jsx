@@ -528,8 +528,39 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                         selected={formData.date}
                                         onChange={date => setFormData(p => ({ ...p, date }))}
                                         showTimeSelect
+                                        timeFormat="HH:mm"
+                                        timeIntervals={15}
                                         dateFormat="dd.MM.yyyy HH:mm"
-                                        className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-xs"
+                                        timeCaption="Время"
+                                        className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm font-medium cursor-pointer"
+                                        calendarClassName="custom-datepicker"
+                                        renderCustomHeader={({
+                                            date,
+                                            decreaseMonth,
+                                            increaseMonth,
+                                            prevMonthButtonDisabled,
+                                            nextMonthButtonDisabled,
+                                        }) => (
+                                            <div className="flex items-center justify-between px-3 py-2">
+                                                <button
+                                                    onClick={decreaseMonth}
+                                                    disabled={prevMonthButtonDisabled}
+                                                    className="p-1 hover:bg-gray-100 dark:hover:bg-[#333] rounded transition-colors disabled:opacity-30"
+                                                >
+                                                    ←
+                                                </button>
+                                                <span className="font-bold text-gray-800 dark:text-white">
+                                                    {date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                                                </span>
+                                                <button
+                                                    onClick={increaseMonth}
+                                                    disabled={nextMonthButtonDisabled}
+                                                    className="p-1 hover:bg-gray-100 dark:hover:bg-[#333] rounded transition-colors disabled:opacity-30"
+                                                >
+                                                    →
+                                                </button>
+                                            </div>
+                                        )}
                                     />
                                     {/* UTC Notice */}
                                     {formData.date && (
