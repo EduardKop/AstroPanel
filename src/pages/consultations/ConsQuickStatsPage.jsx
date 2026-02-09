@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- CONFIG ---
 const FLAGS = {
@@ -417,7 +417,7 @@ const ConsQuickStatsPage = () => {
 
                 // Sales (Consultants)
                 consPayments.forEach(p => {
-                    const pDate = extractKyivDate(p.transactionDate);
+                    const pDate = extractUTCDate(p.transactionDate);
                     if (p.country === geo && pDate >= start && pDate <= end) {
                         if (filters.source !== 'all' && p.source !== filters.source) return;
                         salesCount++;
@@ -426,7 +426,7 @@ const ConsQuickStatsPage = () => {
 
                 // Traffic (Sales Dept Payments)
                 salesDeptPayments.forEach(p => {
-                    const pDate = extractKyivDate(p.transactionDate);
+                    const pDate = extractUTCDate(p.transactionDate);
                     if (p.country === geo && pDate >= start && pDate <= end) {
                         // Optional: Apply source filter if needed, though usually traffic is raw
                         // For now, assuming we count all sales as traffic, or apply same source filter

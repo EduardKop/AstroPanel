@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- CONFIG ---
 const FLAGS = {
@@ -412,7 +412,7 @@ const SalesQuickStatsPage = () => {
                     // 🔥 ФИЛЬТР ПО РОЛИ: Только Sales
                     if (!['Sales', 'SeniorSales'].includes(p.managerRole)) return;
 
-                    const pDate = extractKyivDate(p.transactionDate);
+                    const pDate = extractUTCDate(p.transactionDate);
                     if (p.country === geo && pDate >= start && pDate <= end) {
                         if (filters.source !== 'all' && p.source !== filters.source) return;
                         salesCount++;

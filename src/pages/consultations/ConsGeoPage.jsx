@@ -9,7 +9,7 @@ import {
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- КОМПОНЕНТЫ ---
 
@@ -469,7 +469,7 @@ const ConsGeoPage = () => {
       if (!item.transactionDate) return false;
 
       // Берем дату из базы Kyiv timezone
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       // Строгое сравнение строк
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
@@ -502,7 +502,7 @@ const ConsGeoPage = () => {
     const salesPayments = payments.filter(p => {
       if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
 
-      const dbDateStr = extractKyivDate(p.transactionDate);
+      const dbDateStr = extractUTCDate(p.transactionDate);
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
       // Apply filters to traffic as well if consistent with dashboard

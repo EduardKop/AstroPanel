@@ -101,4 +101,46 @@ export function getKyivEndOfDay(date = new Date()) {
     return new Date(`${kyivDateStr}T23:59:59`);
 }
 
+// ============================================================
+// RAW UTC TIME FUNCTIONS (для отображения времени из БД без конвертации)
+// ============================================================
+
+/**
+ * Получить дату из ISO строки в UTC (как в БД)
+ * @param {string} isoString - ISO дата из базы данных (например "2026-02-09 00:07:00+00")
+ * @returns {string} Дата в формате "DD.MM.YYYY"
+ */
+export function formatUTCDate(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    return date.toLocaleDateString('ru-RU', { timeZone: 'UTC' });
+}
+
+/**
+ * Получить время из ISO строки в UTC (как в БД)
+ * @param {string} isoString - ISO дата из базы данных
+ * @returns {string} Время в формате "HH:MM"
+ */
+export function formatUTCTime(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('ru-RU', {
+        timeZone: 'UTC',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+/**
+ * Извлечь дату (YYYY-MM-DD) из ISO строки в UTC
+ * Используется для фильтрации по дате (сравнение с датой из БД)
+ * @param {string} isoString - ISO дата из базы данных
+ * @returns {string} Дата в формате "YYYY-MM-DD"
+ */
+export function extractUTCDate(isoString) {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    return date.toLocaleDateString('sv-SE', { timeZone: 'UTC' });
+}
+
 export { TIMEZONE };

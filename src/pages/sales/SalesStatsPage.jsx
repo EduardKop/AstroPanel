@@ -9,7 +9,7 @@ import {
 import { Calendar as CalendarIcon, BarChart2, PieChart, RotateCcw, Maximize2, X, Filter, LayoutDashboard, MessageCircle, MessageSquare, Phone } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../../utils/kyivTime';
 
 const THEME_COLORS = [
   { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] }, // Indigo
@@ -413,7 +413,7 @@ const SalesStatsPage = () => {
       const grouped = {};
       const allKeys = new Set();
       data.forEach(item => {
-        const d = extractKyivDate(item.transactionDate);
+        const d = extractUTCDate(item.transactionDate);
         const k = item[key];
         allKeys.add(k);
         if (!grouped[d]) grouped[d] = { date: d };
@@ -476,7 +476,7 @@ const SalesStatsPage = () => {
       if (!item.transactionDate) return false;
 
       // Берем дату из базы как строку "YYYY-MM-DD"
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       // Строгое сравнение строк
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
@@ -507,7 +507,7 @@ const SalesStatsPage = () => {
 
     sourceData.forEach(item => {
       // Ключ группировки - "YYYY-MM-DD" из базы (без сдвигов времени)
-      const dateKey = extractKyivDate(item.transactionDate);
+      const dateKey = extractUTCDate(item.transactionDate);
       const key = item[dataKey] || 'Unknown';
       allKeys.add(key);
 
@@ -917,7 +917,7 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
 
     let data = rawPayments.filter(item => {
       if (!item.transactionDate) return false;
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
       return true;
     });
@@ -929,7 +929,7 @@ const ExpandedChartModal = ({ chartKey, rawPayments, onClose }) => {
     const allKeys = new Set();
 
     filteredData.forEach(item => {
-      const dateKey = extractKyivDate(item.transactionDate);
+      const dateKey = extractUTCDate(item.transactionDate);
       const key = item[chartKey] || 'Unknown';
       allKeys.add(key);
 

@@ -54,6 +54,8 @@ const fetchAll = async (table, select, orderBy = 'created_at', ascending = false
 
     from += step;
   }
+
+  console.log(`📊 fetchAll('${table}'): загружено ${allData.length} записей`);
   return allData;
 };
 

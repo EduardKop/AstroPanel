@@ -5,7 +5,7 @@ import {
     TrendingUp, ArrowRight, Layers, Users, Calendar as CalendarIcon, PieChart
 } from 'lucide-react';
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- CONFIG ---
 const FLAGS = {
@@ -179,7 +179,7 @@ const ConsConversionsPage = () => {
 
         // Filter payments for the CURRENT VIEW
         const filtered = payments.filter(p => {
-            const pDate = extractKyivDate(p.transactionDate);
+            const pDate = extractUTCDate(p.transactionDate);
             if (pDate < startStr || pDate > endStr) return false;
             // Array filter for country
             if (filters.country.length > 0 && !filters.country.includes(p.country)) return false;

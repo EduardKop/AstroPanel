@@ -9,7 +9,7 @@ import {
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- КОМПОНЕНТЫ ---
 
@@ -392,7 +392,7 @@ const GeoPage = () => {
       if (!item.transactionDate) return false;
 
       // Извлекаем дату оплаты в Kyiv timezone
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       // Строгое сравнение строк
       if (dbDateStr < startStr || dbDateStr > endStr) return false;

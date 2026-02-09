@@ -5,7 +5,7 @@ import {
     Users, Calendar as CalendarIcon,
     Clock, ChevronDown, ChevronUp, MessageCircle, MessageSquare, Phone, Percent, List, AlignJustify
 } from 'lucide-react';
-import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
+import { extractUTCDate, formatUTCDate, formatUTCTime, getKyivDateString } from '../utils/kyivTime';
 
 // --- CONFIGURATION ---
 const FLAGS = {
@@ -334,7 +334,7 @@ const AllPaymentsList = ({ payments }) => {
                                             <div className={`w-2 h-2 rounded-full ${dotClass}`} title={p.rowType} />
                                         </td>
                                         <td className="px-2 py-2 font-mono text-gray-600 dark:text-gray-400">
-                                            {p.transactionDate ? p.transactionDate.substring(0, 16).replace('T', ' ') : '-'}
+                                            {formatUTCDate(p.transactionDate)} {formatUTCTime(p.transactionDate)}
                                         </td>
                                         <td className="px-2 py-2 font-medium">{p.manager}</td>
                                         <td className="px-2 py-2 text-right font-bold">€{p.amountEUR}</td>
@@ -372,7 +372,7 @@ const PaymentTimesPage = () => {
         const endStr = endDate ? toYMD(endDate) : '9999-99-99';
         return payments.filter(item => {
             if (!item.transactionDate) return false;
-            const dbDateStr = extractKyivDate(item.transactionDate);
+            const dbDateStr = extractUTCDate(item.transactionDate);
             if (dbDateStr < startStr || dbDateStr > endStr) return false;
             if (isRestrictedUser) { if (item.manager !== currentUser.name) return false; }
             else { if (filters.manager.length > 0 && !filters.manager.includes(item.manager)) return false; }

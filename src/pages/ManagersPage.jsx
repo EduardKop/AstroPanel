@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- КОМПОНЕНТЫ ---
 import { DenseSelect } from '../components/ui/FilterSelect';
@@ -172,7 +172,7 @@ const ManagersPage = () => {
 
     const filtered = payments.filter(item => {
       if (!item.transactionDate) return false;
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
       if (filters.country.length > 0 && !filters.country.includes(item.country)) return false;

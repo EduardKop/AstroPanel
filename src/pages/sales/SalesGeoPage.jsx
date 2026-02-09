@@ -9,7 +9,7 @@ import {
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- КОМПОНЕНТЫ ---
 
@@ -395,7 +395,7 @@ const SalesGeoPage = () => {
       if (!item.transactionDate) return false;
 
       // Берем дату из базы как строку "YYYY-MM-DD"
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       // Строгое сравнение строк
       if (dbDateStr < startStr || dbDateStr > endStr) return false;

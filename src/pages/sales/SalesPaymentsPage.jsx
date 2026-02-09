@@ -10,7 +10,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
 import { DenseSelect } from '../../components/ui/FilterSelect';
-import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../../utils/kyivTime';
 
 const getLastWeekRange = () => {
   const end = new Date();
@@ -213,7 +213,7 @@ const SalesPaymentsPage = () => {
       if (!item.transactionDate) return false;
 
       // Берем дату из базы (например "2026-01-15T14:30:00") и отрезаем время -> "2026-01-15"
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       // Сравниваем строки лексикографически (работает для формата YYYY-MM-DD)
       if (dbDateStr < startStr || dbDateStr > endStr) return false;

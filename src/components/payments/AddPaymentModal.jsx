@@ -210,7 +210,7 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
         setIsSubmitting(true);
         try {
             const payload = {
-                transaction_date: toKyivISOString(formData.date),
+                transaction_date: formData.date.toISOString(), // UTC timestamp
                 amount_eur: parseFloat(formData.amountEUR),
                 amount_local: parseFloat(formData.amountLocal),
                 manager_id: formData.managerId,
@@ -220,7 +220,7 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                 crm_link: formData.nickname || formData.link,
                 status: 'completed',
                 telegram_id: user?.telegram_id || null,
-                created_at: toKyivISOString()
+                created_at: new Date().toISOString() // UTC timestamp
             };
 
             const { data, error } = await supabase.from('payments').insert(payload).select();
@@ -363,8 +363,25 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                 <Row label="Сумма (Местная)" value={`${formData.amountLocal} ${formData.currency}`} />
                                 <Row label="Сумма (EUR)" value={`€${formData.amountEUR}`} bold />
                                 <Row label="Метод" value={formData.paymentMethod === 'Other' ? formData.customMethod : formData.paymentMethod} />
-                                <Row label="Дата" value={formData.date.toLocaleString('ru-RU')} />
                                 <Row label="Страна" value={formData.country} />
+                                <div className="h-px bg-gray-200 dark:bg-[#333] my-2" />
+                                {/* Prominent UTC Time Display */}
+                                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-500 text-sm">Локальное время:</span>
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">{formData.date.toLocaleString('ru-RU')}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-blue-600 dark:text-blue-400 font-bold text-sm">📅 В панель (UTC):</span>
+                                        <span className="text-blue-600 dark:text-blue-400 font-bold text-lg">{formData.date.toLocaleString('ru-RU', { timeZone: 'UTC' })}</span>
+                                    </div>
+                                    {/* Warning if dates differ */}
+                                    {formData.date.toLocaleDateString('sv-SE') !== formData.date.toLocaleDateString('sv-SE', { timeZone: 'UTC' }) && (
+                                        <div className="text-amber-600 dark:text-amber-400 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-300 dark:border-amber-700">
+                                            ⚠️ Обрати внимание: запись в панель идёт по времени UTC — дата отличается от локальной!
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="flex gap-3 mt-auto">
@@ -506,7 +523,7 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                             {/* Date & Method */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Дата и время</label>
+                                    <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Дата и время (локальное)</label>
                                     <DatePicker
                                         selected={formData.date}
                                         onChange={date => setFormData(p => ({ ...p, date }))}
@@ -514,6 +531,20 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                         dateFormat="dd.MM.yyyy HH:mm"
                                         className="w-full bg-white dark:bg-[#0A0A0A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-xs"
                                     />
+                                    {/* UTC Notice */}
+                                    {formData.date && (
+                                        <div className="mt-2 space-y-1">
+                                            <div className="text-blue-600 dark:text-blue-400 text-xs font-bold">
+                                                📅 В панель будет записано (UTC): {formData.date.toLocaleDateString('ru-RU', { timeZone: 'UTC' })} {formData.date.toLocaleTimeString('ru-RU', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                            {/* Warning if local date differs from UTC date */}
+                                            {formData.date.toLocaleDateString('sv-SE') !== formData.date.toLocaleDateString('sv-SE', { timeZone: 'UTC' }) && (
+                                                <div className="text-amber-600 dark:text-amber-400 text-[10px] font-medium bg-amber-100 dark:bg-amber-900/20 px-2 py-1 rounded border border-amber-300 dark:border-amber-700">
+                                                    ⚠️ Обрати внимание: запись в панель идёт по времени UTC — дата отличается от локальной!
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">Метод</label>

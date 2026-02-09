@@ -9,7 +9,7 @@ import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../../utils/kyivTime';
 
 // --- КОНФИГУРАЦИЯ ---
 const TIMEZONE = 'Europe/Kyiv';
@@ -432,7 +432,7 @@ const SalesDashboardPage = () => {
       if (!['Sales', 'SeniorSales'].includes(item.managerRole)) return false;
 
       if (!item.transactionDate) return false;
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
@@ -571,7 +571,7 @@ const SalesDashboardPage = () => {
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
-      const dateKey = extractKyivDate(item.transactionDate); // "YYYY-MM-DD" Kyiv
+      const dateKey = extractUTCDate(item.transactionDate); // "YYYY-MM-DD" UTC
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey, count: 0 };
       grouped[dateKey].count += 1;
     });

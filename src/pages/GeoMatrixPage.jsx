@@ -10,7 +10,7 @@ import {
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { motion, AnimatePresence } from 'framer-motion';
-import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- СПРАВОЧНИК ---
 const STATIC_GEO_LOOKUP = {
@@ -397,7 +397,7 @@ const GeoMatrixPage = () => {
 
                 let pDate;
                 try {
-                    pDate = extractKyivDate(p.transactionDate);
+                    pDate = extractUTCDate(p.transactionDate);
                 } catch (e) { return; }
 
                 const geo = p.country;
@@ -464,7 +464,7 @@ const GeoMatrixPage = () => {
             if (!p.transactionDate) return false;
             let pDate;
             try {
-                pDate = extractKyivDate(p.transactionDate);
+                pDate = extractUTCDate(p.transactionDate);
             } catch (e) { return false; }
 
             // Важно: Применяем те же фильтры, что и в матрице
@@ -541,7 +541,7 @@ const GeoMatrixPage = () => {
                         // Date check
                         let pDate;
                         try {
-                            pDate = extractKyivDate(p.transactionDate);
+                            pDate = extractUTCDate(p.transactionDate);
                         } catch (e) { return; }
 
                         const dKey = getLocalDateKey(new Date(pDate));

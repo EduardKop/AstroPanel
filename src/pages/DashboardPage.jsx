@@ -10,7 +10,7 @@ import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
+import { extractUTCDate, formatUTCDate, formatUTCTime, getKyivDateString } from '../utils/kyivTime';
 
 // --- КОНФИГУРАЦИЯ ---
 const TIMEZONE = 'Europe/Kyiv';
@@ -457,7 +457,7 @@ const DashboardPage = () => {
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
       // Извлекаем дату оплаты в Kyiv timezone
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
 
@@ -633,7 +633,7 @@ const DashboardPage = () => {
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
-      const dateKey = extractKyivDate(item.transactionDate); // "YYYY-MM-DD" Kyiv
+      const dateKey = extractUTCDate(item.transactionDate); // "YYYY-MM-DD" UTC
       if (!grouped[dateKey]) grouped[dateKey] = { date: dateKey, count: 0 };
       grouped[dateKey].count += 1;
     });
@@ -1031,7 +1031,7 @@ const DashboardPage = () => {
                     #{p.id.slice(0, 8)}...
                   </td>
                   <td className="px-4 py-2 text-gray-500 font-mono">
-                    {p.transactionDate ? p.transactionDate.substring(0, 16).replace('T', ' ') : '-'}
+                    {formatUTCDate(p.transactionDate)} {formatUTCTime(p.transactionDate)}
                   </td>
                   <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">
                     {p.manager}
@@ -1077,7 +1077,7 @@ const DashboardPage = () => {
                     <div className="flex-1">
                       <div className="font-bold text-lg text-gray-900 dark:text-white">€{p.amountEUR}</div>
                       <div className="text-xs text-gray-500 mt-0.5">
-                        {p.transactionDate ? p.transactionDate.substring(11, 16) : '-'}
+                        {formatUTCTime(p.transactionDate)}
                       </div>
                     </div>
                     <button
@@ -1096,7 +1096,7 @@ const DashboardPage = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Дата:</span>
-                        <span className="text-xs">{p.transactionDate?.substring(0, 10)}</span>
+                        <span className="text-xs">{formatUTCDate(p.transactionDate)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Менеджер:</span>

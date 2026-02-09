@@ -9,7 +9,7 @@ import PaymentsTable from '../components/PaymentsTable';
 import { SearchModal, SearchButton } from '../components/ui/SearchInput';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { extractKyivDate, getKyivDateString } from '../utils/kyivTime';
+import { extractUTCDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- КОМПОНЕНТЫ ---
 import { DenseSelect } from '../components/ui/FilterSelect';
@@ -323,7 +323,7 @@ const PaymentsPage = () => {
       if (!item.transactionDate) return false;
 
       // Извлекаем дату оплаты в Kyiv timezone
-      const dbDateStr = extractKyivDate(item.transactionDate);
+      const dbDateStr = extractUTCDate(item.transactionDate);
 
       // Сравниваем строки лексикографически (работает для формата YYYY-MM-DD)
       if (dbDateStr < startStr || dbDateStr > endStr) return false;
