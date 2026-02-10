@@ -1056,7 +1056,7 @@ const CustomTooltip = ({ active, payload, label }) => {
           {new Date(label).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}
         </p>
         <div className="space-y-1">
-          {payload.map((entry, index) => {
+          {[...payload].sort((a, b) => (b.value || 0) - (a.value || 0)).map((entry, index) => {
             const percent = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0.0';
             return (
               <div key={index} className="flex items-center justify-between gap-6">

@@ -79,6 +79,7 @@ export const useAppStore = create((set, get) => ({
 
   // Справочник каналов
   channelsMap: {},
+  channels: [], // Raw channels data
 
   // Данные трафика
   trafficStats: {},
@@ -264,7 +265,7 @@ export const useAppStore = create((set, get) => ({
       channelsData.forEach(ch => {
         newChannelsMap[ch.wazzup_id] = ch.country_code;
       });
-      set({ channelsMap: newChannelsMap });
+      set({ channelsMap: newChannelsMap, channels: channelsData || [] });
 
       // Б. Менеджеры
       const managersData = await fetchAll('managers', '*', 'created_at', false);

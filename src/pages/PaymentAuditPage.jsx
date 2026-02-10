@@ -250,120 +250,213 @@ const PaymentAuditPage = () => {
         });
     }, [payments, paymentOrderMap]);
 
+    // --- Traffic: missing channels ---
+    const missingChannels = useMemo(() => {
+        const { countries, channels } = useAppStore.getState();
+        if (!countries || !channels) return [];
+        const channelCountryCodes = new Set(channels.map(ch => (ch.country_code || '').toUpperCase()));
+        return countries
+            .filter(c => c.code && !channelCountryCodes.has(c.code.toUpperCase()))
+            .map(c => ({ code: c.code, name: c.name || c.code, flag: c.flag_emoji || '' }));
+    }, [payments]); // payments as dep to trigger recalc on data refresh
+
     const totalIssues = futurePayments.length + duplicateGroups.reduce((acc, g) => acc + g.length, 0) + anomalousPayments.length;
+
+    const [activeTab, setActiveTab] = useState('sales');
 
     return (
         <div className="p-6 max-w-[1600px] mx-auto">
             {/* Header */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
                         <ShieldAlert size={24} className="text-amber-600 dark:text-amber-400" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold dark:text-white">Проверка платежей</h1>
-                        <p className="text-gray-500 text-sm">Выявление подозрительных записей в базе</p>
+                        <h1 className="text-2xl font-bold dark:text-white">Проверка ошибок</h1>
+                        <p className="text-gray-500 text-sm">Выявление проблем в данных</p>
                     </div>
-                </div>
-
-                {/* Summary Badge */}
-                <div className={`px-4 py-2 rounded-xl font-bold text-sm ${totalIssues > 0
-                    ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
-                    : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-                    }`}>
-                    {totalIssues > 0 ? `${totalIssues} подозрительных записей` : 'Проблем не найдено ✓'}
                 </div>
             </div>
 
-            {/* Column Headers */}
-            <div className="grid grid-cols-7 gap-3 px-4 py-2 text-xs font-bold text-gray-400 uppercase bg-gray-50 dark:bg-[#111] rounded-t-xl border border-b-0 border-gray-200 dark:border-[#222]">
-                <span>Клиент</span>
-                <span>Дата</span>
-                <span>Менеджер</span>
-                <span>Продукт</span>
-                <span>Сумма (EUR)</span>
-                <span>ГЕО</span>
-                <span>Тип оплаты</span>
+            {/* Tabs */}
+            <div className="flex gap-1 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-xl mb-6 w-fit">
+                <button
+                    onClick={() => setActiveTab('sales')}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'sales'
+                            ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}
+                >
+                    Отдел продаж
+                    {totalIssues > 0 && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                            {totalIssues}
+                        </span>
+                    )}
+                </button>
+                <button
+                    onClick={() => setActiveTab('traffic')}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'traffic'
+                            ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}
+                >
+                    Трафик
+                    {missingChannels.length > 0 && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                            {missingChannels.length}
+                        </span>
+                    )}
+                </button>
             </div>
 
-            <div className="space-y-8 mt-8">
-                {/* Section 1: Future Date Payments */}
-                <section>
-                    <SectionHeader
-                        icon={Clock}
-                        title="Платежи с будущей датой"
-                        count={futurePayments.length}
-                        color="bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/30 text-red-700 dark:text-red-400"
-                        description="Платежи с датой позже текущей. Возможна ошибка при вводе даты."
-                    />
-                    <div className="mt-3 bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222] overflow-hidden">
-                        {futurePayments.length > 0 ? (
-                            futurePayments.map((p, idx) => (
-                                <PaymentRow
-                                    key={p.id || idx}
-                                    payment={p}
-                                    highlightField="date"
-                                    managers={managers}
-                                />
-                            ))
-                        ) : (
-                            <EmptyState message="Платежей с будущей датой не найдено" />
-                        )}
+            {/* Tab: Отдел продаж */}
+            {activeTab === 'sales' && (
+                <>
+                    {/* Summary Badge */}
+                    <div className={`px-4 py-2 rounded-xl font-bold text-sm mb-6 w-fit ${totalIssues > 0
+                        ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                        : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                        }`}>
+                        {totalIssues > 0 ? `${totalIssues} подозрительных записей` : 'Проблем не найдено ✓'}
                     </div>
-                </section>
 
-                {/* Section 2: Duplicate Payments */}
-                <section>
-                    <SectionHeader
-                        icon={Copy}
-                        title="Дубликаты"
-                        count={duplicateGroups.reduce((acc, g) => acc + g.length, 0)}
-                        color="bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30 text-amber-700 dark:text-amber-400"
-                        description="Один клиент купил один и тот же продукт за одинаковую сумму несколько раз. Проверьте на повторное внесение."
-                    />
-                    <div className="mt-3 space-y-3">
-                        {duplicateGroups.length > 0 ? (
-                            duplicateGroups.map((group, idx) => (
-                                <DuplicateGroup
-                                    key={idx}
-                                    payments={group}
-                                    managers={managers}
-                                />
-                            ))
-                        ) : (
-                            <div className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222]">
-                                <EmptyState message="Дубликатов не найдено" />
+                    {/* Column Headers */}
+                    <div className="grid grid-cols-7 gap-3 px-4 py-2 text-xs font-bold text-gray-400 uppercase bg-gray-50 dark:bg-[#111] rounded-t-xl border border-b-0 border-gray-200 dark:border-[#222]">
+                        <span>Клиент</span>
+                        <span>Дата</span>
+                        <span>Менеджер</span>
+                        <span>Продукт</span>
+                        <span>Сумма (EUR)</span>
+                        <span>ГЕО</span>
+                        <span>Тип оплаты</span>
+                    </div>
+
+                    <div className="space-y-8 mt-8">
+                        {/* Section 1: Future Date Payments */}
+                        <section>
+                            <SectionHeader
+                                icon={Clock}
+                                title="Платежи с будущей датой"
+                                count={futurePayments.length}
+                                color="bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/30 text-red-700 dark:text-red-400"
+                                description="Платежи с датой позже текущей. Возможна ошибка при вводе даты."
+                            />
+                            <div className="mt-3 bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222] overflow-hidden">
+                                {futurePayments.length > 0 ? (
+                                    futurePayments.map((p, idx) => (
+                                        <PaymentRow
+                                            key={p.id || idx}
+                                            payment={p}
+                                            highlightField="date"
+                                            managers={managers}
+                                        />
+                                    ))
+                                ) : (
+                                    <EmptyState message="Платежей с будущей датой не найдено" />
+                                )}
                             </div>
-                        )}
-                    </div>
-                </section>
+                        </section>
 
-                {/* Section 3: Anomalous Amounts */}
-                <section>
+                        {/* Section 2: Duplicate Payments */}
+                        <section>
+                            <SectionHeader
+                                icon={Copy}
+                                title="Дубликаты"
+                                count={duplicateGroups.reduce((acc, g) => acc + g.length, 0)}
+                                color="bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30 text-amber-700 dark:text-amber-400"
+                                description="Один клиент купил один и тот же продукт за одинаковую сумму несколько раз. Проверьте на повторное внесение."
+                            />
+                            <div className="mt-3 space-y-3">
+                                {duplicateGroups.length > 0 ? (
+                                    duplicateGroups.map((group, idx) => (
+                                        <DuplicateGroup
+                                            key={idx}
+                                            payments={group}
+                                            managers={managers}
+                                        />
+                                    ))
+                                ) : (
+                                    <div className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222]">
+                                        <EmptyState message="Дубликатов не найдено" />
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* Section 3: Anomalous Amounts */}
+                        <section>
+                            <SectionHeader
+                                icon={AlertTriangle}
+                                title="Аномальные суммы"
+                                count={anomalousPayments.length}
+                                color="bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800/30 text-orange-700 dark:text-orange-400"
+                                description="Суммы ниже €20 или выше €190 выходят за стандартный диапазон продуктов (€25-€140)."
+                            />
+                            <div className="mt-3 bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222] overflow-hidden">
+                                {anomalousPayments.length > 0 ? (
+                                    anomalousPayments.map((p, idx) => (
+                                        <PaymentRow
+                                            key={p.id || idx}
+                                            payment={p}
+                                            highlightField="amount"
+                                            managers={managers}
+                                            paymentOrder={paymentOrderMap.get(p.id)}
+                                        />
+                                    ))
+                                ) : (
+                                    <EmptyState message="Аномальных сумм не найдено" />
+                                )}
+                            </div>
+                        </section>
+                    </div>
+                </>
+            )}
+
+            {/* Tab: Трафик */}
+            {activeTab === 'traffic' && (
+                <div className="space-y-6">
                     <SectionHeader
-                        icon={AlertTriangle}
-                        title="Аномальные суммы"
-                        count={anomalousPayments.length}
-                        color="bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800/30 text-orange-700 dark:text-orange-400"
-                        description="Суммы ниже €20 или выше €190 выходят за стандартный диапазон продуктов (€25-€140)."
+                        icon={Globe}
+                        title="Отсутствующие каналы трафика"
+                        count={missingChannels.length}
+                        color={missingChannels.length > 0
+                            ? "bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800/30 text-orange-700 dark:text-orange-400"
+                            : "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800/30 text-green-700 dark:text-green-400"
+                        }
+                        description="ГЕО из таблицы countries, для которых нет канала в таблице channels. Трафик по ним не отслеживается."
                     />
-                    <div className="mt-3 bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222] overflow-hidden">
-                        {anomalousPayments.length > 0 ? (
-                            anomalousPayments.map((p, idx) => (
-                                <PaymentRow
-                                    key={p.id || idx}
-                                    payment={p}
-                                    highlightField="amount"
-                                    managers={managers}
-                                    paymentOrder={paymentOrderMap.get(p.id)}
-                                />
-                            ))
+
+                    <div className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#222] overflow-hidden">
+                        {missingChannels.length > 0 ? (
+                            <div className="divide-y divide-gray-100 dark:divide-[#222]">
+                                {/* Header */}
+                                <div className="grid grid-cols-3 gap-4 px-5 py-3 text-xs font-bold text-gray-400 uppercase bg-gray-50 dark:bg-[#161616]">
+                                    <span>Код</span>
+                                    <span>Название</span>
+                                    <span>Статус</span>
+                                </div>
+                                {missingChannels.map(c => (
+                                    <div key={c.code} className="grid grid-cols-3 gap-4 px-5 py-3 text-sm hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
+                                        <div className="flex items-center gap-2">
+                                            {c.flag && <span className="text-lg">{c.flag}</span>}
+                                            <span className="font-bold text-gray-900 dark:text-white">{c.code}</span>
+                                        </div>
+                                        <span className="text-gray-600 dark:text-gray-400">{c.name}</span>
+                                        <span className="inline-flex items-center gap-1.5 text-orange-600 dark:text-orange-400 font-medium text-xs">
+                                            <AlertTriangle size={12} />
+                                            Канал отсутствует
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         ) : (
-                            <EmptyState message="Аномальных сумм не найдено" />
+                            <EmptyState message="Все ГЕО имеют каналы трафика ✓" />
                         )}
                     </div>
-                </section>
-            </div>
+                </div>
+            )}
         </div>
     );
 };

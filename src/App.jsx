@@ -389,7 +389,6 @@ function App() {
                   {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
                   {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
-                  {hasAccess('payment_audit') && <SidebarItem icon={ShieldAlert} label="Проверка платежей" path="/payment-audit" />}
                 </div>
               </>
             )}
@@ -507,7 +506,7 @@ function App() {
             )}
 
             {/* ✅ ADMIN TOOLS (BLUE) */}
-            {(user?.role === 'Admin' || user?.role === 'C-level') && (
+            {(user?.role === 'Admin' || user?.role === 'C-level' || user?.role === 'SeniorSales') && (
               <>
                 <button
                   onClick={() => toggleSection('admin')}
@@ -517,7 +516,8 @@ function App() {
                   <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.admin ? 'rotate-90' : ''}`} />
                 </button>
                 <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.admin ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                  <SidebarItem icon={Activity} label="Логирование" path="/activity-logs" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />
+                  {hasAccess('activity_logs') && <SidebarItem icon={Activity} label="Логирование" path="/activity-logs" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />}
+                  {hasAccess('payment_audit') && <SidebarItem icon={ShieldAlert} label="Проверка ошибок" path="/payment-audit" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />}
                 </div>
               </>
             )}

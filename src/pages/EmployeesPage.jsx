@@ -5,15 +5,40 @@ import { toggleManagerStatus } from '../services/dataService';
 import {
   Mail, Phone, Clock, Globe, Send, User,
   Briefcase, Search, Filter, XCircle, Plus,
-  Pencil, Lock, Unlock, Ban, ShieldCheck
+  Pencil, Lock, Unlock, Ban, ShieldCheck, Copy, Check
 } from 'lucide-react';
 
 import { DenseSelect } from '../components/ui/FilterSelect';
+
+// Component for displaying copyable telegram username
+const CopyableUsername = ({ username }) => {
+  const [copied, setCopied] = useState(false);
+  const cleanUsername = '@' + (username || '').replace('@', '');
+
+  const handleCopy = async (e) => {
+    e.stopPropagation();
+    await navigator.clipboard.writeText(cleanUsername);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-blue-500 transition-colors mt-0.5"
+      title="Копировать @username"
+    >
+      <span>{cleanUsername}</span>
+      {copied ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
+    </button>
+  );
+};
 
 const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, excludeRole, showAddButton = false }) => {
   const navigate = useNavigate();
   const { managers, user: currentUser, fetchAllData, isLoading, onlineUsers } = useAppStore();
   const [filters, setFilters] = useState({ geo: [], role: [] });
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Фильтрация
   const processedManagers = useMemo(() => {
@@ -37,6 +62,22 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
       result = result.filter(m => filters.role.includes(m.role));
     }
 
+    // 2.2 Поиск по тексту (telegram username, GEO, telegram_id)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(m => {
+        // Search by telegram username
+        if (m.telegram_username && m.telegram_username.toLowerCase().includes(query)) return true;
+        // Search by telegram ID
+        if (m.telegram_id && String(m.telegram_id).includes(query)) return true;
+        // Search by name
+        if (m.name && m.name.toLowerCase().includes(query)) return true;
+        // Search by GEO
+        if (m.geo && Array.isArray(m.geo) && m.geo.some(g => g.toLowerCase().includes(query))) return true;
+        return false;
+      });
+    }
+
     // 3. Сортировка (Активные выше)
     result.sort((a, b) => {
       // Приоритет 1: Сначала онлайн
@@ -51,7 +92,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     });
 
     return result;
-  }, [managers, targetRole, excludeRole, filters.geo, filters.role, onlineUsers]);
+  }, [managers, targetRole, excludeRole, filters.geo, filters.role, onlineUsers, searchQuery]);
 
   // Собираем уникальные ГЕО для фильтра
   const uniqueGeos = useMemo(() => {
@@ -126,11 +167,30 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
           )}
 
           <div className="flex items-center gap-2">
+            {/* Search Input */}
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Поиск по @username / ID / ГЕО..."
+                className="pl-8 pr-8 py-1.5 w-[220px] text-xs bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-[6px] focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                  <XCircle size={14} />
+                </button>
+              )}
+            </div>
             <DenseSelect label="Роль" value={filters.role} options={uniqueRoles} onChange={(val) => setFilters(prev => ({ ...prev, role: val }))} />
             <DenseSelect label="ГЕО" value={filters.geo} options={uniqueGeos} onChange={(val) => setFilters(prev => ({ ...prev, geo: val }))} />
-            {(filters.geo.length > 0 || filters.role.length > 0) && (
+            {(filters.geo.length > 0 || filters.role.length > 0 || searchQuery) && (
               <button
-                onClick={() => setFilters({ geo: [], role: [] })}
+                onClick={() => { setFilters({ geo: [], role: [] }); setSearchQuery(''); }}
                 className="text-red-500 bg-red-500/10 hover:bg-red-500/20 p-1.5 rounded-[6px] transition-colors"
                 title="Сбросить фильтры"
               >
@@ -186,6 +246,9 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                     <h3 className={`text-sm font-bold leading-tight ${isBlocked ? 'text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
                       {mgr.name}
                     </h3>
+                    {mgr.telegram_username && (
+                      <CopyableUsername username={mgr.telegram_username} />
+                    )}
                     {age && (
                       <div className="text-[10px] text-gray-400 mt-0.5 font-mono">
                         {age} лет

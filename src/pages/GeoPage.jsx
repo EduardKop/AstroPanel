@@ -685,7 +685,14 @@ const GeoPage = () => {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-center font-mono text-gray-500">{geo.traffic}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-md font-bold text-xs ${geo.traffic > 100
+                          ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-[#222]'
+                          }`}>
+                          {geo.traffic.toLocaleString()}
+                        </span>
+                      </td>
                       <td className="px-4 py-2 text-center"><span className={`text-xs font-mono ${crColorClass}`}>{geo.cr}%</span></td>
                       <td className="px-4 py-2 text-right"><span className="inline-block min-w-[24px] text-center font-mono font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-[#222] rounded px-1 py-0.5 text-[11px]">{geo.salesCount}</span></td>
 
@@ -742,9 +749,14 @@ const GeoPage = () => {
 
                   {isExpanded && (
                     <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[#333] space-y-2 text-sm animate-in fade-in slide-in-from-top-2 duration-200">
-                      <div className="flex justify-between">
+                      <div className="flex justify-between items-center">
                         <span className="text-gray-500">Трафик:</span>
-                        <span className="font-mono">{geo.traffic}</span>
+                        <span className={`inline-block px-2 py-0.5 rounded-md font-bold text-xs ${geo.traffic > 100
+                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                            : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-[#222]'
+                          }`}>
+                          {geo.traffic.toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Оплат (шт):</span>
