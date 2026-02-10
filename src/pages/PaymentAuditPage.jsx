@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import {
     ShieldAlert, Calendar, Copy, DollarSign, ExternalLink,
@@ -262,7 +263,9 @@ const PaymentAuditPage = () => {
 
     const totalIssues = futurePayments.length + duplicateGroups.reduce((acc, g) => acc + g.length, 0) + anomalousPayments.length;
 
-    const [activeTab, setActiveTab] = useState('sales');
+    const { tab } = useParams();
+    const navigate = useNavigate();
+    const activeTab = tab || 'sales';
 
     return (
         <div className="p-6 max-w-[1600px] mx-auto">
@@ -282,10 +285,10 @@ const PaymentAuditPage = () => {
             {/* Tabs */}
             <div className="flex gap-1 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-xl mb-6 w-fit">
                 <button
-                    onClick={() => setActiveTab('sales')}
+                    onClick={() => navigate('/error-check/sales')}
                     className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'sales'
-                            ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                         }`}
                 >
                     Отдел продаж
@@ -296,10 +299,10 @@ const PaymentAuditPage = () => {
                     )}
                 </button>
                 <button
-                    onClick={() => setActiveTab('traffic')}
+                    onClick={() => navigate('/error-check/traffic')}
                     className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'traffic'
-                            ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                         }`}
                 >
                     Трафик
