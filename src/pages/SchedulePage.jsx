@@ -199,6 +199,7 @@ const SchedulePage = () => {
             return {
                 id: manager.id,
                 name: manager.name,
+                nickname: manager.telegram_username,
                 geo: primaryGeo,        // For compatibility with toggleShift
                 geos: managerGeos,      // All manager GEOs
                 shifts
@@ -572,13 +573,14 @@ const SchedulePage = () => {
             </div>
 
             {/* CUSTOM GRID */}
-            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto 2xl:overflow-x-visible">
-                    <div className="inline-block min-w-full 2xl:block">
+            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-sm flex flex-col h-[calc(100vh-140px)]">
+                {/* Scrollable Container */}
+                <div className="flex-1 overflow-auto custom-scrollbar">
+                    <div className="inline-block min-w-full">
                         {/* HEADER ROW */}
-                        <div className="flex border-b border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#0A0A0A] sticky top-0 z-10">
+                        <div className="flex border-b border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#0A0A0A] sticky top-0 z-30 shadow-sm">
                             {/* Manager column header - sticky left */}
-                            <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-20 bg-gray-50 dark:bg-[#0A0A0A]">
+                            <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-40 bg-gray-50 dark:bg-[#0A0A0A]">
                                 {/* Name part (90%) */}
                                 <div className="flex-1 px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
                                     Менеджер
@@ -620,7 +622,7 @@ const SchedulePage = () => {
                                     {/* Manager Name + Geo */}
                                     <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-10 bg-white dark:bg-[#111]">
                                         {/* Name part */}
-                                        <div className="flex-1 px-2 py-1.5 text-xs font-normal text-gray-700 dark:text-gray-300 flex items-center overflow-hidden">
+                                        <div className="flex-1 px-2 py-1.5 text-xs font-normal text-gray-700 dark:text-gray-300 flex flex-col justify-center overflow-hidden">
                                             <span
                                                 className={`truncate font-medium transition-colors ${(isEditing || isMultiGeoEditing) ? 'text-blue-600 dark:text-blue-400 cursor-pointer hover:underline' : ''}`}
                                                 onClick={() => {
@@ -633,6 +635,20 @@ const SchedulePage = () => {
                                             >
                                                 {row.name}
                                             </span>
+                                            {/* Nickname (Clickable & Copyable) */}
+                                            {row.nickname && (
+                                                <span
+                                                    className="text-[10px] text-gray-400 dark:text-gray-500 truncate cursor-pointer hover:text-blue-500 dark:hover:text-blue-400 transition-colors max-w-[120px]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigator.clipboard.writeText(row.nickname);
+                                                        showToast(`Скопировано: ${row.nickname}`, 'success');
+                                                    }}
+                                                    title={`Скопировать: ${row.nickname}`}
+                                                >
+                                                    {row.nickname}
+                                                </span>
+                                            )}
                                         </div>
 
                                         {/* All Manager GEO Flags */}
@@ -681,37 +697,40 @@ const SchedulePage = () => {
                                                 >
                                                     {geoConfigs.length === 2 ? (
                                                         /* Dual GEO - Split Color Cell */
-                                                        <div className={`w-full h-[28px] rounded overflow-hidden flex flex-col shadow-sm transition-all ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : 'hover:opacity-80'
+                                                        <div className={`w-full h-[32px] rounded overflow-hidden flex flex-col shadow-sm transition-all ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : 'hover:opacity-80'
                                                             }`}>
                                                             {/* Top GEO */}
                                                             <div
-                                                                className="flex-1 flex items-center justify-center text-white text-[8px] font-bold"
+                                                                className="flex-1 flex items-center justify-center text-white text-[8px] font-bold leading-none gap-1"
                                                                 style={{ backgroundColor: geoConfigs[0].color }}
                                                             >
-                                                                {geoConfigs[0].label}
+                                                                <span className="text-[9px]">{countryMap[geos[0]]?.emoji}</span>
+                                                                <span>{geoConfigs[0].label}</span>
                                                             </div>
                                                             {/* Bottom GEO */}
                                                             <div
-                                                                className="flex-1 flex items-center justify-center text-white text-[8px] font-bold border-t border-white/30"
+                                                                className="flex-1 flex items-center justify-center text-white text-[8px] font-bold border-t border-white/30 leading-none gap-1"
                                                                 style={{ backgroundColor: geoConfigs[1].color }}
                                                             >
-                                                                {geoConfigs[1].label}
+                                                                <span className="text-[9px]">{countryMap[geos[1]]?.emoji}</span>
+                                                                <span>{geoConfigs[1].label}</span>
                                                             </div>
                                                         </div>
                                                     ) : geoConfigs.length === 1 ? (
                                                         /* Single GEO */
                                                         <div
-                                                            className={`w-full h-[28px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all text-white ${canEdit ? 'hover:opacity-80' : ''
+                                                            className={`w-full h-[32px] rounded flex flex-row items-center justify-center gap-1 font-bold shadow-sm transition-all text-white leading-none ${canEdit ? 'hover:opacity-80' : ''
                                                                 } ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : ''
                                                                 }`}
                                                             style={{ backgroundColor: geoConfigs[0].color }}
                                                         >
-                                                            {geoConfigs[0].label}
+                                                            <span className="text-[14px] filter drop-shadow-sm">{countryMap[geos[0]]?.emoji}</span>
+                                                            <span className="uppercase tracking-wide text-[10px]">{geoConfigs[0].label}</span>
                                                         </div>
                                                     ) : (
                                                         /* Empty Cell */
                                                         <div
-                                                            className={`w-full h-[28px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all ${canEdit
+                                                            className={`w-full h-[32px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all ${canEdit
                                                                 ? 'border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
                                                                 : canMultiGeoEdit
                                                                     ? 'border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-400 dark:hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20'
