@@ -60,7 +60,9 @@ const SECTIONS = [
             { key: 'employees_list', editKey: 'employees_manage', label: 'Сотрудники', icon: Contact },
             { key: 'salaries', label: 'Зарплаты', icon: Coins },
             { key: 'schedule', editKey: 'schedule_edit', label: 'График', icon: Calendar },
+            { key: 'schedule', editKey: 'schedule_edit', label: 'График', icon: Calendar },
             { key: 'time_log', label: 'Учёт Времени', icon: Clock },
+            { key: 'efficiency_view', label: 'Эффективность', icon: LineChart },
             { key: 'kpi', label: 'KPI', icon: BarChart3 },
         ]
     },

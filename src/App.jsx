@@ -498,7 +498,7 @@ function App() {
                           <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
                         )}
                       </div>
-                      {hasAccess('stats') && <SidebarItem icon={Users} label="Эффективность" path="/managers" />}
+                      {hasAccess('efficiency_view') && <SidebarItem icon={Users} label="Эффективность" path="/managers" />}
                     </>
                   )}
                 </div>
@@ -571,7 +571,7 @@ function App() {
 
               <Route path="/kpi" element={<ProtectedRoute resource="kpi"><KPIPage /></ProtectedRoute>} />
               <Route path="/geo" element={<ProtectedRoute resource="geo"><GeoPage /></ProtectedRoute>} />
-              <Route path="/managers" element={<ProtectedRoute resource="stats"><ManagersPage /></ProtectedRoute>} />
+              <Route path="/managers" element={<ProtectedRoute resource="efficiency_view"><ManagersPage /></ProtectedRoute>} />
               <Route path="/geo-matrix" element={<ProtectedRoute resource="geo_matrix"><GeoMatrixPage /></ProtectedRoute>} />
 
               {/* ✅ SALES DEPARTMENT ROUTES */}

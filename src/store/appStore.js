@@ -73,6 +73,7 @@ export const useAppStore = create((set, get) => ({
   schedules: [], // NEW: Schedule data
   onlineUsers: [], // NEW: Realtime Online Users
   activityLogs: [], // NEW: Activity Logs
+  auditExceptions: [], // NEW: Audit Exceptions
 
   // Данные для зарплат
   kpiRates: [],
@@ -136,6 +137,8 @@ export const useAppStore = create((set, get) => ({
       learningArticles: [],
       countries: [],
       schedules: [],
+      // ...
+      auditExceptions: [],
       trafficStats: {},
       kpiRates: [],
       kpiSettings: {},
@@ -262,34 +265,77 @@ export const useAppStore = create((set, get) => ({
 
     try {
       // А. Каналы
-      const channelsData = await fetchAll('channels', '*', 'id', true);
+      // Helper for fetching leads (pagination loop)
+      const fetchLeadsPromise = async () => {
+        let allLeads = [];
+        let from = 0;
+        const step = 1000;
+        while (true) {
+          const { data, error } = await supabase
+            .from('leads')
+            .select('created_at, is_comment, channel_id, wazzup_chat_id')
+            .range(from, from + step - 1);
+
+          if (error) throw error;
+          if (data && data.length > 0) {
+            allLeads = [...allLeads, ...data];
+            if (data.length < step) break;
+          } else {
+            break;
+          }
+          from += step;
+        }
+        return allLeads;
+      };
+
+      // PARALLEL FETCHING: Group independent requests including LEADS
+      const [
+        channelsData,
+        managersData,
+        paymentsData,
+        productsData,
+        rulesData,
+        learningData,
+        countriesData,
+        schedulesData,
+        exceptionsData,
+        kpiRatesData,
+        kpiSettingsData,
+        appSettingsData,
+        leadsData // Now fetched in parallel
+      ] = await Promise.all([
+        fetchAll('channels', '*', 'id', true),
+        fetchAll('managers', '*', 'created_at', false),
+        fetchAll('payments', '*', 'transaction_date', false),
+        fetchAll('knowledge_products', '*', 'created_at', false),
+        fetchAll('knowledge_rules', '*', 'created_at', false),
+        fetchAll('knowledge_learning', '*', 'created_at', false),
+        fetchAll('countries', '*', 'code', true),
+        fetchAll('schedules', '*', 'date', false),
+        fetchAll('payment_audit_exceptions', '*', 'created_at', false),
+        fetchAll('kpi_product_rates', '*', 'rate', true),
+        fetchAll('kpi_settings', '*', 'key', true),
+        fetchAll('app_settings', '*', 'key', true),
+        fetchLeadsPromise()
+      ]);
+
+
+      // Process Channels
       const newChannelsMap = {};
       channelsData.forEach(ch => {
         newChannelsMap[ch.wazzup_id] = ch.country_code;
       });
       set({ channelsMap: newChannelsMap, channels: channelsData || [] });
 
-      // Б. Менеджеры
-      const managersData = await fetchAll('managers', '*', 'created_at', false);
+      // Process Managers
       const managersMap = {};
       managersData.forEach(m => managersMap[m.id] = { name: m.name, role: m.role });
 
-      // В. Оплаты, Продукты, Правила, Countries, Schedules
-      const paymentsData = await fetchAll('payments', '*', 'transaction_date', false);
-      const productsData = await fetchAll('knowledge_products', '*', 'created_at', false);
-      const rulesData = await fetchAll('knowledge_rules', '*', 'created_at', false);
-      const learningData = await fetchAll('knowledge_learning', '*', 'created_at', false);
-      const countriesData = await fetchAll('countries', '*', 'code', true);
-      const schedulesData = await fetchAll('schedules', '*', 'date', false);
-
-      // Г. KPI & Settings
-      const kpiRatesData = await fetchAll('kpi_product_rates', '*', 'rate', true);
-      const kpiSettingsData = await fetchAll('kpi_settings', '*', 'key', true);
+      // Process KPI Settings
       const kpiSettingsMap = {};
       kpiSettingsData.forEach(s => kpiSettingsMap[s.key] = s.value);
 
-      // Load App Settings
-      const appSettingsData = await fetchAll('app_settings', '*', 'key', true);
+      // Process App Settings
       const permissionsMap = appSettingsData.find(s => s.key === 'role_permissions')?.value || {};
       const roleDocsMap = appSettingsData.find(s => s.key === 'role_documentation')?.value || {};
 
@@ -297,33 +343,9 @@ export const useAppStore = create((set, get) => ({
       localStorage.setItem('astroPermissions', JSON.stringify(permissionsMap));
       localStorage.setItem('astroRoleDocs', JSON.stringify(roleDocsMap));
 
-      // Д. Трафик и Источники (LEADS)
-      // Используем пагинацию для загрузки ВСЕХ лидов (1066+)
-      let leadsData = [];
-      let from = 0;
-      const step = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from('leads')
-          .select('created_at, is_comment, channel_id, wazzup_chat_id')
-          .range(from, from + step - 1);
-
-        if (error) throw error;
-        if (data && data.length > 0) {
-          leadsData = [...leadsData, ...data];
-          if (data.length < step) break;
-        } else {
-          break;
-        }
-        from += step;
-      }
-
-      const leadsError = null; // Removed check inside helper, caught by try/catch
-
 
       // 1. Создаем карту источников: nickname -> 'comments' | 'direct'
       const leadsSourceMap = {};
-
       // 2. Статистика трафика (для init загрузки, чтобы не ждать fetchTrafficStats)
       let trafficResult = {};
 
@@ -332,11 +354,7 @@ export const useAppStore = create((set, get) => ({
           // --- Логика маппинга источника ---
           if (lead.wazzup_chat_id) {
             const normNick = normalizeNick(lead.wazzup_chat_id);
-
             if (normNick) {
-              // Если есть дубликаты, приоритет у 'comments' (если человек писал и там и там)
-              // Либо просто перезаписываем последним. 
-              // Для надежности: если уже записано comments, не меняем на direct
               if (leadsSourceMap[normNick] !== 'comments') {
                 leadsSourceMap[normNick] = lead.is_comment ? 'comments' : 'direct';
               }
@@ -354,7 +372,6 @@ export const useAppStore = create((set, get) => ({
           }
 
           let type = lead.is_comment ? 'comments' : 'direct';
-          // Check for whatsapp (phone number check)
           if (lead.wazzup_chat_id && /^[\d+\s()-]+$/.test(lead.wazzup_chat_id)) {
             type = 'whatsapp';
           }
@@ -421,6 +438,7 @@ export const useAppStore = create((set, get) => ({
         learningArticles: learningData || [],
         countries: countriesData || [],
         schedules: schedulesData || [],
+        auditExceptions: exceptionsData || [],
         kpiRates: kpiRatesData || [],
         kpiSettings: kpiSettingsMap || {},
         permissions: permissionsMap,
@@ -449,6 +467,7 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_settings' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'countries' }, () => get().fetchAllData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_audit_exceptions' }, () => get().fetchAllData(true))
       .subscribe();
 
     return () => supabase.removeChannel(channel);
@@ -659,6 +678,51 @@ export const useAppStore = create((set, get) => ({
     } catch (error) {
       console.error('Error bulk deleting payments:', error);
       showToast('Ошибка при массовом удалении', 'error');
+      return false;
+    }
+  },
+
+  // --- AUDIT EXCEPTIONS ---
+  addAuditException: async (paymentId, reason = 'manual_hide') => {
+    try {
+      const user = get().user;
+      if (!user) return false;
+
+      const { error } = await supabase
+        .from('payment_audit_exceptions')
+        .insert({
+          payment_id: paymentId,
+          manager_id: user.id, // Who hid it
+          reason: reason
+        });
+
+      if (error) throw error;
+
+      showToast('Платёж скрыт из проверки', 'success');
+      get().fetchAllData(true);
+      return true;
+    } catch (error) {
+      console.error('Error adding audit exception:', error);
+      showToast('Ошибка при добавлении исключения', 'error');
+      return false;
+    }
+  },
+
+  removeAuditException: async (exceptionId) => {
+    try {
+      const { error } = await supabase
+        .from('payment_audit_exceptions')
+        .delete()
+        .eq('id', exceptionId);
+
+      if (error) throw error;
+
+      showToast('Платёж восстановлен', 'success');
+      get().fetchAllData(true);
+      return true;
+    } catch (error) {
+      console.error('Error removing audit exception:', error);
+      showToast('Ошибка при удалении исключения', 'error');
       return false;
     }
   },
