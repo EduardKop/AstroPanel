@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
 import { showToast } from '../utils/toastEvents';
-import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, Users2 } from 'lucide-react';
+import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, Users2, GripVertical, Globe } from 'lucide-react';
+import { Reorder } from "framer-motion";
 import AdvancedScheduleModal from '../components/AdvancedScheduleModal';
 import MultiGeoModal from '../components/MultiGeoModal';
 import ScheduleStats from '../components/ScheduleStats';
 import AutoFillModal from '../components/AutoFillModal';
+import SingleGeoSelectModal from '../components/SingleGeoSelectModal';
 
 // --- GEO COLORS & CODES ---
 const GEO_PALETTE = {
@@ -25,6 +27,8 @@ const GEO_PALETTE = {
     'KZ': { color: '#2dd4bf', label: 'Каз' },
     'US': { color: '#64748b', label: 'США' },
     'UK': { color: '#3b82f6', label: 'Анг' },
+    'Таро': { color: '#8b5cf6', label: 'Тар' }, // Purple
+    'Доп смена': { color: '#f59e0b', label: 'Доп' }, // Orange
 };
 
 const SchedulePage = () => {
@@ -41,9 +45,27 @@ const SchedulePage = () => {
     const [showMultiGeoModal, setShowMultiGeoModal] = useState(false); // Multi-GEO modal
     const [showAutoFillModal, setShowAutoFillModal] = useState(false); // Auto-fill modal
     const [selectedManagerForAutoFill, setSelectedManagerForAutoFill] = useState(null); // Manager to fill
-    const [selectedCell, setSelectedCell] = useState(null); // { managerId, date, currentGeos }
+    const [isAdditionalEditing, setIsAdditionalEditing] = useState(false); // New "Edit Additional" mode
+    const [showSingleGeoModal, setShowSingleGeoModal] = useState(false); // Modal for single GEO selection
+    const [selectedCell, setSelectedCell] = useState(null); // { managerId, date, currentGeos, assignedGeos }
     const [scheduleState, setScheduleState] = useState(schedules || []); // Local state for optimistic UI
     const [refreshKey, setRefreshKey] = useState(0); // Force refresh trigger
+
+    // --- REORDERING STATE ---
+    const [orderedManagers, setOrderedManagers] = useState([]);
+
+    // Load saved order from localStorage on mount
+    useEffect(() => {
+        const savedOrder = localStorage.getItem('schedule_manager_order');
+        if (savedOrder) {
+            try {
+                const parsedOrder = JSON.parse(savedOrder);
+                // We will apply this order in the useMemo or useEffect below
+            } catch (e) {
+                console.error('Failed to parse saved order', e);
+            }
+        }
+    }, []);
 
     // --- DATE HELPERS ---
     const daysInMonth = useMemo(() => {
@@ -168,6 +190,7 @@ const SchedulePage = () => {
             if (e.key === 'Escape') {
                 setIsEditing(false);
                 setIsMultiGeoEditing(false);
+                setIsAdditionalEditing(false);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
@@ -176,7 +199,10 @@ const SchedulePage = () => {
 
     const scheduleData = useMemo(() => {
         // Filter managers by show_in_schedule field
-        const visibleManagers = (managers || []).filter(m => m.show_in_schedule !== false);
+        const visibleManagers = (managers || []).filter(m =>
+            m.show_in_schedule !== false &&
+            ['Sales', 'SalesTaro', 'SeniorSales'].includes(m.role)
+        );
 
         return visibleManagers.map(manager => {
             const managerSchedules = scheduleMap[manager.id] || {};
@@ -204,6 +230,18 @@ const SchedulePage = () => {
                 geos: managerGeos,      // All manager GEOs
                 shifts
             };
+        }).sort((a, b) => {
+            // Grouping Sort: Create canonical string of sorted GEOs (e.g. "BG,KZ")
+            // This ensures managers with the same set of GEOs are grouped together
+            // and partial overlaps starting with the same GEO are adjacent
+            const keyA = [...(a.geos || [])].sort().join(',').toLowerCase();
+            const keyB = [...(b.geos || [])].sort().join(',').toLowerCase();
+
+            if (keyA < keyB) return -1;
+            if (keyA > keyB) return 1;
+
+            // Secondary Sort: Manager Name
+            return a.name.localeCompare(b.name);
         });
     }, [managers, scheduleMap, daysInMonth, refreshKey]);
 
@@ -288,6 +326,72 @@ const SchedulePage = () => {
             alert(`Ошибка: ${error.message || 'Unknown error'}`);
         }
     };
+
+    // Handle Single GEO selection for "Edit Additional"
+    const handleSingleGeoSelect = async (geoCode) => {
+        if (!selectedCell) return;
+        const { managerId, dateKey } = selectedCell;
+
+        // Use existing toggleShift logic but force the specific GEO
+        // First we should check if we need to clear or set. 
+        // The user wants to "put a shift". 
+        // If there's already a shift there, toggleShift normally removes it. 
+        // But here we are selecting a specific GEO to SET.
+        // Actually toggleShift toggles. 
+        // Let's modify toggleShift to accept a 'forceSet' or 'forceGeo' but it already takes managerGeo.
+        // If I pass the selected GEO, toggleShift will:
+        // 1. Check if ANY shift exists for this date/manager.
+        // 2. If yes -> remove it.
+        // 3. If no -> add it with the passed GEO.
+
+        // Wait, if I want to CHANGE the geo of an existing shift?
+        // "Ред Доп" usuall implies adding/modifying.
+        // If I click a cell that has 'UA' and I select 'KZ', it should probably switch to 'KZ'.
+        // toggleShift currently: "If existing -> delete". It doesn't check if the existing GEO matches.
+
+        // Let's call a more direct set function or improve toggleShift?
+        // Use direct upsert for simplicity and certainty.
+
+        try {
+            const { error } = await supabase
+                .from('schedules')
+                .upsert({
+                    manager_id: managerId,
+                    date: dateKey,
+                    geo_code: geoCode
+                }, {
+                    onConflict: 'manager_id,date'
+                });
+
+            if (error) throw error;
+
+            // 📝 LOG ACTIVITY
+            logActivity({
+                action: 'update',
+                entity: 'schedule',
+                entityId: `${managerId}_${dateKey}`,
+                details: { managerId, date: dateKey, geo: geoCode, action: 'set_additional_shift' },
+                importance: 'low'
+            });
+
+            // Update local state
+            setScheduleState(prev => {
+                const filtered = prev.filter(
+                    s => !(s.manager_id === managerId && s.date === dateKey)
+                );
+                return [...filtered, { manager_id: managerId, date: dateKey, geo_code: geoCode }];
+            });
+
+            // Close modal
+            setShowSingleGeoModal(false);
+            setSelectedCell(null);
+
+        } catch (error) {
+            console.error('Error setting additional shift:', error);
+            showToast(`Ошибка: ${error.message}`, 'error');
+        }
+    };
+
 
     // Handle multi-GEO cell click
     const handleMultiGeoClick = (managerId, dateKey, currentGeos) => {
@@ -486,89 +590,154 @@ const SchedulePage = () => {
         }
     };
 
+
+    // --- FINAL SORTED DATA ---
+    const sortedScheduleData = useMemo(() => {
+        if (orderedManagers.length === 0) return scheduleData;
+
+        // Clone to avoid mutation
+        const sorted = [...scheduleData].sort((a, b) => {
+            const indexA = orderedManagers.indexOf(a.id);
+            const indexB = orderedManagers.indexOf(b.id);
+
+            // If both have custom order, sort by index
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+
+            // If only A has custom order, it comes first
+            if (indexA !== -1) return -1;
+            // If only B has custom order, it comes first
+            if (indexB !== -1) return 1;
+
+            // If neither has custom order, keep original sort (GEO/Name)
+            return 0;
+        });
+
+        return sorted;
+    }, [scheduleData, orderedManagers]);
+
+    // Update order when drag ends
+    const handleReorder = (newOrder) => {
+        // newOrder is array of items, but we just need IDs
+        const newIds = newOrder.map(item => item.id);
+        setOrderedManagers(newIds);
+        localStorage.setItem('schedule_manager_order', JSON.stringify(newIds));
+    };
+
+    // Initialize orderedManagers on first load if empty but data exists
+    useEffect(() => {
+        if (scheduleData.length > 0 && orderedManagers.length === 0) {
+            const savedOrder = localStorage.getItem('schedule_manager_order');
+            if (savedOrder) {
+                setOrderedManagers(JSON.parse(savedOrder));
+            } else {
+                // Initialize with default sort to prevent jump
+                // setOrderedManagers(scheduleData.map(m => m.id));
+            }
+        }
+    }, [scheduleData]);
+
     return (
         <div className="pb-10 w-full max-w-full overflow-x-hidden">
-            {/* EDITING MODE INDICATOR */}
-            {isEditing && (
-                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-r-lg">
-                    <p className="text-sm font-medium text-green-800 dark:text-green-300">
-                        ✏️ Режим редактирования: кликните на ячейку чтобы добавить/удалить смену (1 ГЕО)
-                    </p>
-                </div>
-            )}
-
-            {/* MULTI-GEO EDITING MODE INDICATOR */}
-            {isMultiGeoEditing && (
-                <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500 rounded-r-lg">
-                    <p className="text-sm font-medium text-purple-800 dark:text-purple-300">
-                        🎨 Режим Мульти-ГЕО: кликните на ячейку чтобы назначить 2 ГЕО (split-color)
-                    </p>
-                </div>
-            )}
-
-            {/* HEADER */}
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+            {/* PAGE HEADER */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 px-1">
                 <div>
-                    <h1 className="text-2xl font-bold dark:text-white flex items-center gap-2">
-                        <Calendar className="text-blue-600 dark:text-blue-500" />
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <Calendar className="w-6 h-6 text-blue-600" />
                         График Смен
                     </h1>
-                    <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                         Планирование рабочих смен и распределение ГЕО
                     </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg p-1 shadow-sm">
-                        <button onClick={prevMonth} className="p-1.5 hover:bg-gray-100 dark:hover:bg-[#222] rounded-md transition-colors text-gray-600 dark:text-gray-300">
-                            <ChevronLeft size={16} />
+                <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-[#111] p-1.5 rounded-lg border border-gray-200 dark:border-[#333] shadow-sm">
+                    {/* Month Nav */}
+                    <div className="flex items-center bg-gray-50 dark:bg-[#1A1A1A] rounded-md px-1 mr-2">
+                        <button
+                            onClick={() => {
+                                const newDate = new Date(currentDate);
+                                newDate.setMonth(newDate.getMonth() - 1);
+                                setCurrentDate(newDate);
+                            }}
+                            className="p-1.5 hover:bg-gray-200 dark:hover:bg-[#333] rounded-md transition-colors text-gray-600 dark:text-gray-400"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
                         </button>
-                        <span className="px-3 text-sm font-bold dark:text-white capitalize min-w-[140px] text-center">
-                            {monthLabel}
+                        <span className="text-sm font-medium w-[120px] text-center text-gray-700 dark:text-gray-300 capitalize">
+                            {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
                         </span>
-                        <button onClick={nextMonth} className="p-1.5 hover:bg-gray-100 dark:hover:bg-[#222] rounded-md transition-colors text-gray-600 dark:text-gray-300">
-                            <ChevronRight size={16} />
+                        <button
+                            onClick={() => {
+                                const newDate = new Date(currentDate);
+                                newDate.setMonth(newDate.getMonth() + 1);
+                                setCurrentDate(newDate);
+                            }}
+                            className="p-1.5 hover:bg-gray-200 dark:hover:bg-[#333] rounded-md transition-colors text-gray-600 dark:text-gray-400"
+                        >
+                            <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>
 
-
-
-                    {isAdmin && (
-                        <div className="flex items-center gap-2">
-                            {/* Обычное редактирование */}
+                    {/* Edit Modes */}
+                    {canEdit && (
+                        <>
                             <button
-                                onClick={() => setIsEditing(!isEditing)}
-                                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-medium transition-all shadow-sm ${isEditing
-                                    ? 'bg-green-600 text-white border-green-600 hover:bg-green-700'
-                                    : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] hover:bg-gray-50 dark:hover:bg-[#252525] text-gray-700 dark:text-gray-200'
+                                onClick={() => {
+                                    setIsEditing(!isEditing);
+                                    if (isMultiGeoEditing) setIsMultiGeoEditing(false);
+                                    setSelectedCell(null);
+                                }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${isEditing
+                                    ? 'bg-blue-600 text-white shadow-sm'
+                                    : 'bg-gray-50 dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#222]'
                                     }`}
                             >
-                                <Edit size={14} />
-                                <span className="hidden sm:inline">{isEditing ? 'Готово' : 'Ред.'}</span>
+                                <Edit className="w-3.5 h-3.5" />
+                                Ред.
                             </button>
 
-                            {/* Мульти-ГЕО редактирование */}
                             <button
-                                onClick={() => setIsMultiGeoEditing(!isMultiGeoEditing)}
-                                className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-medium transition-all shadow-sm ${isMultiGeoEditing
-                                    ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700'
-                                    : 'bg-white dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] hover:bg-gray-50 dark:hover:bg-[#252525] text-gray-700 dark:text-gray-200'
+                                onClick={() => {
+                                    setIsMultiGeoEditing(!isMultiGeoEditing);
+                                    if (isEditing) setIsEditing(false);
+                                    setSelectedCell(null);
+                                }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${isMultiGeoEditing
+                                    ? 'bg-purple-600 text-white shadow-sm'
+                                    : 'bg-gray-50 dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#222]'
                                     }`}
                             >
-                                <Users2 size={14} />
-                                <span className="hidden sm:inline">{isMultiGeoEditing ? 'Готово' : 'Ред Мульти'}</span>
+                                <Globe className="w-3.5 h-3.5" />
+                                Ред Мульти
                             </button>
-
-                            {/* Расширенное */}
-                            <button
-                                onClick={() => setShowAdvancedModal(true)}
-                                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors shadow-sm"
-                            >
-                                <Settings size={14} />
-                                <span className="hidden sm:inline">Расширенное</span>
-                            </button>
-                        </div>
+                        </>
                     )}
+
+                    {canEdit && (
+                        <button
+                            onClick={() => {
+                                setIsAdditionalEditing(!isAdditionalEditing);
+                                if (isEditing) setIsEditing(false);
+                                if (isMultiGeoEditing) setIsMultiGeoEditing(false);
+                                setSelectedCell(null);
+                            }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${isAdditionalEditing
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'bg-gray-50 dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#222]'
+                                }`}
+                        >
+                            <Calendar className="w-3.5 h-3.5" />
+                            Ред Доп
+                        </button>
+                    )}
+
+                    <button
+                        onClick={() => setShowAdvancedModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+                    >
+                        <Settings className="w-3.5 h-3.5" />
+                        Расширенное
+                    </button>
                 </div>
             </div>
 
@@ -579,172 +748,186 @@ const SchedulePage = () => {
                     <div className="inline-block min-w-full">
                         {/* HEADER ROW */}
                         <div className="flex border-b border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#0A0A0A] sticky top-0 z-30 shadow-sm">
-                            {/* Manager column header - sticky left */}
-                            <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-40 bg-gray-50 dark:bg-[#0A0A0A]">
-                                {/* Name part (90%) */}
-                                <div className="flex-1 px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
-                                    Менеджер
-                                </div>
-                                {/* Geo part (10%) */}
-                                <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 text-center text-xs font-medium text-gray-500 dark:text-gray-400 border-l border-gray-200 dark:border-[#333]">
-                                    🌍
-                                </div>
+                            {/* Header: Manager Name */}
+                            <div className="w-[160px] flex-shrink-0 p-2 text-xs font-semibold text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#0A0A0A] sticky left-0 z-20 flex items-center justify-between">
+                                <span>Менеджер</span>
                             </div>
 
-                            {/* Day headers - stretch on 2xl+ */}
+                            {/* Header: Days */}
                             <div className="flex flex-1">
                                 {daysInMonth.map((day, idx) => {
-                                    const isToday = new Date().toDateString() === day.toDateString();
+                                    const isToday = day.toDateString() === new Date().toDateString();
+                                    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+
                                     return (
                                         <div
                                             key={idx}
-                                            className="min-w-[32px] flex-1 px-0.5 py-1.5 flex items-center justify-center text-xs font-normal text-gray-600 dark:text-gray-300"
+                                            className={`min-w-[32px] flex-1 py-1.5 flex flex-col items-center justify-center text-[10px] border-r border-gray-100 dark:border-[#333]/50 last:border-0 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''
+                                                } ${isWeekend ? 'bg-gray-50/50 dark:bg-[#111]/50 text-red-400 dark:text-red-500' : 'text-gray-600 dark:text-gray-400'}`}
                                         >
-                                            <div className={`w-[24px] h-[24px] flex items-center justify-center rounded-full ${isToday ? 'bg-blue-500 text-white font-bold' : ''}`}>
-                                                {String(day.getDate()).padStart(2, '0')}
-                                            </div>
+                                            <span className="opacity-70">{day.toLocaleDateString('ru-RU', { weekday: 'short' })}</span>
+                                            <span className="font-medium">{day.getDate()}</span>
                                         </div>
                                     );
                                 })}
                             </div>
                         </div>
 
-                        {/* MANAGER ROWS */}
-                        {scheduleData.map((row, rowIdx) => {
-                            const managerGeo = row.geo;
-                            const geoInfo = countryMap[managerGeo];
+                        {/* MANAGER ROWS - DRAGGABLE */}
+                        <Reorder.Group axis="y" values={sortedScheduleData} onReorder={handleReorder}>
+                            {sortedScheduleData.map((row) => {
+                                const managerGeo = row.geo;
+                                const geoInfo = countryMap[managerGeo];
 
-                            return (
-                                <div
-                                    key={rowIdx}
-                                    className="flex border-b border-gray-100 dark:border-[#1A1A1A] hover:bg-gray-50 dark:hover:bg-[#0A0A0A] transition-colors"
-                                >
-                                    {/* Manager Name + Geo */}
-                                    <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-10 bg-white dark:bg-[#111]">
-                                        {/* Name part */}
-                                        <div className="flex-1 px-2 py-1.5 text-xs font-normal text-gray-700 dark:text-gray-300 flex flex-col justify-center overflow-hidden">
-                                            <span
-                                                className={`truncate font-medium transition-colors ${(isEditing || isMultiGeoEditing) ? 'text-blue-600 dark:text-blue-400 cursor-pointer hover:underline' : ''}`}
-                                                onClick={() => {
-                                                    if (isEditing || isMultiGeoEditing) {
-                                                        setSelectedManagerForAutoFill(row.id);
-                                                        setShowAutoFillModal(true);
-                                                    }
-                                                }}
-                                                title={isEditing || isMultiGeoEditing ? "Нажмите для автозаполнения графика" : row.name}
-                                            >
-                                                {row.name}
-                                            </span>
-                                            {/* Nickname (Clickable & Copyable) */}
-                                            {row.nickname && (
+                                return (
+                                    <Reorder.Item
+                                        key={row.id}
+                                        value={row}
+                                        as="div"
+                                        className="flex border-b border-gray-100 dark:border-[#1A1A1A] hover:bg-gray-50 dark:hover:bg-[#0A0A0A] transition-colors bg-white dark:bg-[#111]"
+                                        whileDrag={{ scale: 1.02, boxShadow: "0 5px 15px rgba(0,0,0,0.1)", zIndex: 50 }}
+                                    >
+                                        {/* Manager Name + Geo */}
+                                        <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-10 bg-white dark:bg-[#111] cursor-grab active:cursor-grabbing">
+                                            {/* Name part - DRAG HANDLE */}
+                                            <div className="flex-1 px-2 py-1.5 text-xs font-normal text-gray-700 dark:text-gray-300 flex flex-col justify-center overflow-hidden cursor-grab active:cursor-grabbing hover:bg-gray-100 dark:hover:bg-[#222] transition-colors">
                                                 <span
-                                                    className="text-[10px] text-gray-400 dark:text-gray-500 truncate cursor-pointer hover:text-blue-500 dark:hover:text-blue-400 transition-colors max-w-[120px]"
+                                                    className={`truncate font-medium transition-colors ${(isEditing || isMultiGeoEditing) ? 'text-blue-600 dark:text-blue-400 cursor-pointer hover:underline' : ''}`}
+
                                                     onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        navigator.clipboard.writeText(row.nickname);
-                                                        showToast(`Скопировано: ${row.nickname}`, 'success');
-                                                    }}
-                                                    title={`Скопировать: ${row.nickname}`}
-                                                >
-                                                    {row.nickname}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {/* All Manager GEO Flags */}
-                                        <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 flex flex-col items-center justify-center border-l border-gray-200 dark:border-[#333] gap-0.5">
-                                            {row.geos && row.geos.length > 0 ? (
-                                                row.geos.slice(0, 3).map((geo, idx) => (
-                                                    <span key={idx} className="text-xs leading-none" title={geo}>{countryMap[geo]?.emoji || '🌍'}</span>
-                                                ))
-                                            ) : (
-                                                <span className="text-gray-400 text-xs">—</span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Day Cells - stretch on 2xl+ */}
-                                    <div className="flex flex-1">
-                                        {daysInMonth.map((day, dayIdx) => {
-                                            // Use local date format to avoid timezone issues
-                                            const year = day.getFullYear();
-                                            const month = String(day.getMonth() + 1).padStart(2, '0');
-                                            const dayNum = String(day.getDate()).padStart(2, '0');
-                                            const dateKey = `${year}-${month}-${dayNum}`;
-
-                                            const geo = row.shifts[dateKey];
-
-                                            // Parse multi-GEO format ("RO" or "RO,BG")
-                                            const geos = geo ? geo.split(',').map(g => g.trim()) : [];
-                                            const geoConfigs = geos.map(g => getGeoConfig(g)).filter(Boolean);
-
-                                            const canEdit = isEditing;
-                                            const canMultiGeoEdit = isMultiGeoEditing;
-                                            const isInteractive = canEdit || canMultiGeoEdit;
-
-                                            return (
-                                                <div
-                                                    key={dayIdx}
-                                                    className={`min-w-[32px] flex-1 p-0.5 flex items-center justify-center ${isInteractive ? 'cursor-pointer' : ''
-                                                        }`}
-                                                    onClick={() => {
-                                                        if (canEdit) {
-                                                            toggleShift(row.id, dateKey, row.geo);
-                                                        } else if (canMultiGeoEdit) {
-                                                            handleMultiGeoClick(row.id, dateKey, geos);
+                                                        if (isEditing || isMultiGeoEditing) {
+                                                            e.stopPropagation(); // Prevent drag start? 
+                                                            setSelectedManagerForAutoFill(row.id);
+                                                            setShowAutoFillModal(true);
                                                         }
                                                     }}
+                                                    title={isEditing || isMultiGeoEditing ? "Нажмите для автозаполнения графика" : "Зажмите чтобы перетащить"}
                                                 >
-                                                    {geoConfigs.length === 2 ? (
-                                                        /* Dual GEO - Split Color Cell */
-                                                        <div className={`w-full h-[32px] rounded overflow-hidden flex flex-col shadow-sm transition-all ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : 'hover:opacity-80'
-                                                            }`}>
-                                                            {/* Top GEO */}
+                                                    {row.name}
+                                                </span>
+                                                {/* Nickname (Clickable & Copyable) */}
+                                                {row.nickname && (
+                                                    <span
+                                                        className="text-[10px] text-gray-400 dark:text-gray-500 truncate cursor-pointer hover:text-blue-500 dark:hover:text-blue-400 transition-colors max-w-[120px]"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigator.clipboard.writeText(row.nickname);
+                                                            showToast(`Скопировано: ${row.nickname}`, 'success');
+                                                        }}
+                                                        title={`Скопировать: ${row.nickname}`}
+                                                        onPointerDown={(e) => e.stopPropagation()} // Prevent drag
+                                                    >
+                                                        {row.nickname}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* All Manager GEO Flags */}
+                                            <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 flex flex-col items-center justify-center border-l border-gray-200 dark:border-[#333] gap-0.5">
+                                                {row.geos && row.geos.length > 0 ? (
+                                                    row.geos.slice(0, 3).map((geo, idx) => (
+                                                        <span key={idx} className="text-xs leading-none" title={geo}>{countryMap[geo]?.emoji || '🌍'}</span>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-gray-400 text-xs">—</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Day Cells - stretch on 2xl+ */}
+                                        <div className="flex flex-1" onPointerDown={(e) => e.stopPropagation()}>
+                                            {daysInMonth.map((day, dayIdx) => {
+                                                // Use local date format to avoid timezone issues
+                                                const year = day.getFullYear();
+                                                const month = String(day.getMonth() + 1).padStart(2, '0');
+                                                const dayNum = String(day.getDate()).padStart(2, '0');
+                                                const dateKey = `${year}-${month}-${dayNum}`;
+
+                                                const geo = row.shifts[dateKey];
+
+                                                // Parse multi-GEO format ("RO" or "RO,BG")
+                                                const geos = geo ? geo.split(',').map(g => g.trim()) : [];
+                                                const geoConfigs = geos.map(g => getGeoConfig(g)).filter(Boolean);
+
+                                                const canEdit = isEditing;
+                                                const canMultiGeoEdit = isMultiGeoEditing;
+                                                const isInteractive = canEdit || canMultiGeoEdit;
+
+                                                return (
+                                                    <div
+                                                        key={dayIdx}
+                                                        className={`min-w-[32px] flex-1 p-0.5 flex items-center justify-center ${isInteractive || isAdditionalEditing ? 'cursor-pointer' : ''
+                                                            } ${!isEditing && !isMultiGeoEditing && !isAdditionalEditing ? 'border-r border-gray-100 dark:border-[#222] last:border-0' : ''}`}
+                                                        style={{ containerType: 'inline-size' }}
+                                                        onClick={() => {
+                                                            if (canEdit && isEditing) {
+                                                                toggleShift(row.id, dateKey, row.geo);
+                                                            } else if (canMultiGeoEdit) {
+                                                                handleMultiGeoClick(row.id, dateKey, geos);
+                                                            } else if (isAdditionalEditing) {
+                                                                // Always show selection modal in "Edit Additional" mode
+                                                                // so user can select "Таро" or "Доп смена" even if manager has 1 GEO
+                                                                setSelectedCell({
+                                                                    managerId: row.id,
+                                                                    dateKey,
+                                                                    managerName: row.name,
+                                                                    assignedGeos: row.geos
+                                                                });
+                                                                setShowSingleGeoModal(true);
+                                                            }
+                                                        }}
+                                                    >
+                                                        {geoConfigs.length === 2 ? (
+                                                            /* Dual GEO - Split Color Cell */
+                                                            <div className={`w-full h-[32px] rounded overflow-hidden flex flex-col shadow-sm transition-all ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : 'hover:opacity-80'
+                                                                }`}>
+                                                                {/* Top GEO */}
+                                                                <div
+                                                                    className="flex-1 flex items-center justify-center text-white text-[8px] font-bold leading-none gap-1"
+                                                                    style={{ backgroundColor: geoConfigs[0].color }}
+                                                                >
+                                                                    <span className="text-[9px]">{countryMap[geos[0]]?.emoji}</span>
+                                                                    <span>{geoConfigs[0].label}</span>
+                                                                </div>
+                                                                {/* Bottom GEO */}
+                                                                <div
+                                                                    className="flex-1 flex items-center justify-center text-white text-[8px] font-bold border-t border-white/30 leading-none gap-1"
+                                                                    style={{ backgroundColor: geoConfigs[1].color }}
+                                                                >
+                                                                    <span className="text-[9px]">{countryMap[geos[1]]?.emoji}</span>
+                                                                    <span>{geoConfigs[1].label}</span>
+                                                                </div>
+                                                            </div>
+                                                        ) : geoConfigs.length === 1 ? (
+                                                            /* Single GEO */
                                                             <div
-                                                                className="flex-1 flex items-center justify-center text-white text-[8px] font-bold leading-none gap-1"
+                                                                className={`w-full h-[32px] rounded flex flex-row items-center justify-center gap-1 font-bold shadow-sm transition-all text-white leading-none ${canEdit ? 'hover:opacity-80' : ''
+                                                                    } ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : ''
+                                                                    }`}
                                                                 style={{ backgroundColor: geoConfigs[0].color }}
                                                             >
-                                                                <span className="text-[9px]">{countryMap[geos[0]]?.emoji}</span>
-                                                                <span>{geoConfigs[0].label}</span>
+                                                                <span className="filter drop-shadow-sm" style={{ fontSize: 'clamp(8px, 30cqw, 14px)' }}>{countryMap[geos[0]]?.emoji}</span>
+                                                                <span className="uppercase tracking-wide" style={{ fontSize: 'clamp(7px, 20cqw, 10px)' }}>{geoConfigs[0].label}</span>
                                                             </div>
-                                                            {/* Bottom GEO */}
+                                                        ) : (
+                                                            /* Empty Cell */
                                                             <div
-                                                                className="flex-1 flex items-center justify-center text-white text-[8px] font-bold border-t border-white/30 leading-none gap-1"
-                                                                style={{ backgroundColor: geoConfigs[1].color }}
-                                                            >
-                                                                <span className="text-[9px]">{countryMap[geos[1]]?.emoji}</span>
-                                                                <span>{geoConfigs[1].label}</span>
-                                                            </div>
-                                                        </div>
-                                                    ) : geoConfigs.length === 1 ? (
-                                                        /* Single GEO */
-                                                        <div
-                                                            className={`w-full h-[32px] rounded flex flex-row items-center justify-center gap-1 font-bold shadow-sm transition-all text-white leading-none ${canEdit ? 'hover:opacity-80' : ''
-                                                                } ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : ''
-                                                                }`}
-                                                            style={{ backgroundColor: geoConfigs[0].color }}
-                                                        >
-                                                            <span className="text-[14px] filter drop-shadow-sm">{countryMap[geos[0]]?.emoji}</span>
-                                                            <span className="uppercase tracking-wide text-[10px]">{geoConfigs[0].label}</span>
-                                                        </div>
-                                                    ) : (
-                                                        /* Empty Cell */
-                                                        <div
-                                                            className={`w-full h-[32px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all ${canEdit
-                                                                ? 'border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
-                                                                : canMultiGeoEdit
-                                                                    ? 'border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-400 dark:hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20'
-                                                                    : ''
-                                                                }`}
-                                                        />
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                                                className={`w-full h-[32px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all ${canEdit
+                                                                    ? 'border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
+                                                                    : canMultiGeoEdit
+                                                                        ? 'border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-400 dark:hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20'
+                                                                        : ''
+                                                                    }`}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </Reorder.Item>
+                                );
+                            })}
+                        </Reorder.Group>
                     </div>
                 </div>
             </div>
@@ -766,9 +949,20 @@ const SchedulePage = () => {
                 managers={managers}
                 countries={countries}
                 onSave={() => {
+                    // Refresh data
                     const { fetchAllData } = useAppStore.getState();
                     fetchAllData(true);
                 }}
+            />
+
+            {/* Single GEO Selection Modal for "Edit Additional" */}
+            <SingleGeoSelectModal
+                isOpen={showSingleGeoModal}
+                onClose={() => setShowSingleGeoModal(false)}
+                onSelect={handleSingleGeoSelect}
+                availableGeos={selectedCell?.assignedGeos || []}
+                managerName={selectedCell?.managerName}
+                date={selectedCell?.dateKey}
             />
 
             {/* Multi-GEO Modal */}
@@ -795,7 +989,7 @@ const SchedulePage = () => {
                 managerName={managers.find(m => m.id === selectedManagerForAutoFill)?.name}
                 currentDate={currentDate}
             />
-        </div>
+        </div >
     );
 };
 
