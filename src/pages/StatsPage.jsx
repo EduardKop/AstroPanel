@@ -48,10 +48,13 @@ const getCurrentMonthRange = () => {
   return [start, end];
 };
 
-// ХЕЛПЕР: Дату в YYYY-MM-DD (Kyiv timezone)
+// ХЕЛПЕР: Дату в YYYY-MM-DD (Local Face Value)
 const toYMD = (date) => {
   if (!date) return '';
-  return getKyivDateString(date);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 import { DenseSelect } from '../components/ui/FilterSelect';

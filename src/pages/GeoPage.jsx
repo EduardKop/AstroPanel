@@ -335,10 +335,13 @@ const getLastWeekRange = () => {
   return [start, end];
 };
 
-// ХЕЛПЕР: Превращает объект Date в строку "YYYY-MM-DD" в Kyiv timezone
+// ХЕЛПЕР: Дату в YYYY-MM-DD (Local Face Value)
 const toYMD = (date) => {
   if (!date) return '';
-  return getKyivDateString(date);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const GeoPage = () => {
@@ -364,8 +367,16 @@ const GeoPage = () => {
 
   useEffect(() => {
     if (fetchTrafficStats) {
-      const isoStart = startDate ? new Date(startDate.getTime()).toISOString() : undefined;
-      const isoEnd = endDate ? new Date(endDate.getTime()).toISOString() : undefined;
+      if (!startDate || !endDate) return;
+
+      // Создаем точный диапазон UTC для выбранных локальных дат
+      // toYMD возвращает YYYY-MM-DD (локально). Добавляем время в UTC, чтобы захватить весь день.
+      const startStr = toYMD(startDate);
+      const endStr = toYMD(endDate);
+
+      const isoStart = `${startStr}T00:00:00.000Z`;
+      const isoEnd = `${endStr}T23:59:59.999Z`;
+
       fetchTrafficStats(isoStart, isoEnd);
     }
   }, [fetchTrafficStats, startDate, endDate]);
@@ -432,6 +443,36 @@ const GeoPage = () => {
       statsByGeo[code].sumLocal += (p.amountLocal || 0);
     });
 
+    // 3.1. Добавляем страны, у которых есть трафик, но нет продаж
+    if (trafficStats) {
+      Object.keys(trafficStats).forEach(code => {
+        if (!statsByGeo[code]) {
+          // Проверяем, есть ли трафик за выбранный период для этой страны
+          let hasTrafficInPeriod = false;
+          const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+          const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
+          Object.entries(trafficStats[code]).forEach(([dateStr, val]) => {
+            if (dateStr >= startStr && dateStr <= endStr) {
+              // Check if value is > 0
+              let num = 0;
+              if (typeof val === 'object') {
+                if (filters.source === 'all') num = val.all || 0;
+                else num = val[filters.source] || 0;
+              } else {
+                num = Number(val) || 0;
+              }
+              if (num > 0) hasTrafficInPeriod = true;
+            }
+          });
+
+          if (hasTrafficInPeriod) {
+            statsByGeo[code] = { count: 0, sumEUR: 0, sumLocal: 0 };
+          }
+        }
+      });
+    }
+
     // 4. Добавление трафика и расчет конверсии
     return Object.entries(statsByGeo).map(([code, data]) => {
 
@@ -469,6 +510,7 @@ const GeoPage = () => {
         cr: parseFloat(realCR)
       };
     }).sort((a, b) => {
+      // Сортировка: Сначала по ключу, потом если 0 - в конец (опционально, но оставим как было)
       if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
       if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -752,8 +794,8 @@ const GeoPage = () => {
                       <div className="flex justify-between items-center">
                         <span className="text-gray-500">Трафик:</span>
                         <span className={`inline-block px-2 py-0.5 rounded-md font-bold text-xs ${geo.traffic > 100
-                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                            : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-[#222]'
+                          ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                          : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-[#222]'
                           }`}>
                           {geo.traffic.toLocaleString()}
                         </span>

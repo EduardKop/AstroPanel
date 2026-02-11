@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabaseClient';
 import { showToast } from '../utils/toastEvents';
+import { extractKyivDate, extractUTCDate } from '../utils/kyivTime';
 
 // Хелпер для очистки никнейма (для сравнения)
 const normalizeNick = (raw) => {
@@ -163,7 +164,7 @@ export const useAppStore = create((set, get) => ({
         const { data, error } = await query;
         if (error) throw error;
 
-        if (data) {
+        if (data && data.length > 0) {
           allLeads = [...allLeads, ...data];
           if (data.length < step) break;
         } else {
@@ -177,7 +178,8 @@ export const useAppStore = create((set, get) => ({
       if (allLeads) {
         allLeads.forEach(lead => {
           const countryCode = map[lead.channel_id] || 'Other';
-          const dateStr = lead.created_at.split('T')[0];
+          // ✅ FIX: Используем UTC для ключа даты (как просил юзер)
+          const dateStr = extractUTCDate(lead.created_at);
 
           if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
           if (!formattedStats[countryCode][dateStr]) {
@@ -297,7 +299,24 @@ export const useAppStore = create((set, get) => ({
 
       // Д. Трафик и Источники (LEADS)
       // Используем пагинацию для загрузки ВСЕХ лидов (1066+)
-      const leadsData = await fetchAll('leads', 'created_at, is_comment, channel_id, wazzup_chat_id', 'created_at', false);
+      let leadsData = [];
+      let from = 0;
+      const step = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('leads')
+          .select('created_at, is_comment, channel_id, wazzup_chat_id')
+          .range(from, from + step - 1);
+
+        if (error) throw error;
+        if (data && data.length > 0) {
+          leadsData = [...leadsData, ...data];
+          if (data.length < step) break;
+        } else {
+          break;
+        }
+        from += step;
+      }
 
       const leadsError = null; // Removed check inside helper, caught by try/catch
 
@@ -326,7 +345,8 @@ export const useAppStore = create((set, get) => ({
 
           // --- Логика статистики трафика ---
           const countryCode = newChannelsMap[lead.channel_id] || 'Other';
-          const dateStr = lead.created_at.split('T')[0];
+          // ✅ FIX: Используем UTC для ключа даты (как просил юзер)
+          const dateStr = extractUTCDate(lead.created_at);
 
           if (!trafficResult[countryCode]) trafficResult[countryCode] = {};
           if (!trafficResult[countryCode][dateStr]) {

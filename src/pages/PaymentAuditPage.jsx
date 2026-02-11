@@ -251,6 +251,24 @@ const PaymentAuditPage = () => {
         });
     }, [payments, paymentOrderMap]);
 
+    // 4. Links in Nickname (Check for http, .com, .ru, etc)
+    const linksInNickname = useMemo(() => {
+        return payments.filter(p => {
+            const link = (p.crmLink || p.crm_link || '').toLowerCase().trim();
+            if (!link) return false;
+
+            // Check for common link indicators
+            return link.includes('http') ||
+                link.includes('https') ||
+                link.includes('.com') ||
+                link.includes('.ru') ||
+                link.includes('.net') ||
+                link.includes('.org') ||
+                link.includes('//') ||
+                link.includes('t.me/');
+        });
+    }, [payments]);
+
     // --- Traffic: Channels Logic ---
     const { missingChannels, connectedChannels } = useMemo(() => {
         const { countries, channels } = useAppStore.getState();
@@ -274,7 +292,7 @@ const PaymentAuditPage = () => {
         return { missingChannels: missing, connectedChannels: connected };
     }, [payments]);
 
-    const totalIssues = futurePayments.length + duplicateGroups.reduce((acc, g) => acc + g.length, 0) + anomalousPayments.length;
+    const totalIssues = futurePayments.length + duplicateGroups.reduce((acc, g) => acc + g.length, 0) + anomalousPayments.length + linksInNickname.length;
 
     const { tab } = useParams();
     const navigate = useNavigate();
@@ -358,7 +376,34 @@ const PaymentAuditPage = () => {
                         </div>
                     </div>
 
-                    {/* Section 2: Duplicate Payments */}
+                    {/* Section 2: Links in Nickname (NEW) */}
+                    <div className="border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 dark:bg-[#161616] px-4 py-2 border-b border-gray-200 dark:border-[#333] flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <ExternalLink size={14} className="text-gray-500" />
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">Ссылки в никнейме</h3>
+                                <span className={`text-[10px] font-bold px-1.5 rounded ${linksInNickname.length > 0 ? 'bg-purple-100 text-purple-600' : 'bg-gray-200 text-gray-500'}`}>{linksInNickname.length}</span>
+                            </div>
+                        </div>
+                        <div className="bg-white dark:bg-[#111]">
+                            {linksInNickname.length > 0 ? (
+                                <div className="divide-y divide-gray-100 dark:divide-[#222]">
+                                    {linksInNickname.map((p, idx) => (
+                                        <PaymentRow
+                                            key={p.id || idx}
+                                            payment={p}
+                                            highlightField="crmLink"
+                                            managers={managers}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-4 text-center text-xs text-gray-400">Проблем не обнаружено</div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Section 3: Duplicate Payments */}
                     <div className="border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden">
                         <div className="bg-gray-50 dark:bg-[#161616] px-4 py-2 border-b border-gray-200 dark:border-[#333] flex justify-between items-center">
                             <div className="flex items-center gap-2">
@@ -382,7 +427,7 @@ const PaymentAuditPage = () => {
                         </div>
                     </div>
 
-                    {/* Section 3: Anomalous Amounts */}
+                    {/* Section 4: Anomalous Amounts */}
                     <div className="border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden">
                         <div className="bg-gray-50 dark:bg-[#161616] px-4 py-2 border-b border-gray-200 dark:border-[#333] flex justify-between items-center">
                             <div className="flex items-center gap-2">
