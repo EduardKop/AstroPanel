@@ -108,7 +108,7 @@ const getInitials = (name) => name ? name.split(' ').map(n => n[0]).join('').sli
 const fmt = (num) => num.toLocaleString('ru-RU', { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
 const SalariesPage = () => {
-  const { managers, payments, kpiRates, kpiSettings, trafficStats, fetchTrafficStats } = useAppStore();
+  const { managers, payments, kpiRates, kpiSettings, trafficStats, fetchTrafficStats, managerRates } = useAppStore();
 
   const [selectedMonth, setSelectedMonth] = useState(new Date());
 
@@ -129,7 +129,7 @@ const SalariesPage = () => {
   const options = useMemo(() => {
     const allGeos = new Set();
     const allNames = new Set();
-    managers.filter(m => m.role === 'Sales').forEach(m => {
+    managers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro'].includes(m.role)).forEach(m => {
       allNames.add(m.name);
       const geo = Array.isArray(m.geo) ? m.geo[0] : (m.geo || 'N/A');
       allGeos.add(geo);
@@ -144,6 +144,31 @@ const SalariesPage = () => {
 
     const baseSalary = Number(kpiSettings?.base_salary || 0);
 
+    // Строим map индивидуальных ставок: manager_id -> { default: {...}, 'YYYY-MM': {...} }
+    const mgrRatesMap = {};
+    (managerRates || []).forEach(r => {
+      if (!mgrRatesMap[r.manager_id]) mgrRatesMap[r.manager_id] = {};
+      const key = r.month || 'default';
+      mgrRatesMap[r.manager_id][key] = r;
+    });
+
+    // Ключ месяца для поиска override
+    const monthKey = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`;
+
+    // Хелпер: получить ставку сотрудника (с приоритетом месячного override)
+    const getManagerRate = (managerId) => {
+      const mRates = mgrRatesMap[managerId] || {};
+      const monthRate = mRates[monthKey];
+      const defaultRate = mRates['default'];
+      const src = monthRate || defaultRate;
+      return {
+        base_rate: Number(src?.base_rate || 0),
+        bonus: Number(src?.bonus || 0),
+        penalty: Number(src?.penalty || 0),
+        hasIndividualRate: !!src
+      };
+    };
+
     let dailyTiers = [], monthlyTiers = [];
     try {
       dailyTiers = typeof kpiSettings?.daily_tiers === 'string' ? JSON.parse(kpiSettings.daily_tiers) : (kpiSettings?.daily_tiers || []);
@@ -155,7 +180,7 @@ const SalariesPage = () => {
     startOfMonth.setHours(0, 0, 0, 0);
     endOfMonth.setHours(23, 59, 59, 999);
 
-    const salesManagers = managers.filter(m => m.role === 'Sales');
+    const salesManagers = managers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro'].includes(m.role));
 
     // ШАГ 1: Предварительный расчет
     const preCalcManagers = salesManagers.map(mgr => {
@@ -192,7 +217,10 @@ const SalariesPage = () => {
     // ШАГ 3: Финальный расчет
     let data = preCalcManagers.map(({ mgr, mgrPayments, salesCount, teamGroup, primaryGeo }) => {
 
-      // Считаем лиды для формулы CR (но в таблице покажем заглушку)
+      // Индивидуальная ставка
+      const individualRate = getManagerRate(mgr.id);
+
+      // Считаем лиды для формулы CR
       let leadsCount = 0;
       if (trafficStats && trafficStats[primaryGeo]) {
         Object.entries(trafficStats[primaryGeo]).forEach(([dateStr, val]) => {
@@ -206,7 +234,7 @@ const SalariesPage = () => {
 
       const conversionRate = leadsCount > 0 ? ((salesCount / leadsCount) * 100).toFixed(2) : "0.00";
 
-      // Бонусы
+      // Бонусы за продукты
       let productBonus = 0;
       mgrPayments.forEach(p => {
         productBonus += (ratesMap[p.product] || 0);
@@ -235,8 +263,13 @@ const SalariesPage = () => {
         teamBonus = 30;
       }
 
+      // Используем индивидуальную ставку если есть, иначе глобальную
+      const effectiveBaseRate = individualRate.hasIndividualRate ? individualRate.base_rate : baseSalary;
+      const indBonus = individualRate.bonus;
+      const indPenalty = individualRate.penalty;
+
       const totalBonus = productBonus + dailyBonusTotal + monthlyBonusTotal + teamBonus;
-      const totalSalary = baseSalary + totalBonus;
+      const totalSalary = effectiveBaseRate + totalBonus + indBonus - indPenalty;
 
       const startDate = mgr.created_at ? new Date(mgr.created_at) : new Date('2024-01-01');
       const role = mgr.role || 'Sales';
@@ -253,7 +286,10 @@ const SalariesPage = () => {
         leadsCount,
         conversionRate,
         salesCount,
-        baseRate: baseSalary,
+        baseRate: effectiveBaseRate,
+        individualBonus: indBonus,
+        individualPenalty: indPenalty,
+        hasIndividualRate: individualRate.hasIndividualRate,
         bonus: totalBonus,
         teamBonus,
         totalSalary,
@@ -275,14 +311,14 @@ const SalariesPage = () => {
     });
 
     return { processedData: data, winningTeam: winner, teamScores: scores };
-  }, [managers, payments, kpiRates, kpiSettings, trafficStats, selectedGeos, selectedManagers, sortBy, selectedMonth]);
+  }, [managers, payments, kpiRates, kpiSettings, trafficStats, selectedGeos, selectedManagers, sortBy, selectedMonth, managerRates]);
 
   const handleExport = () => {
     const monthStr = selectedMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
-    const headers = ['Имя', 'ГЕО', 'Группа', 'Дата старта', 'Роль', 'Лиды', 'CR %', 'Продажи', 'Ставка ($)', 'Бонусы ($)', 'Командный ($)', 'Смены', 'Итого ЗП ($)'];
+    const headers = ['Имя', 'ГЕО', 'Группа', 'Дата старта', 'Роль', 'Лиды', 'CR %', 'Продажи', 'Ставка ($)', 'Бонусы ($)', 'Надбавка ($)', 'Штраф ($)', 'Командный ($)', 'Смены', 'Итого ЗП ($)'];
     const rows = processedData.map(d => [
       d.name, d.geo, d.teamGroup, d.startDate.toLocaleDateString('ru-RU'), d.role, d.leadsCount, d.conversionRate, d.salesCount, d.baseRate,
-      (d.bonus - d.teamBonus).toFixed(2), d.teamBonus, d.shifts, d.totalSalary.toFixed(2)
+      (d.bonus - d.teamBonus).toFixed(2), d.individualBonus, d.individualPenalty, d.teamBonus, d.shifts, d.totalSalary.toFixed(2)
     ]);
     const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -363,13 +399,15 @@ const SalariesPage = () => {
                 <th className="px-4 py-3 text-center">Продажи</th>
                 <th className="px-4 py-3 text-right">Ставка</th>
                 <th className="px-4 py-3 text-right">Бонусы</th>
+                <th className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">+Надб.</th>
+                <th className="px-4 py-3 text-right text-red-400">−Штраф</th>
                 <th className="px-4 py-3 text-center">Смены</th>
                 <th className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">Итого</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
               {processedData.length === 0 ? (
-                <tr><td colSpan="11" className="px-4 py-10 text-center text-gray-400">Нет данных за выбранный месяц</td></tr>
+                <tr><td colSpan="13" className="px-4 py-10 text-center text-gray-400">Нет данных за выбранный месяц</td></tr>
               ) : (
                 processedData.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group">
@@ -421,12 +459,31 @@ const SalariesPage = () => {
                     {/* ПРОДАЖИ */}
                     <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{item.salesCount}</td>
 
-                    <td className="px-4 py-3 text-right font-mono text-gray-500">${item.baseRate}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-500">
+                      <div className="flex flex-col items-end">
+                        <span>${item.baseRate}</span>
+                        {item.hasIndividualRate && <span className="text-[9px] text-blue-400">инд.</span>}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-gray-700 dark:text-gray-300">
                       <div className="flex flex-col items-end">
                         <span>${fmt(item.bonus)}</span>
                         {item.teamBonus > 0 && <span className="text-[9px] text-amber-500 font-bold">+${item.teamBonus} team</span>}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono">
+                      {item.individualBonus > 0 ? (
+                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">+${fmt(item.individualBonus)}</span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono">
+                      {item.individualPenalty > 0 ? (
+                        <span className="text-red-500 font-bold">−${fmt(item.individualPenalty)}</span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center"><span className="bg-gray-100 dark:bg-[#222] px-1.5 py-0.5 rounded text-[10px] text-gray-500 font-mono">{item.shifts}</span></td>
                     <td className="px-4 py-3 text-right"><span className="text-sm font-black text-gray-900 dark:text-white">${fmt(item.totalSalary)}</span></td>

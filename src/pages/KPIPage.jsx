@@ -4,7 +4,8 @@ import { supabase } from '../services/supabaseClient';
 import { showToast } from '../utils/toastEvents';
 import {
   Wallet, Trophy, Target, Calendar,
-  Sparkles, TrendingUp, Zap, Edit, Plus, Trash2, X, Save
+  Sparkles, TrendingUp, Zap, Edit, Plus, Trash2, X, Save,
+  Users, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 // Маппинг флагов
@@ -16,7 +17,7 @@ const FLAGS = {
 };
 
 const KPIPage = () => {
-  const { kpiRates, kpiSettings, user, fetchAllData } = useAppStore();
+  const { kpiRates, kpiSettings, user, fetchAllData, managers, managerRates } = useAppStore();
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   // Безопасное получение данных из стора с дефолтными значениями
@@ -196,6 +197,8 @@ const KPIPage = () => {
           onUpdate={fetchAllData}
           kpiRates={kpiRates}
           kpiSettings={kpiSettings}
+          managers={managers}
+          managerRates={managerRates}
         />
       )}
     </div>
@@ -276,35 +279,136 @@ const TeamCard = ({ number, countries, color }) => (
 );
 
 // --- MODAL EDITOR (АДМИНСКАЯ ПАНЕЛЬ) ---
-const EditKPIModal = ({ onClose, onUpdate, kpiRates, kpiSettings }) => {
-  // Локальный стейт для редактирования
+const SALES_ROLES = ['Sales', 'SeniorSales', 'SalesTaro'];
+
+const EditKPIModal = ({ onClose, onUpdate, kpiRates, kpiSettings, managers, managerRates }) => {
+  const [activeTab, setActiveTab] = useState('tariffs'); // 'tariffs' | 'rates'
+
+  // --- Tab: Tariffs ---
   const [rates, setRates] = useState(kpiRates || []);
   const [baseSalary, setBaseSalary] = useState(kpiSettings?.base_salary || 0);
   const [newProduct, setNewProduct] = useState({ name: '', rate: '' });
   const [isSaving, setIsSaving] = useState(false);
 
+  // --- Tab: Employee Rates ---
+  const [isMonthly, setIsMonthly] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  // Фильтруем только Sales/SeniorSales/SalesTaro и active
+  const salesManagers = (managers || []).filter(
+    m => SALES_ROLES.includes(m.role) && m.status === 'active'
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Строим map ставок: manager_id -> { default: {...}, 'YYYY-MM': {...} }
+  const ratesMap = {};
+  (managerRates || []).forEach(r => {
+    if (!ratesMap[r.manager_id]) ratesMap[r.manager_id] = {};
+    const key = r.month || 'default';
+    ratesMap[r.manager_id][key] = r;
+  });
+
+  // Получаем ставку для сотрудника (месячная или default)
+  const getRate = (managerId) => {
+    const mRates = ratesMap[managerId] || {};
+    if (isMonthly && mRates[selectedMonth]) {
+      return { ...mRates[selectedMonth], isOverride: true };
+    }
+    if (mRates['default']) {
+      return { ...mRates['default'], isOverride: false };
+    }
+    return { base_rate: 0, bonus: 0, penalty: 0, isOverride: false };
+  };
+
+  // Локальный стейт для редактируемых ставок сотрудников
+  const [editedRates, setEditedRates] = useState({});
+
+  // Инициализация при смене режима/месяца
+  useEffect(() => {
+    const initial = {};
+    salesManagers.forEach(m => {
+      const r = getRate(m.id);
+      initial[m.id] = {
+        base_rate: r.base_rate || 0,
+        bonus: r.bonus || 0,
+        penalty: r.penalty || 0,
+        isOverride: r.isOverride || false
+      };
+    });
+    setEditedRates(initial);
+  }, [isMonthly, selectedMonth, managerRates]);
+
+  const updateEmployeeRate = (managerId, field, value) => {
+    setEditedRates(prev => ({
+      ...prev,
+      [managerId]: { ...prev[managerId], [field]: value }
+    }));
+  };
+
+  // Навигация по месяцам
+  const shiftMonth = (delta) => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const monthLabel = (monthStr) => {
+    const [y, m] = monthStr.split('-');
+    const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+    return `${months[parseInt(m) - 1]} ${y}`;
+  };
+
+  // --- SAVE ---
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // 1. Обновляем существующие тарифы
-      for (const r of rates) {
-        await supabase.from('kpi_product_rates').upsert({
-          id: r.id,
-          product_name: r.product_name,
-          rate: parseFloat(r.rate)
-        });
+      if (activeTab === 'tariffs') {
+        // 1. Обновляем существующие тарифы
+        for (const r of rates) {
+          await supabase.from('kpi_product_rates').upsert({
+            id: r.id,
+            product_name: r.product_name,
+            rate: parseFloat(r.rate)
+          });
+        }
+        // 2. Добавляем новый, если введен
+        if (newProduct.name && newProduct.rate) {
+          await supabase.from('kpi_product_rates').insert({
+            product_name: newProduct.name,
+            rate: parseFloat(newProduct.rate)
+          });
+        }
+        // 3. Обновляем настройки (Оклад)
+        await supabase.from('kpi_settings').upsert({ key: 'base_salary', value: baseSalary });
+      } else {
+        // Сохраняем ставки сотрудников
+        const monthValue = isMonthly ? selectedMonth : null;
+        for (const managerId of Object.keys(editedRates)) {
+          const r = editedRates[managerId];
+          // Ищем существующую запись
+          const existing = (managerRates || []).find(
+            mr => mr.manager_id === managerId && (mr.month || null) === monthValue
+          );
+          const payload = {
+            manager_id: managerId,
+            base_rate: parseFloat(r.base_rate) || 0,
+            bonus: parseFloat(r.bonus) || 0,
+            penalty: parseFloat(r.penalty) || 0,
+            month: monthValue,
+            updated_at: new Date().toISOString()
+          };
+          if (existing) {
+            await supabase.from('manager_rates').update(payload).eq('id', existing.id);
+          } else {
+            await supabase.from('manager_rates').insert(payload);
+          }
+        }
       }
-      // 2. Добавляем новый, если введен
-      if (newProduct.name && newProduct.rate) {
-        await supabase.from('kpi_product_rates').insert({
-          product_name: newProduct.name,
-          rate: parseFloat(newProduct.rate)
-        });
-      }
-      // 3. Обновляем настройки (Оклад)
-      await supabase.from('kpi_settings').upsert({ key: 'base_salary', value: baseSalary });
 
-      await onUpdate(); // Обновляем стор
+      await onUpdate();
+      showToast('Сохранено', 'success');
       onClose();
     } catch (e) {
       console.error(e);
@@ -322,8 +426,9 @@ const EditKPIModal = ({ onClose, onUpdate, kpiRates, kpiSettings }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-[#111] w-full max-w-lg rounded-xl border border-gray-200 dark:border-[#333] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-[#111] w-full max-w-2xl rounded-xl border border-gray-200 dark:border-[#333] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
+        {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
           <h3 className="text-sm font-bold dark:text-white flex items-center gap-2">
             <Edit size={16} className="text-blue-500" /> Редактор KPI
@@ -331,62 +436,217 @@ const EditKPIModal = ({ onClose, onUpdate, kpiRates, kpiSettings }) => {
           <button onClick={onClose} className="text-gray-500 hover:text-black dark:hover:text-white"><X size={18} /></button>
         </div>
 
-        <div className="p-5 overflow-y-auto custom-scrollbar space-y-6">
-          {/* Base Salary */}
-          <div>
-            <label className="text-[10px] font-bold uppercase text-gray-500 mb-1 block">Базовая ставка ($)</label>
-            <input
-              type="number"
-              value={baseSalary}
-              onChange={e => setBaseSalary(e.target.value)}
-              className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded p-2 text-sm font-bold dark:text-white outline-none focus:border-blue-500 transition-colors"
-            />
-          </div>
-
-          {/* Product Rates */}
-          <div>
-            <label className="text-[10px] font-bold uppercase text-gray-500 mb-2 block">Тарифы продуктов</label>
-            <div className="space-y-2 bg-gray-50 dark:bg-[#161616] p-3 rounded-lg border border-gray-200 dark:border-[#222]">
-              {rates.map((r, idx) => (
-                <div key={r.id} className="flex gap-2 items-center group">
-                  <input
-                    value={r.product_name}
-                    onChange={e => { const n = [...rates]; n[idx].product_name = e.target.value; setRates(n) }}
-                    className="flex-1 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 dark:text-white outline-none focus:border-blue-500"
-                  />
-                  <span className="text-gray-400 text-xs">$</span>
-                  <input
-                    type="number"
-                    value={r.rate}
-                    onChange={e => { const n = [...rates]; n[idx].rate = e.target.value; setRates(n) }}
-                    className="w-14 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 font-mono font-bold text-right dark:text-white outline-none focus:border-blue-500"
-                  />
-                  <button onClick={() => handleDelete(r.id)} className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12} /></button>
-                </div>
-              ))}
-
-              {/* Add New Input */}
-              <div className="flex gap-2 items-center pt-3 border-t border-dashed border-gray-300 dark:border-[#333] mt-2">
-                <Plus size={14} className="text-green-500" />
-                <input
-                  placeholder="Название нового продукта..."
-                  value={newProduct.name}
-                  onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
-                  className="flex-1 bg-transparent text-xs py-1 dark:text-white outline-none placeholder:text-gray-500"
-                />
-                <span className="text-gray-400 text-xs">$</span>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={newProduct.rate}
-                  onChange={e => setNewProduct({ ...newProduct, rate: e.target.value })}
-                  className="w-14 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 font-mono text-right dark:text-white outline-none focus:border-green-500"
-                />
-              </div>
-            </div>
-          </div>
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 dark:border-[#333] bg-gray-50/30 dark:bg-[#161616]">
+          <button
+            onClick={() => setActiveTab('tariffs')}
+            className={`flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-2 ${activeTab === 'tariffs'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400 bg-blue-50/50 dark:bg-blue-900/10'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+          >
+            <Sparkles size={14} /> Тарифы
+          </button>
+          <button
+            onClick={() => setActiveTab('rates')}
+            className={`flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-2 ${activeTab === 'rates'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400 bg-blue-50/50 dark:bg-blue-900/10'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+          >
+            <Users size={14} /> Ставки сотрудников
+          </button>
         </div>
 
+        {/* Body */}
+        <div className="p-5 overflow-y-auto custom-scrollbar space-y-6 flex-1">
+
+          {/* TAB: TARIFFS */}
+          {activeTab === 'tariffs' && (
+            <>
+              {/* Base Salary */}
+              <div>
+                <label className="text-[10px] font-bold uppercase text-gray-500 mb-1 block">Базовая ставка ($)</label>
+                <input
+                  type="number"
+                  value={baseSalary}
+                  onChange={e => setBaseSalary(e.target.value)}
+                  className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded p-2 text-sm font-bold dark:text-white outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+
+              {/* Product Rates */}
+              <div>
+                <label className="text-[10px] font-bold uppercase text-gray-500 mb-2 block">Тарифы продуктов</label>
+                <div className="space-y-2 bg-gray-50 dark:bg-[#161616] p-3 rounded-lg border border-gray-200 dark:border-[#222]">
+                  {rates.map((r, idx) => (
+                    <div key={r.id} className="flex gap-2 items-center group">
+                      <input
+                        value={r.product_name}
+                        onChange={e => { const n = [...rates]; n[idx].product_name = e.target.value; setRates(n) }}
+                        className="flex-1 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 dark:text-white outline-none focus:border-blue-500"
+                      />
+                      <span className="text-gray-400 text-xs">$</span>
+                      <input
+                        type="number"
+                        value={r.rate}
+                        onChange={e => { const n = [...rates]; n[idx].rate = e.target.value; setRates(n) }}
+                        className="w-14 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 font-mono font-bold text-right dark:text-white outline-none focus:border-blue-500"
+                      />
+                      <button onClick={() => handleDelete(r.id)} className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+
+                  {/* Add New */}
+                  <div className="flex gap-2 items-center pt-3 border-t border-dashed border-gray-300 dark:border-[#333] mt-2">
+                    <Plus size={14} className="text-green-500" />
+                    <input
+                      placeholder="Название нового продукта..."
+                      value={newProduct.name}
+                      onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
+                      className="flex-1 bg-transparent text-xs py-1 dark:text-white outline-none placeholder:text-gray-500"
+                    />
+                    <span className="text-gray-400 text-xs">$</span>
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      value={newProduct.rate}
+                      onChange={e => setNewProduct({ ...newProduct, rate: e.target.value })}
+                      className="w-14 bg-transparent border-b border-gray-300 dark:border-[#444] text-xs py-1 font-mono text-right dark:text-white outline-none focus:border-green-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* TAB: EMPLOYEE RATES */}
+          {activeTab === 'rates' && (
+            <>
+              {/* Mode toggle + Month selector */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                {/* Toggle */}
+                <div className="flex bg-gray-100 dark:bg-[#1A1A1A] rounded-lg p-0.5 border border-gray-200 dark:border-[#333]">
+                  <button
+                    onClick={() => setIsMonthly(false)}
+                    className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${!isMonthly
+                        ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                      }`}
+                  >
+                    По умолчанию
+                  </button>
+                  <button
+                    onClick={() => setIsMonthly(true)}
+                    className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${isMonthly
+                        ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                      }`}
+                  >
+                    Помесячно
+                  </button>
+                </div>
+
+                {/* Month Picker */}
+                {isMonthly && (
+                  <div className="flex items-center gap-2 bg-gray-100 dark:bg-[#1A1A1A] rounded-lg border border-gray-200 dark:border-[#333] px-1">
+                    <button onClick={() => shiftMonth(-1)} className="p-1 text-gray-500 hover:text-black dark:hover:text-white">
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-xs font-bold dark:text-white min-w-[120px] text-center">
+                      {monthLabel(selectedMonth)}
+                    </span>
+                    <button onClick={() => shiftMonth(1)} className="p-1 text-gray-500 hover:text-black dark:hover:text-white">
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {isMonthly && (
+                <div className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg px-3 py-2 font-medium">
+                  ⚠️ Помесячные ставки переопределяют значения по умолчанию только для выбранного месяца
+                </div>
+              )}
+
+              {/* Employee List */}
+              <div className="space-y-3">
+                {salesManagers.length === 0 && (
+                  <div className="text-center text-xs text-gray-400 py-8">Нет сотрудников с ролью Sales</div>
+                )}
+                {salesManagers.map(m => {
+                  const ed = editedRates[m.id] || { base_rate: 0, bonus: 0, penalty: 0 };
+                  const hasDefault = ratesMap[m.id]?.['default'];
+                  const hasOverride = isMonthly && ratesMap[m.id]?.[selectedMonth];
+
+                  return (
+                    <div
+                      key={m.id}
+                      className={`rounded-lg border p-3 transition-colors ${hasOverride
+                          ? 'border-amber-300 dark:border-amber-700/50 bg-amber-50/30 dark:bg-amber-900/5'
+                          : 'border-gray-200 dark:border-[#333] bg-gray-50/50 dark:bg-[#161616]'
+                        }`}
+                    >
+                      {/* Name row */}
+                      <div className="flex items-center gap-2 mb-2.5">
+                        {m.avatar_url ? (
+                          <img src={m.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover border border-gray-200 dark:border-[#444]" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-[#333] flex items-center justify-center text-[10px] font-bold text-gray-500">
+                            {m.name?.[0]}
+                          </div>
+                        )}
+                        <span className="text-xs font-bold dark:text-white flex-1 truncate">{m.name}</span>
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${m.role === 'SeniorSales' ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
+                            : m.role === 'SalesTaro' ? 'bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
+                              : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                          }`}>
+                          {m.role}
+                        </span>
+                        {isMonthly && !hasOverride && hasDefault && (
+                          <span className="text-[9px] text-gray-400 italic">по умолч.</span>
+                        )}
+                      </div>
+
+                      {/* Fields */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[9px] font-bold uppercase text-gray-400 mb-0.5 block">Ставка $</label>
+                          <input
+                            type="number"
+                            value={ed.base_rate}
+                            onChange={e => updateEmployeeRate(m.id, 'base_rate', e.target.value)}
+                            className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#444] rounded px-2 py-1 text-xs font-mono font-bold dark:text-white outline-none focus:border-blue-500 transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold uppercase text-emerald-500 mb-0.5 block">Надбавка $</label>
+                          <input
+                            type="number"
+                            value={ed.bonus}
+                            onChange={e => updateEmployeeRate(m.id, 'bonus', e.target.value)}
+                            className="w-full bg-white dark:bg-[#111] border border-emerald-200 dark:border-emerald-800/30 rounded px-2 py-1 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 outline-none focus:border-emerald-500 transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold uppercase text-red-400 mb-0.5 block">Штраф $</label>
+                          <input
+                            type="number"
+                            value={ed.penalty}
+                            onChange={e => updateEmployeeRate(m.id, 'penalty', e.target.value)}
+                            className="w-full bg-white dark:bg-[#111] border border-red-200 dark:border-red-800/30 rounded px-2 py-1 text-xs font-mono font-bold text-red-500 dark:text-red-400 outline-none focus:border-red-500 transition-colors"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
         <div className="p-4 border-t border-gray-200 dark:border-[#333] bg-gray-50/50 dark:bg-[#161616] flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-800 dark:hover:text-white transition-colors">Отмена</button>
           <button

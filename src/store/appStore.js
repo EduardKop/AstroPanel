@@ -78,6 +78,7 @@ export const useAppStore = create((set, get) => ({
   // Данные для зарплат
   kpiRates: [],
   kpiSettings: {},
+  managerRates: [], // NEW: Individual employee rates
 
   // Справочник каналов
   channelsMap: {},
@@ -142,6 +143,7 @@ export const useAppStore = create((set, get) => ({
       trafficStats: {},
       kpiRates: [],
       kpiSettings: {},
+      managerRates: [],
       stats: { totalEur: 0, count: 0 }
     });
   },
@@ -302,6 +304,7 @@ export const useAppStore = create((set, get) => ({
         kpiRatesData,
         kpiSettingsData,
         appSettingsData,
+        managerRatesData,
         leadsData // Now fetched in parallel
       ] = await Promise.all([
         fetchAll('channels', '*', 'id', true),
@@ -316,6 +319,7 @@ export const useAppStore = create((set, get) => ({
         fetchAll('kpi_product_rates', '*', 'rate', true),
         fetchAll('kpi_settings', '*', 'key', true),
         fetchAll('app_settings', '*', 'key', true),
+        fetchAll('manager_rates', '*', 'created_at', false),
         fetchLeadsPromise()
       ]);
 
@@ -441,6 +445,7 @@ export const useAppStore = create((set, get) => ({
         auditExceptions: exceptionsData || [],
         kpiRates: kpiRatesData || [],
         kpiSettings: kpiSettingsMap || {},
+        managerRates: managerRatesData || [],
         permissions: permissionsMap,
         roleDocs: roleDocsMap,
         trafficStats: trafficResult,
@@ -468,6 +473,7 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'countries' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_audit_exceptions' }, () => get().fetchAllData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'manager_rates' }, () => get().fetchAllData(true))
       .subscribe();
 
     return () => supabase.removeChannel(channel);

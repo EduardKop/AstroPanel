@@ -143,7 +143,7 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
 };
 
 const ManagersPage = () => {
-  const { payments, kpiRates, kpiSettings } = useAppStore();
+  const { payments, kpiRates, kpiSettings, managers, managerRates } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
@@ -164,6 +164,17 @@ const ManagersPage = () => {
     setDateRange(getLastWeekRange());
   };
 
+  // Строим map индивидуальных ставок
+  const mgrRatesMap = useMemo(() => {
+    const map = {};
+    (managerRates || []).forEach(r => {
+      if (!map[r.manager_id]) map[r.manager_id] = {};
+      const key = r.month || 'default';
+      map[r.manager_id][key] = r;
+    });
+    return map;
+  }, [managerRates]);
+
   // Основная логика
   const managersStats = useMemo(() => {
     // 1. Фильтрация (Raw Mode)
@@ -181,6 +192,21 @@ const ManagersPage = () => {
       return true;
     });
 
+    // Хелпер: получить ставку по ID менеджера
+    // Используем дефолтную ставку, т.к. тут диапазон дат (не привязан к конкретному месяцу)
+    const getManagerRate = (managerId) => {
+      const mRates = mgrRatesMap[managerId] || {};
+      const defaultRate = mRates['default'];
+      return {
+        base_rate: Number(defaultRate?.base_rate || 0),
+        bonus: Number(defaultRate?.bonus || 0),
+        penalty: Number(defaultRate?.penalty || 0),
+        hasIndividualRate: !!defaultRate
+      };
+    };
+
+    const baseSalary = Number(kpiSettings?.base_salary || 0);
+
     // 2. Группировка по менеджерам
     const statsByName = {};
     filtered.forEach(p => {
@@ -190,51 +216,58 @@ const ManagersPage = () => {
           count: 0,
           sum: 0,
           countries: new Set(),
-          salaryBonus: 0 // Бонусная часть ЗП
+          salaryBonus: 0,
+          managerId: p.managerId || null
         };
       }
       statsByName[name].count += 1;
       statsByName[name].sum += (p.amountEUR || 0);
       if (p.country) statsByName[name].countries.add(p.country);
+      if (p.managerId) statsByName[name].managerId = p.managerId;
 
-      // Расчет бонуса за продажу (если есть тарифы)
-      // Ищем тариф для продукта
+      // Расчет бонуса за продажу
       const rateObj = kpiRates.find(r =>
         p.product.toLowerCase().includes(r.product_name.toLowerCase())
       );
-      // Если нашли — берем rate, иначе дефолт (например 5 евро)
       const bonus = rateObj ? rateObj.rate : 0;
       statsByName[name].salaryBonus += bonus;
     });
 
     // 3. Формирование списка
     return Object.entries(statsByName).map(([name, data]) => {
-      // Примерный расчет ЗП: Оклад (из настроек или 500) + Бонусы
-      const baseSalary = Number(kpiSettings?.base_salary || 0);
-      // Если фильтр по дате меньше месяца, пропорционально уменьшаем оклад для отображения "за период"
-      // (Это условность, можно убрать)
-      const totalSalary = baseSalary + data.salaryBonus;
+      // Индивидуальная ставка
+      const individualRate = data.managerId ? getManagerRate(data.managerId) : { base_rate: 0, bonus: 0, penalty: 0, hasIndividualRate: false };
+      const effectiveBaseRate = individualRate.hasIndividualRate ? individualRate.base_rate : baseSalary;
+      const indBonus = individualRate.bonus;
+      const indPenalty = individualRate.penalty;
 
-      // Пока у нас нет трафика по менеджерам, CR ставим 0 или скрываем
-      // Чтобы не показывать фейк
-      const cr = 0;
+      const totalSalary = effectiveBaseRate + data.salaryBonus + indBonus - indPenalty;
+
+      // Роль из managers
+      const mgrObj = managers.find(m => m.id === data.managerId);
+      const role = mgrObj?.role || 'Manager';
 
       return {
         name,
-        role: data.count > 20 ? 'Top Manager' : 'Manager',
-        shifts: '-', // Смены пока не трекаем
+        role,
+        shifts: '-',
         geoDisplay: Array.from(data.countries).slice(0, 3).join(', ') + (data.countries.size > 3 ? '...' : ''),
         salesCount: data.count,
         salesSum: data.sum,
-        cr: cr,
-        salary: totalSalary
+        cr: 0,
+        salary: totalSalary,
+        baseRate: effectiveBaseRate,
+        productBonus: data.salaryBonus,
+        individualBonus: indBonus,
+        individualPenalty: indPenalty,
+        hasIndividualRate: individualRate.hasIndividualRate
       };
     }).sort((a, b) => {
       if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
       if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [payments, startDate, endDate, filters, sortConfig, kpiRates, kpiSettings]);
+  }, [payments, startDate, endDate, filters, sortConfig, kpiRates, kpiSettings, mgrRatesMap, managers]);
 
   const requestSort = (key) => setSortConfig({ key, direction: sortConfig.key === key && sortConfig.direction === 'desc' ? 'asc' : 'desc' });
   const SortIcon = ({ col }) => sortConfig.key === col ? <ArrowUpDown size={10} className={`ml-1 ${sortConfig.direction === 'asc' ? 'rotate-180' : ''}`} /> : <ArrowUpDown size={10} className="ml-1 opacity-20" />;
@@ -290,14 +323,17 @@ const ManagersPage = () => {
                 <th className="px-4 py-2 text-right cursor-pointer hover:text-black dark:hover:text-white" onClick={() => requestSort('salesSum')}>
                   <div className="flex items-center justify-end gap-1"><DollarSign size={10} /> Оборот <SortIcon col="salesSum" /></div>
                 </th>
+                <th className="px-4 py-2 text-right">Ставка</th>
+                <th className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">+Надб.</th>
+                <th className="px-4 py-2 text-right text-red-400">−Штраф</th>
                 <th className="px-4 py-2 text-right cursor-pointer hover:text-black dark:hover:text-white" onClick={() => requestSort('salary')}>
-                  <div className="flex items-center justify-end gap-1"><Wallet size={10} /> ЗП (Бонус) <SortIcon col="salary" /></div>
+                  <div className="flex items-center justify-end gap-1"><Wallet size={10} /> Итого <SortIcon col="salary" /></div>
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
               {managersStats.length === 0 ? (
-                <tr><td colSpan="8" className="px-4 py-8 text-center">Нет данных</td></tr>
+                <tr><td colSpan="10" className="px-4 py-8 text-center">Нет данных</td></tr>
               ) : (
                 managersStats.map((mgr) => {
                   return (
@@ -334,6 +370,27 @@ const ManagersPage = () => {
 
                       <td className="px-4 py-2 text-right font-mono text-gray-600 dark:text-gray-400">
                         € {mgr.salesSum.toFixed(0)}
+                      </td>
+
+                      <td className="px-4 py-2 text-right font-mono text-gray-500 text-[11px]">
+                        <div className="flex flex-col items-end">
+                          <span>${mgr.baseRate}</span>
+                          {mgr.hasIndividualRate && <span className="text-[9px] text-blue-400">инд.</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-right font-mono text-[11px]">
+                        {mgr.individualBonus > 0 ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">+${mgr.individualBonus}</span>
+                        ) : (
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right font-mono text-[11px]">
+                        {mgr.individualPenalty > 0 ? (
+                          <span className="text-red-500 font-bold">−${mgr.individualPenalty}</span>
+                        ) : (
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                        )}
                       </td>
 
                       <td className="px-4 py-2 text-right">
