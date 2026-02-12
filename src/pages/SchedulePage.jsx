@@ -33,7 +33,7 @@ const GEO_PALETTE = {
 
 const SchedulePage = () => {
     const navigate = useNavigate();
-    const { user, managers, countries, schedules, fetchAllData, onlineUsers, logActivity, permissions } = useAppStore();
+    const { user, managers, countries, schedules, fetchAllData, onlineUsers, logActivity, permissions, managerRates, kpiSettings } = useAppStore();
     // isAdmin logic replaced with precise permission check
     const canEdit = user?.role === 'C-level' || permissions?.[user?.role]?.['schedule_edit'];
     const isAdmin = canEdit; // Keeping variable name for now to minimize refactor churn, but logic is new
@@ -936,6 +936,8 @@ const SchedulePage = () => {
             <ScheduleStats
                 rows={scheduleData}
                 currentDate={currentDate}
+                managerRates={managerRates}
+                kpiSettings={kpiSettings}
                 onDataChange={() => {
                     // Optional: reload if needed, but adjustments are local to Stats component
                     // or trigger global refresh if adjustments affect other things

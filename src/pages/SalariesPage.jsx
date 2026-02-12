@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
+import { supabase } from '../services/supabaseClient';
 import {
   Download, Filter, ChevronDown, Check,
   ArrowUpDown, Coins, Trophy, Calendar as CalendarIcon,
@@ -114,7 +115,8 @@ const SalariesPage = () => {
 
   const [selectedGeos, setSelectedGeos] = useState([]);
   const [selectedManagers, setSelectedManagers] = useState([]);
-  const [sortBy, setSortBy] = useState('salary-desc');
+  const [sortBy, setSortBy] = useState('leader');
+  const [monthSchedules, setMonthSchedules] = useState([]);
 
   // Подгружаем трафик при смене месяца
   useEffect(() => {
@@ -125,6 +127,32 @@ const SalariesPage = () => {
       fetchTrafficStats(start.toISOString(), end.toISOString());
     }
   }, [fetchTrafficStats, selectedMonth]);
+
+  // Подгружаем график (schedules) при смене месяца
+  useEffect(() => {
+    const loadSchedules = async () => {
+      const year = selectedMonth.getFullYear();
+      const month = selectedMonth.getMonth() + 1;
+      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      try {
+        const { data, error } = await supabase
+          .from('schedules')
+          .select('manager_id, date, geo_code')
+          .gte('date', startDate)
+          .lte('date', endDate);
+
+        if (error) throw error;
+        setMonthSchedules(data || []);
+      } catch (e) {
+        console.error('Error loading schedules for salary:', e);
+        setMonthSchedules([]);
+      }
+    };
+    loadSchedules();
+  }, [selectedMonth]);
 
   const options = useMemo(() => {
     const allGeos = new Set();
@@ -246,18 +274,33 @@ const SalariesPage = () => {
         salesByDate[date] = (salesByDate[date] || 0) + 1;
       });
 
+      // Дневной KPI
       let dailyBonusTotal = 0;
       Object.values(salesByDate).forEach(count => {
         const tier = dailyTiers.find(t => count >= t.min && count <= t.max);
         if (tier) dailyBonusTotal += Number(tier.reward);
       });
 
+      // Бонус недели: группируем продажи по неделям (ISO week)
+      const salesByWeek = {};
+      mgrPayments.forEach(p => {
+        const d = new Date(p.transactionDate);
+        // ISO week number
+        const jan4 = new Date(d.getFullYear(), 0, 4);
+        const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000) + 1;
+        const weekNum = Math.ceil((dayOfYear + jan4.getDay()) / 7);
+        const weekKey = `${d.getFullYear()}-W${weekNum}`;
+        salesByWeek[weekKey] = (salesByWeek[weekKey] || 0) + 1;
+      });
+
+      // Месячный бонус
       let monthlyBonusTotal = 0;
       if (salesCount > 0) {
         const mTier = monthlyTiers.find(t => salesCount >= (t.min || 0) && salesCount <= (t.max || 99999));
         if (mTier) monthlyBonusTotal = Number(mTier.reward);
       }
 
+      // Командная гонка
       let teamBonus = 0;
       if (winner && teamGroup === winner) {
         teamBonus = 30;
@@ -268,12 +311,19 @@ const SalariesPage = () => {
       const indBonus = individualRate.bonus;
       const indPenalty = individualRate.penalty;
 
+      // ЗП за смены из графика
+      const mgrSchedules = monthSchedules.filter(s => s.manager_id === mgr.id);
+      const totalShifts = mgrSchedules.length;
+      const multiGeoShifts = mgrSchedules.filter(s => s.geo_code && s.geo_code.includes(',')).length;
+      const regularShifts = totalShifts - multiGeoShifts;
+      const perShiftRate = effectiveBaseRate / 15;
+      const shiftSalary = (regularShifts * perShiftRate) + (multiGeoShifts * (perShiftRate + 10));
+
       const totalBonus = productBonus + dailyBonusTotal + monthlyBonusTotal + teamBonus;
-      const totalSalary = effectiveBaseRate + totalBonus + indBonus - indPenalty;
+      const totalSalary = shiftSalary + totalBonus + indBonus - indPenalty;
 
       const startDate = mgr.created_at ? new Date(mgr.created_at) : new Date('2024-01-01');
       const role = mgr.role || 'Sales';
-      const shifts = Object.keys(salesByDate).length;
 
       return {
         id: mgr.id,
@@ -290,10 +340,14 @@ const SalariesPage = () => {
         individualBonus: indBonus,
         individualPenalty: indPenalty,
         hasIndividualRate: individualRate.hasIndividualRate,
-        bonus: totalBonus,
+        productBonus,
+        dailyBonusTotal,
+        monthlyBonusTotal,
         teamBonus,
-        totalSalary,
-        shifts
+        totalShifts,
+        multiGeoShifts,
+        shiftSalary,
+        totalSalary
       };
     });
 
@@ -303,22 +357,27 @@ const SalariesPage = () => {
     data.sort((a, b) => {
       switch (sortBy) {
         case 'salary-desc': return b.totalSalary - a.totalSalary;
-        case 'date-desc': return b.startDate - a.startDate;
-        case 'date-asc': return a.startDate - b.startDate;
+        case 'leader': {
+          // Сначала победители командной гонки, потом по зарплате
+          if (a.teamBonus !== b.teamBonus) return b.teamBonus - a.teamBonus;
+          return b.totalSalary - a.totalSalary;
+        }
         case 'geo-asc': return a.geo.localeCompare(b.geo);
         default: return 0;
       }
     });
 
     return { processedData: data, winningTeam: winner, teamScores: scores };
-  }, [managers, payments, kpiRates, kpiSettings, trafficStats, selectedGeos, selectedManagers, sortBy, selectedMonth, managerRates]);
+  }, [managers, payments, kpiRates, kpiSettings, trafficStats, selectedGeos, selectedManagers, sortBy, selectedMonth, managerRates, monthSchedules]);
 
   const handleExport = () => {
     const monthStr = selectedMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
-    const headers = ['Имя', 'ГЕО', 'Группа', 'Дата старта', 'Роль', 'Лиды', 'CR %', 'Продажи', 'Ставка ($)', 'Бонусы ($)', 'Надбавка ($)', 'Штраф ($)', 'Командный ($)', 'Смены', 'Итого ЗП ($)'];
+    const headers = ['Имя', 'ГЕО', 'Лиды', 'CR %', 'Продажи', 'Бонус продукты ($)', 'Дневной KPI ($)', 'Бонус мес ($)', 'Командная ($)', 'Ставка ($)', 'Смены', 'ЗП смены ($)', '+Надб ($)', '-Штраф ($)', 'Итого ЗП ($)'];
     const rows = processedData.map(d => [
-      d.name, d.geo, d.teamGroup, d.startDate.toLocaleDateString('ru-RU'), d.role, d.leadsCount, d.conversionRate, d.salesCount, d.baseRate,
-      (d.bonus - d.teamBonus).toFixed(2), d.individualBonus, d.individualPenalty, d.teamBonus, d.shifts, d.totalSalary.toFixed(2)
+      d.name, d.geo, d.leadsCount, d.conversionRate, d.salesCount,
+      d.productBonus.toFixed(2), d.dailyBonusTotal.toFixed(2), d.monthlyBonusTotal.toFixed(2), d.teamBonus,
+      d.baseRate, d.totalShifts, d.shiftSalary.toFixed(2),
+      d.individualBonus, d.individualPenalty, d.totalSalary.toFixed(2)
     ]);
     const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -362,8 +421,8 @@ const SalariesPage = () => {
 
           <div className="relative group">
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="appearance-none bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] text-gray-700 dark:text-gray-200 py-1.5 pl-3 pr-8 rounded-[6px] text-xs font-medium focus:outline-none cursor-pointer hover:border-gray-400 dark:hover:border-[#555] transition-colors h-[34px]">
-              <option value="salary-desc">💰 По зарплате</option>
-              <option value="date-desc">📅 По дате (Новые)</option>
+              <option value="leader">🏆 Лидер месяца</option>
+              <option value="salary-desc">� По зарплате</option>
               <option value="geo-asc">🌍 По ГЕО</option>
             </select>
             <ArrowUpDown size={10} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -391,23 +450,25 @@ const SalariesPage = () => {
             <thead className="bg-gray-50 dark:bg-[#161616] font-medium border-b border-gray-200 dark:border-[#333] text-gray-500 dark:text-[#666]">
               <tr>
                 <th className="px-4 py-3">Менеджер</th>
-                <th className="px-4 py-3">ГЕО / Группа</th>
-                <th className="px-4 py-3">Старт</th>
-                <th className="px-4 py-3">Статус</th>
+                <th className="px-4 py-3">ГЕО</th>
                 <th className="px-4 py-3 text-center">Лиды</th>
                 <th className="px-4 py-3 text-center">CR</th>
                 <th className="px-4 py-3 text-center">Продажи</th>
-                <th className="px-4 py-3 text-right">Ставка</th>
                 <th className="px-4 py-3 text-right">Бонусы</th>
+                <th className="px-4 py-3 text-right">Дневной KPI</th>
+                <th className="px-4 py-3 text-right">Бонус мес.</th>
+                <th className="px-4 py-3 text-center">🏆 Гонка</th>
+                <th className="px-4 py-3 text-right">Ставка</th>
+                <th className="px-4 py-3 text-center">Смены</th>
+                <th className="px-4 py-3 text-right">ЗП смены</th>
                 <th className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">+Надб.</th>
                 <th className="px-4 py-3 text-right text-red-400">−Штраф</th>
-                <th className="px-4 py-3 text-center">Смены</th>
                 <th className="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">Итого</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
               {processedData.length === 0 ? (
-                <tr><td colSpan="13" className="px-4 py-10 text-center text-gray-400">Нет данных за выбранный месяц</td></tr>
+                <tr><td colSpan="15" className="px-4 py-10 text-center text-gray-400">Нет данных за выбранный месяц</td></tr>
               ) : (
                 processedData.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group">
@@ -420,10 +481,10 @@ const SalariesPage = () => {
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-gray-900 dark:text-white text-xs">{item.name}</span>
                             {item.teamBonus > 0 && (
-                              <Trophy size={10} className="fill-amber-500 text-amber-500" title={`Победа в Группе ${item.teamGroup} (+$30)`} />
+                              <Trophy size={10} className="fill-amber-500 text-amber-500" />
                             )}
                           </div>
-                          <span className="text-[9px] text-gray-400">ID: {item.id.toString().slice(0, 4)}</span>
+                          <span className="text-[9px] text-gray-400">{item.role}</span>
                         </div>
                       </div>
                     </td>
@@ -433,59 +494,112 @@ const SalariesPage = () => {
                           {item.geo}
                         </span>
                         {item.teamGroup !== 'N/A' && (
-                          <span className="text-[9px] text-gray-400 ml-0.5 mt-0.5">Группа {item.teamGroup}</span>
+                          <span className="text-[9px] text-gray-400 ml-0.5 mt-0.5">Гр. {item.teamGroup}</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-mono text-[10px]">{item.startDate.toLocaleDateString('ru-RU')}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-600 border-emerald-500/20`}>
-                        {item.role}
-                      </span>
+
+                    {/* ЛИДЫ */}
+                    <td className="px-4 py-3 text-center">
+                      {item.leadsCount > 0 ? (
+                        <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{item.leadsCount}</span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
                     </td>
 
-                    {/* ЛИДЫ (ЗАГЛУШКА) */}
+                    {/* CR */}
                     <td className="px-4 py-3 text-center">
-                      <span className="text-[10px] text-gray-400 italic">(будет после внедрения графика)</span>
-                    </td>
-
-                    {/* КОНВЕРСИЯ (CR) */}
-                    <td className="px-4 py-3 text-center">
-                      <div className={`flex items-center justify-center gap-1 text-[10px] font-bold ${item.conversionRate >= 10 ? 'text-emerald-500' : item.conversionRate >= 5 ? 'text-amber-500' : 'text-gray-400'}`}>
+                      <span className={`text-[10px] font-bold ${Number(item.conversionRate) >= 10 ? 'text-emerald-500' : Number(item.conversionRate) >= 5 ? 'text-amber-500' : 'text-gray-400'}`}>
                         {item.conversionRate}%
-                      </div>
+                      </span>
                     </td>
 
                     {/* ПРОДАЖИ */}
                     <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{item.salesCount}</td>
 
-                    <td className="px-4 py-3 text-right font-mono text-gray-500">
+                    {/* БОНУСЫ за продукты */}
+                    <td className="px-4 py-3 text-right font-mono text-xs">
+                      {item.productBonus > 0 ? (
+                        <span className="font-bold text-gray-700 dark:text-gray-300">${fmt(item.productBonus)}</span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </td>
+
+                    {/* ДНЕВНОЙ KPI */}
+                    <td className="px-4 py-3 text-right font-mono text-xs">
+                      {item.dailyBonusTotal > 0 ? (
+                        <span className="font-bold text-orange-500">${fmt(item.dailyBonusTotal)}</span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </td>
+
+                    {/* БОНУС МЕСЯЦА */}
+                    <td className="px-4 py-3 text-right font-mono text-xs">
+                      {item.monthlyBonusTotal > 0 ? (
+                        <span className="font-bold text-violet-500">${fmt(item.monthlyBonusTotal)}</span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </td>
+
+                    {/* КОМАНДНАЯ ГОНКА */}
+                    <td className="px-4 py-3 text-center">
+                      {item.teamBonus > 0 ? (
+                        <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded text-[10px] font-bold">+${item.teamBonus}</span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </td>
+
+                    {/* СТАВКА */}
+                    <td className="px-4 py-3 text-right font-mono text-gray-500 text-xs">
                       <div className="flex flex-col items-end">
                         <span>${item.baseRate}</span>
                         {item.hasIndividualRate && <span className="text-[9px] text-blue-400">инд.</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-gray-700 dark:text-gray-300">
-                      <div className="flex flex-col items-end">
-                        <span>${fmt(item.bonus)}</span>
-                        {item.teamBonus > 0 && <span className="text-[9px] text-amber-500 font-bold">+${item.teamBonus} team</span>}
+
+                    {/* СМЕНЫ */}
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex flex-col items-center">
+                        <span className="bg-gray-100 dark:bg-[#222] px-1.5 py-0.5 rounded text-[10px] text-gray-700 dark:text-gray-300 font-mono font-bold">{item.totalShifts}</span>
+                        {item.multiGeoShifts > 0 && (
+                          <span className="text-[9px] text-purple-500 font-bold">+{item.multiGeoShifts} доп</span>
+                        )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono">
+
+                    {/* ЗП ЗА СМЕНЫ */}
+                    <td className="px-4 py-3 text-right font-mono text-xs">
+                      {item.shiftSalary > 0 ? (
+                        <span className="text-blue-600 dark:text-blue-400 font-bold">${fmt(item.shiftSalary)}</span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </td>
+
+                    {/* НАДБАВКА */}
+                    <td className="px-4 py-3 text-right font-mono text-xs">
                       {item.individualBonus > 0 ? (
                         <span className="text-emerald-600 dark:text-emerald-400 font-bold">+${fmt(item.individualBonus)}</span>
                       ) : (
                         <span className="text-gray-300 dark:text-gray-600">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono">
+
+                    {/* ШТРАФ */}
+                    <td className="px-4 py-3 text-right font-mono text-xs">
                       {item.individualPenalty > 0 ? (
                         <span className="text-red-500 font-bold">−${fmt(item.individualPenalty)}</span>
                       ) : (
                         <span className="text-gray-300 dark:text-gray-600">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center"><span className="bg-gray-100 dark:bg-[#222] px-1.5 py-0.5 rounded text-[10px] text-gray-500 font-mono">{item.shifts}</span></td>
+
+                    {/* ИТОГО */}
                     <td className="px-4 py-3 text-right"><span className="text-sm font-black text-gray-900 dark:text-white">${fmt(item.totalSalary)}</span></td>
                   </tr>
                 ))
