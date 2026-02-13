@@ -5,6 +5,7 @@ import { showToast } from '../utils/toastEvents';
 import { useAppStore } from '../store/appStore';
 
 const AdvancedScheduleModal = ({ isOpen, onClose, managers, countries, onSave }) => {
+    const { logActivity } = useAppStore();
     const [localManagers, setLocalManagers] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
 
