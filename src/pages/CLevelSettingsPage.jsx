@@ -22,7 +22,7 @@ const SECTIONS = [
             { key: 'quick_stats', label: 'Сравн. Анализ', icon: BarChart3 },
             { key: 'geo', label: 'География', icon: Globe },
             { key: 'geo_matrix', label: 'Матрица ГЕО', icon: LayoutGrid },
-            { key: 'geo_monitoring', label: 'ГЕО', icon: Globe },
+            { key: 'geo_monitoring', editKey: 'geo_toggle', label: 'ГЕО', icon: Globe },
             { key: 'transactions_view', editKey: 'transactions_edit', label: 'Транзакции', icon: CreditCard },
         ]
     },

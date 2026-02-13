@@ -194,15 +194,19 @@ export const toggleGeoStatus = async (code, newIsActive, userName) => {
     by: userName || 'Unknown'
   });
 
-  // 3. Update both fields
-  const { error } = await supabase
+  // 3. Update both fields (with .select() to verify)
+  const { data, error } = await supabase
     .from('countries')
     .update({
       is_active: newIsActive,
       status_history: history
     })
-    .eq('code', code);
+    .eq('code', code)
+    .select();
 
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('Update blocked by RLS or row not found');
+  }
   return true;
 };

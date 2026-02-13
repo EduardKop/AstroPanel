@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
 import { toggleGeoStatus } from '../services/dataService';
+import { showToast } from '../utils/toastEvents';
 import {
     Globe, Power, PowerOff, Calendar as CalendarIcon, Search,
     TrendingUp, X, Clock, Activity, History, Users
@@ -170,7 +171,14 @@ const HistoryModal = ({ country, onClose }) => {
 
 // ====== MAIN PAGE ======
 const GeoMonitoringPage = () => {
-    const { countries, trafficStats, channels, user, fetchAllData, managers, schedules } = useAppStore();
+    const { countries, trafficStats, channels, user, fetchAllData, managers, schedules, permissions } = useAppStore();
+
+    // Permission check for geo toggle
+    const canToggleGeo = useMemo(() => {
+        if (!user) return false;
+        if (user.role === 'C-level') return true;
+        return permissions?.[user.role]?.geo_toggle === true;
+    }, [user, permissions]);
 
     // --- Active Staff per GEO (schedule-based for Sales, profile-based for SMM/Consultant) ---
     const activeStaffByGeo = useMemo(() => {
@@ -325,7 +333,11 @@ const GeoMonitoringPage = () => {
         try {
             await toggleGeoStatus(geo.code, !geo.isActive, user?.name || 'Unknown');
             await fetchAllData(true);
-        } catch (err) { console.error('Toggle error:', err); }
+            showToast(`${geo.name} ${!geo.isActive ? 'активирован' : 'деактивирован'}`, 'success');
+        } catch (err) {
+            console.error('Toggle error:', err);
+            showToast(`Ошибка: ${err.message}`, 'error');
+        }
         finally { setToggling(null); }
     };
 
@@ -515,17 +527,19 @@ const GeoMonitoringPage = () => {
                                     >
                                         <History size={13} />
                                     </button>
-                                    <button
-                                        onClick={() => handleToggle(geo)}
-                                        disabled={isToggling}
-                                        className={`p-1.5 rounded-md transition-colors ${geo.isActive
-                                            ? 'text-emerald-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
-                                            : 'text-red-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
-                                            } ${isToggling ? 'animate-pulse cursor-wait' : ''}`}
-                                        title={geo.isActive ? 'Отключить' : 'Включить'}
-                                    >
-                                        {geo.isActive ? <Power size={13} /> : <PowerOff size={13} />}
-                                    </button>
+                                    {canToggleGeo && (
+                                        <button
+                                            onClick={() => handleToggle(geo)}
+                                            disabled={isToggling}
+                                            className={`p-1.5 rounded-md transition-colors ${geo.isActive
+                                                ? 'text-emerald-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                                                : 'text-red-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                                                } ${isToggling ? 'animate-pulse cursor-wait' : ''}`}
+                                            title={geo.isActive ? 'Отключить' : 'Включить'}
+                                        >
+                                            {geo.isActive ? <Power size={13} /> : <PowerOff size={13} />}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         );
