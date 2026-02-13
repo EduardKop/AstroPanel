@@ -12,7 +12,7 @@ const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 
 const AddEmployeePage = () => {
   const navigate = useNavigate();
-  const { logActivity, user: currentUser } = useAppStore();
+  const { logActivity, user: currentUser, permissions } = useAppStore();
   const [loading, setLoading] = useState(false);
 
   const [avatarFile, setAvatarFile] = useState(null);
@@ -50,8 +50,8 @@ const AddEmployeePage = () => {
       return ROLES;
     }
 
-    // Admin: Может добавлять ТОЛЬКО Sales, SalesTaro, Consultant, Manager, SeniorSales
-    if (currentUser.role === 'Admin') {
+    // Admin OR employees_manage permission
+    if (currentUser.role === 'Admin' || permissions?.[currentUser.role]?.employees_manage) {
       return ['Sales', 'SalesTaro', 'Consultant', 'Manager', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR'];
     }
 

@@ -36,7 +36,7 @@ const CopyableUsername = ({ username }) => {
 
 const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, excludeRole, showAddButton = false }) => {
   const navigate = useNavigate();
-  const { managers, user: currentUser, fetchAllData, isLoading, onlineUsers } = useAppStore();
+  const { managers, user: currentUser, fetchAllData, isLoading, onlineUsers, permissions } = useAppStore();
   const [filters, setFilters] = useState({ geo: [], role: [] });
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -104,7 +104,11 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     return [...new Set(managers.map(m => m.role).filter(Boolean))].sort();
   }, [managers]);
 
-  const canManage = currentUser && ['Admin', 'C-level', 'SeniorSales'].includes(currentUser.role);
+  const canManage = useMemo(() => {
+    if (!currentUser) return false;
+    if (['Admin', 'C-level'].includes(currentUser.role)) return true;
+    return permissions?.[currentUser.role]?.employees_manage === true;
+  }, [currentUser, permissions]);
 
   const handleToggleBlock = async (id, currentStatus, name) => {
     const action = currentStatus === 'active' ? 'заблокировать' : 'разблокировать';
