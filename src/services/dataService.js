@@ -210,3 +210,52 @@ export const toggleGeoStatus = async (code, newIsActive, userName) => {
   }
   return true;
 };
+
+// --- 9. GEO NOTES ---
+export const fetchGeoNotes = async (geoCode) => {
+  const { data, error } = await supabase
+    .from('geo_notes')
+    .select('*')
+    .eq('geo_code', geoCode)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching notes:', error);
+    return [];
+  }
+  return data || [];
+};
+
+export const addGeoNote = async (geoCode, note, authorName, userId = null) => {
+  const { data, error } = await supabase
+    .from('geo_notes')
+    .insert([{
+      geo_code: geoCode,
+      note: note,
+      author_name: authorName,
+      created_by: userId
+    }])
+    .select();
+
+  if (error) throw error;
+  return data;
+};
+
+export const fetchGeoNotesInRange = async (startDate, endDate) => {
+  // Ensure we have valid ISO strings
+  const start = startDate instanceof Date ? startDate.toISOString() : startDate;
+  const end = endDate instanceof Date ? endDate.toISOString() : endDate;
+
+  const { data, error } = await supabase
+    .from('geo_notes')
+    .select('*')
+    .gte('created_at', start)
+    .lte('created_at', end)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching notes range:', error);
+    return [];
+  }
+  return data || [];
+};

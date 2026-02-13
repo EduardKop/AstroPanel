@@ -152,56 +152,32 @@ export const useAppStore = create((set, get) => ({
     try {
       const map = get().channelsMap;
 
-      // Логика пагинации для графика с фильтрами
-      let allLeads = [];
-      let from = 0;
-      const step = 1000;
+      // Use RPC for filtered stats
+      const { data, error } = await supabase.rpc('get_lead_stats', {
+        start_date: dateFrom,
+        end_date: dateTo
+      });
 
-      while (true) {
-        let query = supabase
-          .from('leads')
-          .select('created_at, is_comment, channel_id, wazzup_chat_id')
-          .range(from, from + step - 1);
-
-        if (dateFrom) query = query.gte('created_at', dateFrom);
-        if (dateTo) query = query.lte('created_at', dateTo);
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          allLeads = [...allLeads, ...data];
-          if (data.length < step) break;
-        } else {
-          break;
-        }
-        from += step;
-      }
+      if (error) throw error;
 
       const formattedStats = {};
-
-      if (allLeads) {
-        allLeads.forEach(lead => {
-          const countryCode = map[lead.channel_id] || 'Other';
-          // ✅ FIX: Используем UTC для ключа даты (как просил юзер)
-          const dateStr = extractUTCDate(lead.created_at);
+      if (data) {
+        data.forEach(stat => {
+          const countryCode = map[stat.channel_id] || 'Other';
+          const dateStr = stat.created_date; // YYYY-MM-DD from RPC
 
           if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
           if (!formattedStats[countryCode][dateStr]) {
             formattedStats[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
           }
 
-          let type = lead.is_comment ? 'comments' : 'direct';
-          // Check for whatsapp (phone number check)
-          if (lead.wazzup_chat_id && /^[\d+\s()-]+$/.test(lead.wazzup_chat_id)) {
-            type = 'whatsapp';
-          }
+          const count = Number(stat.count || 0);
 
-          if (type === 'whatsapp') formattedStats[countryCode][dateStr].whatsapp++;
-          else if (type === 'comments') formattedStats[countryCode][dateStr].comments++;
-          else formattedStats[countryCode][dateStr].direct++;
+          if (stat.is_whatsapp) formattedStats[countryCode][dateStr].whatsapp += count;
+          else if (stat.is_comment) formattedStats[countryCode][dateStr].comments += count;
+          else formattedStats[countryCode][dateStr].direct += count;
 
-          formattedStats[countryCode][dateStr].all++;
+          formattedStats[countryCode][dateStr].all += count;
         });
       }
 
@@ -267,28 +243,9 @@ export const useAppStore = create((set, get) => ({
 
     try {
       // А. Каналы
-      // Helper for fetching leads (pagination loop)
-      const fetchLeadsPromise = async () => {
-        let allLeads = [];
-        let from = 0;
-        const step = 1000;
-        while (true) {
-          const { data, error } = await supabase
-            .from('leads')
-            .select('created_at, is_comment, channel_id, wazzup_chat_id')
-            .range(from, from + step - 1);
+      // А. Каналы
+      // Optimized: Fetch leads stats via RPC instead of raw rows
 
-          if (error) throw error;
-          if (data && data.length > 0) {
-            allLeads = [...allLeads, ...data];
-            if (data.length < step) break;
-          } else {
-            break;
-          }
-          from += step;
-        }
-        return allLeads;
-      };
 
       // PARALLEL FETCHING: Group independent requests including LEADS
       const [
@@ -305,7 +262,8 @@ export const useAppStore = create((set, get) => ({
         kpiSettingsData,
         appSettingsData,
         managerRatesData,
-        leadsData // Now fetched in parallel
+        leadsMappingData, // RPC for payment attribution
+        leadsStatsData    // RPC for traffic charts
       ] = await Promise.all([
         fetchAll('channels', '*', 'id', true),
         fetchAll('managers', '*', 'created_at', false),
@@ -320,7 +278,8 @@ export const useAppStore = create((set, get) => ({
         fetchAll('kpi_settings', '*', 'key', true),
         fetchAll('app_settings', '*', 'key', true),
         fetchAll('manager_rates', '*', 'created_at', false),
-        fetchLeadsPromise()
+        supabase.rpc('get_leads_mapping').then(r => r.data || []),
+        supabase.rpc('get_lead_stats').then(r => r.data || [])
       ]);
 
 
@@ -349,42 +308,42 @@ export const useAppStore = create((set, get) => ({
 
 
       // 1. Создаем карту источников: nickname -> 'comments' | 'direct'
+      // 1. Создаем карту источников: nickname -> 'comments' | 'direct'
       const leadsSourceMap = {};
-      // 2. Статистика трафика (для init загрузки, чтобы не ждать fetchTrafficStats)
-      let trafficResult = {};
-
-      if (leadsData) {
-        leadsData.forEach(lead => {
-          // --- Логика маппинга источника ---
-          if (lead.wazzup_chat_id) {
-            const normNick = normalizeNick(lead.wazzup_chat_id);
+      if (leadsMappingData) {
+        leadsMappingData.forEach(item => {
+          if (item.wazzup_chat_id) {
+            const normNick = normalizeNick(item.wazzup_chat_id);
             if (normNick) {
+              // If duplicates exist, 'comments' has priority if present? 
+              // Or just overwrite. The original logic checked `if !== 'comments'`
               if (leadsSourceMap[normNick] !== 'comments') {
-                leadsSourceMap[normNick] = lead.is_comment ? 'comments' : 'direct';
+                leadsSourceMap[normNick] = item.is_comment ? 'comments' : 'direct';
               }
             }
           }
+        });
+      }
 
-          // --- Логика статистики трафика ---
-          const countryCode = newChannelsMap[lead.channel_id] || 'Other';
-          // ✅ FIX: Используем UTC для ключа даты (как просил юзер)
-          const dateStr = extractUTCDate(lead.created_at);
+      // 2. Статистика трафика (RPC data)
+      let trafficResult = {};
+      if (leadsStatsData) {
+        leadsStatsData.forEach(stat => {
+          const countryCode = newChannelsMap[stat.channel_id] || 'Other';
+          const dateStr = stat.created_date; // YYYY-MM-DD from RPC
 
           if (!trafficResult[countryCode]) trafficResult[countryCode] = {};
           if (!trafficResult[countryCode][dateStr]) {
             trafficResult[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
           }
 
-          let type = lead.is_comment ? 'comments' : 'direct';
-          if (lead.wazzup_chat_id && /^[\d+\s()-]+$/.test(lead.wazzup_chat_id)) {
-            type = 'whatsapp';
-          }
+          const count = Number(stat.count || 0);
 
-          if (type === 'whatsapp') trafficResult[countryCode][dateStr].whatsapp++;
-          else if (type === 'comments') trafficResult[countryCode][dateStr].comments++;
-          else trafficResult[countryCode][dateStr].direct++;
+          if (stat.is_whatsapp) trafficResult[countryCode][dateStr].whatsapp += count;
+          else if (stat.is_comment) trafficResult[countryCode][dateStr].comments += count;
+          else trafficResult[countryCode][dateStr].direct += count;
 
-          trafficResult[countryCode][dateStr].all++;
+          trafficResult[countryCode][dateStr].all += count;
         });
       }
 

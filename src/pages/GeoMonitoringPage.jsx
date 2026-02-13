@@ -1,11 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
 import { toggleGeoStatus } from '../services/dataService';
 import { showToast } from '../utils/toastEvents';
 import {
     Globe, Power, PowerOff, Calendar as CalendarIcon, Search,
-    TrendingUp, X, Clock, Activity, History, Users
+    TrendingUp, X, Clock, Activity, History, Users, MessageSquare, Send, LayoutGrid, List
 } from 'lucide-react';
+import { fetchGeoNotes, addGeoNote } from '../services/dataService';
+import GeoCalendarView from '../components/GeoCalendarView';
 
 // --- HELPER ---
 const toYMD = (date) => {
@@ -169,7 +171,193 @@ const HistoryModal = ({ country, onClose }) => {
 };
 
 
-// ====== MAIN PAGE ======
+// --- NOTES MODAL ---
+const NotesModal = ({ country, onClose, user, onNoteAdded }) => {
+    const [notes, setNotes] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [newNote, setNewNote] = useState('');
+    const [sending, setSending] = useState(false);
+
+    // Permission to add notes
+    const canAdd = ['C-level', 'Admin', 'SeniorSales', 'SeniorSMM'].includes(user?.role);
+
+    useEffect(() => {
+        loadNotes();
+    }, [country.code]);
+
+    const loadNotes = async () => {
+        setLoading(true);
+        const data = await fetchGeoNotes(country.code);
+        setNotes(data);
+        setLoading(false);
+    };
+
+    const handleSend = async () => {
+        if (!newNote.trim()) return;
+        setSending(true);
+        try {
+            await addGeoNote(country.code, newNote, user?.name || 'Unknown', user?.id);
+            setNewNote('');
+            await loadNotes();
+            onNoteAdded(); // Refresh parent data if needed
+            showToast('Заметка добавлена', 'success');
+        } catch (error) {
+            console.error('Error adding note:', error);
+            showToast('Ошибка при добавлении заметки', 'error');
+        } finally {
+            setSending(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-[#111] w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 dark:border-[#333] overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+                {/* Modal Header */}
+                <div className="px-5 py-4 border-b border-gray-100 dark:border-[#222] flex items-center justify-between bg-gray-50/50 dark:bg-[#161616]">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl shadow-sm rounded-md bg-white dark:bg-[#222] p-1">{country.emoji}</span>
+                        <div>
+                            <h3 className="font-bold text-base text-gray-900 dark:text-white leading-tight">Заметки: {country.name}</h3>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">{country.code}</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-white dark:hover:bg-[#222] rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-all shadow-sm border border-transparent hover:border-gray-100 dark:hover:border-[#333]"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+
+                {/* Notes Grid */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-5 bg-gray-50/30 dark:bg-[#0A0A0A]">
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
+                            <Activity size={24} className="animate-spin text-blue-500" />
+                            <span className="text-xs font-medium">Загрузка истории...</span>
+                        </div>
+                    ) : notes.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-300 dark:text-gray-700">
+                            <MessageSquare size={32} strokeWidth={1.5} />
+                            <span className="text-xs">История заметок пуста</span>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {notes.map((note, idx) => (
+                                <div
+                                    key={note.id}
+                                    className={`relative group bg-white dark:bg-[#151515] p-4 rounded-xl border border-gray-100 dark:border-[#2a2a2a] shadow-sm hover:shadow-md transition-all duration-200 flex flex-col ${idx === 0 ? 'ring-1 ring-blue-500/20 dark:ring-blue-500/10' : ''}`}
+                                >
+                                    <div className="flex justify-between items-start mb-3 pb-2 border-b border-gray-50 dark:border-[#222]">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 flex items-center justify-center text-[9px] font-bold text-blue-600 dark:text-blue-400">
+                                                {note.author_name ? note.author_name.charAt(0).toUpperCase() : '?'}
+                                            </div>
+                                            <span className="text-[11px] font-semibold text-gray-800 dark:text-gray-200 line-clamp-1" title={note.author_name}>
+                                                {note.author_name || 'Система'}
+                                            </span>
+                                        </div>
+                                        <span className="text-[9px] text-gray-400 font-mono shrink-0 bg-gray-50 dark:bg-[#222] px-1.5 py-0.5 rounded">
+                                            {new Date(note.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                            {note.note}
+                                        </p>
+                                    </div>
+                                    {idx === 0 && (
+                                        <span className="absolute top-2 right-2 flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                        </span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Input Area */}
+                {canAdd && (
+                    <div className="p-4 border-t border-gray-100 dark:border-[#222] bg-white dark:bg-[#111] shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)]">
+                        <div className="relative group">
+                            <textarea
+                                value={newNote}
+                                onChange={e => setNewNote(e.target.value)}
+                                placeholder="Напишите новую заметку..."
+                                className="w-full bg-gray-50 dark:bg-[#161616] border border-gray-200 dark:border-[#333] rounded-xl pl-4 pr-12 py-3 text-xs focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:text-white resize-none h-20 transition-all placeholder:text-gray-400"
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                            />
+                            <button
+                                onClick={handleSend}
+                                disabled={sending || !newNote.trim()}
+                                className="absolute right-3 bottom-3 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-600/20 active:scale-95 group-focus-within:bg-blue-500"
+                                title="Отправить (Enter)"
+                            >
+                                <Send size={14} className={sending ? 'animate-pulse' : ''} />
+                            </button>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400 px-1">
+                            <span>Нажмите Enter для отправки</span>
+                            <span className={newNote.length > 0 ? "text-blue-500" : ""}>{newNote.length} симв.</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// --- CONFIRM DEACTIVATION MODAL ---
+const ConfirmDeactivationModal = ({ country, onClose, onConfirm }) => {
+    const [reason, setReason] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleConfirm = async () => {
+        if (!reason.trim()) return;
+        setSubmitting(true);
+        await onConfirm(reason);
+        setSubmitting(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-[#111] w-full max-w-sm rounded-lg shadow-2xl border border-red-200 dark:border-red-900/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 dark:border-[#222] flex items-center justify-between bg-red-50 dark:bg-red-900/10">
+                    <span className="font-bold text-sm text-red-600 dark:text-red-400">Отключение: {country.name}</span>
+                    <button onClick={onClose} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-colors text-red-500">
+                        <X size={14} />
+                    </button>
+                </div>
+                <div className="p-4">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                        Обязательно укажите причину отключения ГЕО. Эта заметка будет сохранена в истории.
+                    </p>
+                    <textarea
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        placeholder="Причина отключения..."
+                        className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg p-3 text-xs focus:outline-none focus:border-red-500 dark:text-white resize-none h-24 mb-4"
+                        autoFocus
+                    />
+                    <div className="flex justify-end gap-2">
+                        <button onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                            Отмена
+                        </button>
+                        <button
+                            onClick={handleConfirm}
+                            disabled={!reason.trim() || submitting}
+                            className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-md hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                        >
+                            {submitting ? 'Отключение...' : 'Отключить ГЕО'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 const GeoMonitoringPage = () => {
     const { countries, trafficStats, channels, user, fetchAllData, managers, schedules, permissions } = useAppStore();
 
@@ -179,6 +367,8 @@ const GeoMonitoringPage = () => {
         if (user.role === 'C-level') return true;
         return permissions?.[user.role]?.geo_toggle === true;
     }, [user, permissions]);
+
+    const [activeTab, setActiveTab] = useState('monitoring'); // 'monitoring', 'calendar'
 
     // --- Active Staff per GEO (schedule-based for Sales, profile-based for SMM/Consultant) ---
     const activeStaffByGeo = useMemo(() => {
@@ -269,7 +459,32 @@ const GeoMonitoringPage = () => {
     const [startDate, endDate] = dateRange;
     const [search, setSearch] = useState('');
     const [historyModal, setHistoryModal] = useState(null);
+    const [notesModal, setNotesModal] = useState(null); // New state for notes modal
+    const [deactivationModal, setDeactivationModal] = useState(null); // New state for deactivation confirms
     const [toggling, setToggling] = useState(null);
+    const [lastNotes, setLastNotes] = useState({}); // geoCode -> last note text
+
+    // Load last notes for all countries on mount
+    const [notesLoaded, setNotesLoaded] = useState(false);
+    useMemo(async () => {
+        if (!countries.length || notesLoaded) return;
+        const map = {};
+        // Ideally fetch all last notes in one query, but for now loop 
+        // (Optimization: replace with single RPC or view later if slow)
+        await Promise.all(countries.map(async c => {
+            const notes = await fetchGeoNotes(c.code);
+            if (notes.length > 0) map[c.code] = notes[0].note;
+        }));
+        setLastNotes(map);
+        setNotesLoaded(true);
+    }, [countries.length]);
+
+    const refreshNote = async (geoCode) => {
+        const notes = await fetchGeoNotes(geoCode);
+        if (notes.length > 0) {
+            setLastNotes(prev => ({ ...prev, [geoCode]: notes[0].note }));
+        }
+    };
 
     const resetDate = () => setDateRange([new Date(), new Date()]);
 
@@ -328,12 +543,31 @@ const GeoMonitoringPage = () => {
     }, [geoData, search]);
 
     // --- Toggle ---
-    const handleToggle = async (geo) => {
+    const handleToggleClick = (geo) => {
+        if (geo.isActive) {
+            // Deactivating -> Require note
+            setDeactivationModal(geo);
+        } else {
+            // Activating -> Direct toggle
+            performToggle(geo, true);
+        }
+    };
+
+    const performToggle = async (geo, newStatus, reason = null) => {
         setToggling(geo.code);
         try {
-            await toggleGeoStatus(geo.code, !geo.isActive, user?.name || 'Unknown');
+            // 1. Toggle Status
+            await toggleGeoStatus(geo.code, newStatus, user?.name || 'Unknown');
+
+            // 2. If deactivating, add note
+            if (!newStatus && reason) {
+                await addGeoNote(geo.code, `[DISCONNECT REASON] ${reason}`, user?.name || 'Unknown', user?.id);
+                await refreshNote(geo.code);
+            }
+
             await fetchAllData(true);
-            showToast(`${geo.name} ${!geo.isActive ? 'активирован' : 'деактивирован'}`, 'success');
+            showToast(`${geo.name} ${newStatus ? 'активирован' : 'деактивирован'}`, 'success');
+            setDeactivationModal(null);
         } catch (err) {
             console.error('Toggle error:', err);
             showToast(`Ошибка: ${err.message}`, 'error');
@@ -378,181 +612,242 @@ const GeoMonitoringPage = () => {
                 </div>
             </div>
 
-            {/* Table */}
-            <div className="border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden">
-                {/* Table Header */}
-                <div className="grid grid-cols-[1.5fr_0.7fr_0.6fr_1fr_0.9fr_1.2fr_1.2fr_1.2fr_auto] gap-3 px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333]">
-                    <span>ГЕО</span>
-                    <span>Статус</span>
-                    <span>Трафик</span>
-                    <span>Трафик был (дата)</span>
-                    <span>Отключено (дата)</span>
-                    <span>Sales</span>
-                    <span>Consultant</span>
-                    <span>SMM</span>
-                    <span className="text-right">Действия</span>
-                </div>
-
-                {/* Rows */}
-                <div className="bg-white dark:bg-[#111] divide-y divide-gray-100 dark:divide-[#222]">
-                    {sortedGeos.map(geo => {
-                        const isToggling = toggling === geo.code;
-
-                        return (
-                            <div
-                                key={geo.code}
-                                className={`grid grid-cols-[1.5fr_0.7fr_0.6fr_1fr_0.9fr_1.2fr_1.2fr_1.2fr_auto] gap-3 px-4 py-2.5 items-center text-xs transition-colors ${geo.isActive
-                                    ? 'hover:bg-gray-50 dark:hover:bg-[#1A1A1A]'
-                                    : 'opacity-60 hover:opacity-90 hover:bg-red-50/30 dark:hover:bg-red-900/5'
-                                    }`}
-                            >
-                                {/* GEO Name */}
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                    <span className="text-lg">{geo.emoji}</span>
-                                    <div className="min-w-0">
-                                        <span className="font-bold text-gray-900 dark:text-white">{geo.name}</span>
-                                        <span className="ml-1.5 text-[10px] font-mono text-gray-400">{geo.code}</span>
-                                    </div>
-                                </div>
-
-                                {/* Status */}
-                                <div>
-                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold ${geo.isActive
-                                        ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-                                        : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
-                                        }`}>
-                                        {geo.isActive ? <Power size={9} /> : <PowerOff size={9} />}
-                                        {geo.isActive ? 'Активно' : 'Не активно'}
-                                    </span>
-                                </div>
-
-                                {/* Traffic */}
-                                <div className="flex items-center gap-1.5">
-                                    {geo.trafficCount > 0 ? (
-                                        <>
-                                            <TrendingUp size={12} className="text-blue-500" />
-                                            <span className="font-bold text-blue-600 dark:text-blue-400">{geo.trafficCount.toLocaleString()}</span>
-                                        </>
-                                    ) : (
-                                        <span className="text-gray-400">0</span>
-                                    )}
-                                </div>
-
-                                {/* Last Traffic Date */}
-                                <div className="flex items-center gap-1.5 text-gray-500">
-                                    {geo.trafficCount > 0 ? (
-                                        <span className="text-[10px] text-gray-400">—</span>
-                                    ) : geo.lastTrafficDate ? (
-                                        <>
-                                            <Clock size={10} className="text-gray-400" />
-                                            <span className="text-[10px] font-mono">{formatDateShort(geo.lastTrafficDate)}</span>
-                                        </>
-                                    ) : (
-                                        <span className="text-[10px] text-gray-400">Нет данных</span>
-                                    )}
-                                </div>
-
-                                {/* Last Deactivation Date */}
-                                <div className="flex items-center gap-1.5 text-gray-500">
-                                    {geo.lastDeactivated ? (
-                                        <>
-                                            <PowerOff size={10} className="text-red-400" />
-                                            <span className="text-[10px] font-mono">{formatDateShort(geo.lastDeactivated)}</span>
-                                        </>
-                                    ) : (
-                                        <span className="text-[10px] text-gray-400">—</span>
-                                    )}
-                                </div>
-
-                                {/* Sales */}
-                                <div className="flex flex-wrap gap-1 min-w-0">
-                                    {geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro'].includes(s.role)).length > 0 ? (
-                                        geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro'].includes(s.role)).map(s => {
-                                            const roleColors = {
-                                                SeniorSales: 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400',
-                                                Sales: 'bg-sky-100 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400',
-                                                SalesTaro: 'bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400',
-                                            };
-                                            const color = roleColors[s.role] || 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
-                                            const roleShort = { SeniorSales: 'Sr', Sales: 'S', SalesTaro: 'T' };
-                                            return (
-                                                <span key={s.id} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`} title={`${s.name} (${s.role})`}>
-                                                    <span className="font-bold text-[8px] opacity-60">{roleShort[s.role] || s.role}</span>
-                                                    {s.name}
-                                                    {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
-                                                </span>
-                                            );
-                                        })
-                                    ) : (
-                                        <span className="text-[10px] text-gray-400">—</span>
-                                    )}
-                                </div>
-
-                                {/* Consultant */}
-                                <div className="flex flex-wrap gap-1 min-w-0">
-                                    {geo.staff.filter(s => s.role === 'Consultant').length > 0 ? (
-                                        geo.staff.filter(s => s.role === 'Consultant').map(s => (
-                                            <span key={s.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400" title={s.name}>
-                                                {s.name}
-                                                {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
-                                            </span>
-                                        ))
-                                    ) : (
-                                        <span className="text-[10px] text-gray-400">—</span>
-                                    )}
-                                </div>
-
-                                {/* SMM */}
-                                <div className="flex flex-wrap gap-1 min-w-0">
-                                    {geo.staff.filter(s => s.role === 'SMM').length > 0 ? (
-                                        geo.staff.filter(s => s.role === 'SMM').map(s => {
-                                            return (
-                                                <span key={s.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400" title={`${s.name} (${s.role})`}>
-                                                    {s.name}
-                                                    {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
-                                                </span>
-                                            );
-                                        })
-                                    ) : (
-                                        <span className="text-[10px] text-gray-400">—</span>
-                                    )}
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex items-center gap-1 justify-end">
-                                    <button
-                                        onClick={() => setHistoryModal(geo)}
-                                        className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#333] rounded-md transition-colors"
-                                        title="История"
-                                    >
-                                        <History size={13} />
-                                    </button>
-                                    {canToggleGeo && (
-                                        <button
-                                            onClick={() => handleToggle(geo)}
-                                            disabled={isToggling}
-                                            className={`p-1.5 rounded-md transition-colors ${geo.isActive
-                                                ? 'text-emerald-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
-                                                : 'text-red-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
-                                                } ${isToggling ? 'animate-pulse cursor-wait' : ''}`}
-                                            title={geo.isActive ? 'Отключить' : 'Включить'}
-                                        >
-                                            {geo.isActive ? <Power size={13} /> : <PowerOff size={13} />}
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-
-                    {sortedGeos.length === 0 && (
-                        <div className="p-6 text-center text-xs text-gray-400">Нет ГЕО локаций</div>
-                    )}
+            {/* TABS */}
+            <div className="flex gap-2 mb-4">
+                <div className="flex bg-gray-100 dark:bg-[#161616] p-1 rounded-lg">
+                    <button
+                        onClick={() => setActiveTab('monitoring')}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'monitoring'
+                            ? 'bg-white dark:bg-[#222] text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}
+                    >
+                        <List size={14} />
+                        Мониторинг
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('calendar')}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'calendar'
+                            ? 'bg-white dark:bg-[#222] text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}
+                    >
+                        <LayoutGrid size={14} />
+                        Календарь блокировок
+                    </button>
                 </div>
             </div>
 
+            {activeTab === 'monitoring' ? (
+                /* Table */
+                <div className="border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden">
+                    {/* Table Header */}
+                    <div className="grid grid-cols-[1.5fr_0.7fr_1.2fr_0.6fr_1fr_0.9fr_1.2fr_1.2fr_1.2fr_auto] gap-3 px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333]">
+                        <span>ГЕО</span>
+                        <span>Статус</span>
+                        <span>Заметки</span>
+                        <span>Трафик</span>
+                        <span>Трафик был (дата)</span>
+                        <span>Отключено (дата)</span>
+                        <span>Sales</span>
+                        <span>Consultant</span>
+                        <span>SMM</span>
+                        <span className="text-right">Действия</span>
+                    </div>
+
+                    {/* Rows */}
+                    <div className="bg-white dark:bg-[#111] divide-y divide-gray-100 dark:divide-[#222]">
+                        {sortedGeos.map(geo => {
+                            const isToggling = toggling === geo.code;
+
+                            return (
+                                <div
+                                    key={geo.code}
+                                    className={`grid grid-cols-[1.5fr_0.7fr_1.2fr_0.6fr_1fr_0.9fr_1.2fr_1.2fr_1.2fr_auto] gap-3 px-4 py-2.5 items-center text-xs transition-colors ${geo.isActive
+                                        ? 'hover:bg-gray-50 dark:hover:bg-[#1A1A1A]'
+                                        : 'opacity-60 hover:opacity-90 hover:bg-red-50/30 dark:hover:bg-red-900/5'
+                                        }`}
+                                >
+                                    {/* GEO Name */}
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <span className="text-lg">{geo.emoji}</span>
+                                        <div className="min-w-0">
+                                            <span className="font-bold text-gray-900 dark:text-white">{geo.name}</span>
+                                            <span className="ml-1.5 text-[10px] font-mono text-gray-400">{geo.code}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Status */}
+                                    <div>
+                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold ${geo.isActive
+                                            ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
+                                            : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+                                            }`}>
+                                            {geo.isActive ? <Power size={9} /> : <PowerOff size={9} />}
+                                            {geo.isActive ? 'Активно' : 'Не активно'}
+                                        </span>
+
+                                    </div>
+
+                                    {/* Notes Summary */}
+                                    <div className="min-w-0 pr-2">
+                                        <button
+                                            onClick={() => setNotesModal(geo)}
+                                            className="text-left w-full group"
+                                        >
+                                            {lastNotes[geo.code] ? (
+                                                <div className="flex items-start gap-1">
+                                                    <MessageSquare size={10} className="mt-0.5 text-blue-500 shrink-0" />
+                                                    <span className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 leading-tight group-hover:text-blue-500 transition-colors">
+                                                        {lastNotes[geo.code]}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1 text-gray-300 dark:text-gray-700 group-hover:text-gray-400 transition-colors">
+                                                    <MessageSquare size={10} />
+                                                    <span className="text-xs">Нет заметок</span>
+                                                </div>
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {/* Traffic */}
+                                    <div className="flex items-center gap-1.5">
+                                        {geo.trafficCount > 0 ? (
+                                            <>
+                                                <TrendingUp size={12} className="text-blue-500" />
+                                                <span className="font-bold text-blue-600 dark:text-blue-400">{geo.trafficCount.toLocaleString()}</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-gray-400">0</span>
+                                        )}
+                                    </div>
+
+                                    {/* Last Traffic Date */}
+                                    <div className="flex items-center gap-1.5 text-gray-500">
+                                        {geo.trafficCount > 0 ? (
+                                            <span className="text-[10px] text-gray-400">—</span>
+                                        ) : geo.lastTrafficDate ? (
+                                            <>
+                                                <Clock size={10} className="text-gray-400" />
+                                                <span className="text-[10px] font-mono">{formatDateShort(geo.lastTrafficDate)}</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-[10px] text-gray-400">Нет данных</span>
+                                        )}
+                                    </div>
+
+                                    {/* Last Deactivation Date */}
+                                    <div className="flex items-center gap-1.5 text-gray-500">
+                                        {geo.lastDeactivated ? (
+                                            <>
+                                                <PowerOff size={10} className="text-red-400" />
+                                                <span className="text-[10px] font-mono">{formatDateShort(geo.lastDeactivated)}</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-[10px] text-gray-400">—</span>
+                                        )}
+                                    </div>
+
+                                    {/* Sales */}
+                                    <div className="flex flex-wrap gap-1 min-w-0">
+                                        {geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro'].includes(s.role)).length > 0 ? (
+                                            geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro'].includes(s.role)).map(s => {
+                                                const roleColors = {
+                                                    SeniorSales: 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400',
+                                                    Sales: 'bg-sky-100 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400',
+                                                    SalesTaro: 'bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400',
+                                                };
+                                                const color = roleColors[s.role] || 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
+                                                const roleShort = { SeniorSales: 'Sr', Sales: 'S', SalesTaro: 'T' };
+                                                return (
+                                                    <span key={s.id} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`} title={`${s.name} (${s.role})`}>
+                                                        <span className="font-bold text-[8px] opacity-60">{roleShort[s.role] || s.role}</span>
+                                                        {s.name}
+                                                        {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
+                                                    </span>
+                                                );
+                                            })
+                                        ) : (
+                                            <span className="text-[10px] text-gray-400">—</span>
+                                        )}
+                                    </div>
+
+                                    {/* Consultant */}
+                                    <div className="flex flex-wrap gap-1 min-w-0">
+                                        {geo.staff.filter(s => s.role === 'Consultant').length > 0 ? (
+                                            geo.staff.filter(s => s.role === 'Consultant').map(s => (
+                                                <span key={s.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400" title={s.name}>
+                                                    {s.name}
+                                                    {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
+                                                </span>
+                                            ))
+                                        ) : (
+                                            <span className="text-[10px] text-gray-400">—</span>
+                                        )}
+                                    </div>
+
+                                    {/* SMM */}
+                                    <div className="flex flex-wrap gap-1 min-w-0">
+                                        {geo.staff.filter(s => s.role === 'SMM').length > 0 ? (
+                                            geo.staff.filter(s => s.role === 'SMM').map(s => {
+                                                return (
+                                                    <span key={s.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400" title={`${s.name} (${s.role})`}>
+                                                        {s.name}
+                                                        {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
+                                                    </span>
+                                                );
+                                            })
+                                        ) : (
+                                            <span className="text-[10px] text-gray-400">—</span>
+                                        )}
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex items-center gap-1 justify-end">
+                                        <button
+                                            onClick={() => setHistoryModal(geo)}
+                                            className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#333] rounded-md transition-colors"
+                                            title="История"
+                                        >
+                                            <History size={13} />
+                                        </button>
+                                        {canToggleGeo && (
+                                            <button
+                                                onClick={() => handleToggleClick(geo)}
+                                                disabled={isToggling}
+                                                className={`p-1.5 rounded-md transition-colors ${geo.isActive
+                                                    ? 'text-emerald-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                                                    : 'text-red-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                                                    } ${isToggling ? 'animate-pulse cursor-wait' : ''}`}
+                                                title={geo.isActive ? 'Отключить' : 'Включить'}
+                                            >
+                                                {geo.isActive ? <Power size={13} /> : <PowerOff size={13} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {sortedGeos.length === 0 && (
+                            <div className="p-6 text-center text-xs text-gray-400">Нет ГЕО локаций</div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                <GeoCalendarView countries={sortedGeos} />
+            )}
+
+
             {/* History Modal */}
             {historyModal && <HistoryModal country={historyModal} onClose={() => setHistoryModal(null)} />}
+
+            {/* Notes Modal */}
+            {notesModal && <NotesModal country={notesModal} onClose={() => setNotesModal(null)} user={user} onNoteAdded={() => refreshNote(notesModal.code)} />}
+
+            {/* Deactivation Confirm Modal */}
+            {deactivationModal && <ConfirmDeactivationModal country={deactivationModal} onClose={() => setDeactivationModal(null)} onConfirm={(reason) => performToggle(deactivationModal, false, reason)} />}
         </div>
     );
 };
