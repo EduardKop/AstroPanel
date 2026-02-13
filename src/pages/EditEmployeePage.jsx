@@ -8,7 +8,7 @@ import {
   UploadCloud, ArrowLeft, Send, Calendar, Save, Loader2, ChevronDown, Sparkles
 } from 'lucide-react';
 
-const ROLES = ['Sales', 'SalesTaro', 'Consultant', 'SeniorSales', 'Admin', 'C-level', 'Manager'];
+const ROLES = ['Sales', 'SalesTaro', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
 
 const EditEmployeePage = () => {
   const { id } = useParams();
