@@ -24,6 +24,12 @@ const formatBirthday = (dateStr) => {
     return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 };
 
+const formatStartDate = (dateStr) => {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 const CopyButton = ({ text }) => {
     const [copied, setCopied] = useState(false);
     const handleCopy = async () => {
@@ -40,11 +46,13 @@ const CopyButton = ({ text }) => {
     );
 };
 
-const EmployeeCard = ({ employee, daysInCompany }) => {
+const GRID_COLS = "grid grid-cols-[40px_minmax(200px,1fr)_120px_100px_100px_80px_100px_80px] gap-3 items-center";
+
+const EmployeeCard = ({ employee, daysInCompany, formattedTenure, daysUntilBirthday }) => {
     const isNewbie = daysInCompany <= 7;
 
     return (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-all hover:shadow-sm ${isNewbie
+        <div className={`px-4 py-3 rounded-lg border transition-all hover:shadow-sm ${GRID_COLS} ${isNewbie
             ? 'bg-violet-50 dark:bg-violet-900/10 border-violet-200 dark:border-violet-800/30'
             : 'bg-white dark:bg-[#111] border-gray-200 dark:border-[#222]'
             }`}>
@@ -60,7 +68,7 @@ const EmployeeCard = ({ employee, daysInCompany }) => {
             </div>
 
             {/* Name + Telegram */}
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                     <span className="font-bold text-sm text-gray-900 dark:text-white truncate">{employee.name}</span>
                     {isNewbie && (
@@ -76,34 +84,54 @@ const EmployeeCard = ({ employee, daysInCompany }) => {
             </div>
 
             {/* GEO */}
-            <div className="flex flex-wrap gap-1 shrink-0">
-                {(employee.geo || []).map(g => (
+            <div className="flex flex-wrap gap-1">
+                {(employee.geo || []).slice(0, 3).map(g => (
                     <span key={g} className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-600 dark:text-gray-400">
                         {FLAGS[g] || ''} {g}
                     </span>
                 ))}
+                {(employee.geo || []).length > 3 && (
+                    <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-500 dark:text-gray-500">
+                        +{(employee.geo || []).length - 3}
+                    </span>
+                )}
             </div>
 
             {/* Role */}
-            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${employee.role === 'SalesTaro'
-                ? 'bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400'
-                : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                }`}>
-                {employee.role}
-            </span>
+            <div className="flex justify-start">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${employee.role === 'SalesTaro'
+                    ? 'bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400'
+                    : 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                    }`}>
+                    {employee.role}
+                </span>
+            </div>
+
+            {/* Start Date */}
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">
+                {formatStartDate(employee.started_at)}
+            </div>
 
             {/* Days in company */}
-            <div className="flex flex-col items-center shrink-0 min-w-[50px]">
-                <span className={`text-sm font-black ${isNewbie ? 'text-violet-600 dark:text-violet-400' : 'text-gray-900 dark:text-white'}`}>
-                    {daysInCompany}
+            <div className="flex flex-col items-center justify-center">
+                <span className={`text-xs font-black whitespace-nowrap ${isNewbie ? 'text-violet-600 dark:text-violet-400' : 'text-gray-900 dark:text-white'}`}>
+                    {formattedTenure}
                 </span>
-                <span className="text-[9px] text-gray-400">дней</span>
+            </div>
+
+            {/* Days until Birthday */}
+            <div className="text-center">
+                {daysUntilBirthday !== null && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${daysUntilBirthday <= 14 ? 'bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400' : 'text-gray-400 bg-gray-100 dark:bg-[#222] dark:text-gray-500'}`}>
+                        {daysUntilBirthday === 0 ? 'Сегодня' : `${daysUntilBirthday} дн.`}
+                    </span>
+                )}
             </div>
 
             {/* Birthday */}
-            <div className="flex items-center gap-1 shrink-0 min-w-[60px]">
+            <div className="flex items-center gap-1 justify-end">
                 <Calendar size={10} className="text-gray-400" />
-                <span className="text-[11px] text-gray-500 dark:text-gray-400">{formatBirthday(employee.birth_date)}</span>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatBirthday(employee.birth_date)}</span>
             </div>
         </div>
     );
@@ -119,20 +147,31 @@ const SectorHeader = ({ title, icon: Icon, count, color }) => (
     </div>
 );
 
-const ColumnHeaders = () => (
-    <div className="flex items-center gap-3 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+const ColumnHeaders = ({ sortOrder, onSortChange }) => (
+    <div className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 ${GRID_COLS}`}>
         {/* Avatar placeholder */}
-        <div className="w-10 shrink-0" />
+        <div />
         {/* Name + Telegram */}
-        <div className="flex-1 min-w-0">Сотрудник / Telegram</div>
+        <div>Сотрудник / Telegram</div>
         {/* GEO */}
-        <div className="shrink-0">ГЕО</div>
+        <div>ГЕО</div>
         {/* Role */}
-        <div className="shrink-0">Роль</div>
+        <div>Роль</div>
+        {/* Start Date */}
+        <div>Начал работать</div>
         {/* Days */}
-        <div className="shrink-0 min-w-[50px] text-center">Стаж</div>
+        <div
+            className="text-center cursor-pointer hover:text-violet-500 transition-colors select-none flex items-center justify-center gap-1"
+            onClick={onSortChange}
+            title="Сортировать по стажу"
+        >
+            Стаж
+            <ChevronDown size={10} className={`transform transition-transform ${sortOrder === 'asc' ? 'rotate-180' : ''}`} />
+        </div>
+        {/* Days until Birthday */}
+        <div className="text-center">До ДР</div>
         {/* Birthday */}
-        <div className="shrink-0 min-w-[60px]">Д.Р.</div>
+        <div className="text-right">Д.Р.</div>
     </div>
 );
 
@@ -140,13 +179,51 @@ const HRDashboardPage = () => {
     const { managers } = useAppStore();
     const [search, setSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('all'); // 'all', 'Sales', 'SalesTaro'
+    const [sortOrder, setSortOrder] = useState('asc'); // 'asc' (lowest tenure first) or 'desc'
 
-    // Calculate days based on started_at
-    const getDaysInCompany = (startedAt) => {
-        if (!startedAt) return 0;
-        const start = new Date(startedAt);
+    // Calculate days based on started_at or fallback to created_at
+    const getDaysInCompany = (manager) => {
+        const startDate = manager.started_at || manager.created_at;
+        if (!startDate) return 0;
+
+        const start = new Date(startDate);
+        // Valid date check
+        if (Object.prototype.toString.call(start) !== "[object Date]" || isNaN(start.getTime())) {
+            return 0;
+        }
+
         const now = new Date();
         const diffTime = Math.abs(now - start);
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    };
+
+    // Format tenure string like in BirthdaysPage
+    const formatTenure = (days) => {
+        if (days >= 365) {
+            const years = Math.floor(days / 365);
+            const months = Math.floor((days % 365) / 30);
+            return `${years} г. ${months > 0 ? `${months} мес.` : ''}`;
+        }
+        if (days >= 30) {
+            return `${Math.floor(days / 30)} мес.`;
+        }
+        return `${days} дн.`;
+    };
+
+    // Calculate days until birthday
+    const getDaysUntilBirthday = (birthDateStr) => {
+        if (!birthDateStr) return null;
+        const birthDate = new Date(birthDateStr);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const currentYear = today.getFullYear();
+        let nextBirthday = new Date(currentYear, birthDate.getMonth(), birthDate.getDate());
+
+        if (nextBirthday < today) {
+            nextBirthday.setFullYear(currentYear + 1);
+        }
+
+        const diffTime = nextBirthday - today;
         return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     };
 
@@ -172,20 +249,25 @@ const HRDashboardPage = () => {
         const expList = [];
 
         employees.forEach(emp => {
-            // Use started_at if available, otherwise 0 (treat as very new or undefined)
-            const days = getDaysInCompany(emp.started_at);
+            // Use started_at if available, otherwise created_at
+            const days = getDaysInCompany(emp);
+            const daysUntilBirthday = getDaysUntilBirthday(emp.birth_date);
 
             // Newbie if <= 7 days
             if (days <= 7) {
-                newbieList.push({ ...emp, days });
+                newbieList.push({ ...emp, days, daysUntilBirthday });
             } else {
-                expList.push({ ...emp, days });
+                expList.push({ ...emp, days, daysUntilBirthday });
             }
         });
 
-        // Sort by days within each group
-        newbieList.sort((a, b) => a.days - b.days);
-        expList.sort((a, b) => b.days - a.days);
+        // Sort by days
+        const sortFn = (a, b) => {
+            return sortOrder === 'asc' ? a.days - b.days : b.days - a.days;
+        };
+
+        newbieList.sort(sortFn);
+        expList.sort(sortFn);
 
         return {
             newbies: newbieList,
@@ -198,7 +280,9 @@ const HRDashboardPage = () => {
                 salesTaro: employees.filter(m => m.role === 'SalesTaro').length,
             }
         };
-    }, [managers, search, roleFilter]);
+    }, [managers, search, roleFilter, sortOrder]);
+
+    const toggleSort = () => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
 
     return (
         <div className="animate-in fade-in zoom-in duration-300 pb-10 font-sans max-w-5xl mx-auto">
@@ -250,7 +334,7 @@ const HRDashboardPage = () => {
                     <div className="text-2xl font-black text-gray-900 dark:text-white">{stats.total}</div>
                 </div>
                 <div className="bg-violet-50 dark:bg-violet-900/10 rounded-lg border border-violet-200 dark:border-violet-800/30 p-3">
-                    <div className="text-[10px] text-violet-500 uppercase font-bold mb-1">Новички (≤7 смен)</div>
+                    <div className="text-[10px] text-violet-500 uppercase font-bold mb-1">Новички (≤7 дней)</div>
                     <div className="text-2xl font-black text-violet-600 dark:text-violet-400">{stats.newbies}</div>
                 </div>
                 <div className="bg-white dark:bg-[#111] rounded-lg border border-gray-200 dark:border-[#222] p-3">
@@ -267,15 +351,15 @@ const HRDashboardPage = () => {
             {newbies.length > 0 && (
                 <>
                     <SectorHeader
-                        title="Новички — до 7 смен включительно"
+                        title="Новички — до 7 дней включительно"
                         icon={UserPlus}
                         count={newbies.length}
                         color="bg-violet-500"
                     />
-                    <ColumnHeaders />
+                    <ColumnHeaders sortOrder={sortOrder} onSortChange={toggleSort} />
                     <div className="space-y-2">
                         {newbies.map(emp => (
-                            <EmployeeCard key={emp.id} employee={emp} shiftsCount={emp.shifts} />
+                            <EmployeeCard key={emp.id} employee={emp} daysInCompany={emp.days} formattedTenure={formatTenure(emp.days)} daysUntilBirthday={emp.daysUntilBirthday} />
                         ))}
                     </div>
                 </>
@@ -285,15 +369,15 @@ const HRDashboardPage = () => {
             {experienced.length > 0 && (
                 <>
                     <SectorHeader
-                        title="Опытные — более 7 смен"
+                        title="Опытные — более 7 дней"
                         icon={UserCheck}
                         count={experienced.length}
                         color="bg-emerald-500"
                     />
-                    <ColumnHeaders />
+                    <ColumnHeaders sortOrder={sortOrder} onSortChange={toggleSort} />
                     <div className="space-y-2">
                         {experienced.map(emp => (
-                            <EmployeeCard key={emp.id} employee={emp} shiftsCount={emp.shifts} />
+                            <EmployeeCard key={emp.id} employee={emp} daysInCompany={emp.days} formattedTenure={formatTenure(emp.days)} daysUntilBirthday={emp.daysUntilBirthday} />
                         ))}
                     </div>
                 </>
