@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 const ROLES = ['Sales', 'SalesTaro', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
+const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 
 const EditEmployeePage = () => {
   const { id } = useParams();
@@ -318,14 +319,14 @@ const EditEmployeePage = () => {
                   <GlassInput label="Начало работы" icon={Calendar} name="started_at" value={formData.started_at} onChange={handleChange} type="date" />
                 </div>
 
-                {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН (Скрываем для Admin/C-level) */}
-                {!['Admin', 'C-level'].includes(formData.role) && (
+                {/* ✅ 2. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН (Скрываем для ролей без ГЕО) */}
+                {!GEO_FREE_ROLES.includes(formData.role) && (
                   <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-white/5">
                     <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase ml-1 flex items-center gap-2">
                       <MapPin size={14} className="text-purple-500 dark:text-purple-400" />
                       География работы
                       {/* Security note if user is editing themselves and is not admin */}
-                      {currentUser?.id === id && !['Admin', 'C-level'].includes(currentUser?.role) && (
+                      {currentUser?.id === id && !GEO_FREE_ROLES.includes(currentUser?.role) && (
                         <span className="text-[10px] text-yellow-600 dark:text-yellow-500 normal-case">
                           (Только для просмотра - изменения доступны Администратору)
                         </span>
@@ -360,6 +361,7 @@ const EditEmployeePage = () => {
                             >
                               <span className="text-base">{country.emoji}</span>
                               <span className="tracking-wide">{country.code}</span>
+                              <span className="text-[10px] opacity-70 font-normal">{country.name}</span>
                             </button>
                           )
                         })}

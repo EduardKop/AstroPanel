@@ -172,9 +172,9 @@ const HistoryModal = ({ country, onClose }) => {
 const GeoMonitoringPage = () => {
     const { countries, trafficStats, channels, user, fetchAllData, managers, schedules } = useAppStore();
 
-    // --- Active Staff per GEO (last 4 shifts from schedules) ---
+    // --- Active Staff per GEO (schedule-based for Sales, profile-based for SMM/Consultant) ---
     const activeStaffByGeo = useMemo(() => {
-        if (!schedules || !managers) return {};
+        if (!managers) return {};
 
         const today = toYMD(new Date());
         const result = {};
@@ -183,31 +183,28 @@ const GeoMonitoringPage = () => {
         const mgrMap = {};
         managers.forEach(m => { mgrMap[m.id] = m; });
 
-        // 1. Group schedule entries by GEO
-        //    Each schedule entry can have comma-separated geo_codes
+        // === PART 1: Schedule-based detection (Sales roles) ===
         const geoSchedules = {}; // geoCode -> [{date, manager_id}, ...]
-        schedules.forEach(s => {
-            if (!s.geo_code || !s.date) return;
-            const geos = s.geo_code.split(',').map(g => g.trim()).filter(Boolean);
-            geos.forEach(geo => {
-                if (!geoSchedules[geo]) geoSchedules[geo] = [];
-                geoSchedules[geo].push({ date: s.date, manager_id: s.manager_id });
+        if (schedules) {
+            schedules.forEach(s => {
+                if (!s.geo_code || !s.date) return;
+                const geos = s.geo_code.split(',').map(g => g.trim()).filter(Boolean);
+                geos.forEach(geo => {
+                    if (!geoSchedules[geo]) geoSchedules[geo] = [];
+                    geoSchedules[geo].push({ date: s.date, manager_id: s.manager_id });
+                });
             });
-        });
+        }
 
-        // 2. For each GEO: take last 4 unique dates (up to today), collect managers
+        // For each GEO from schedules: take last 4 unique dates, collect managers
         Object.entries(geoSchedules).forEach(([geoCode, entries]) => {
-            // Only past & today shifts
             const pastEntries = entries.filter(e => e.date <= today);
-
-            // Get unique dates sorted desc
             const uniqueDates = [...new Set(pastEntries.map(e => e.date))]
                 .sort((a, b) => b.localeCompare(a))
                 .slice(0, 4);
 
-            // Collect managers from those dates
             const recentDates = new Set(uniqueDates);
-            const managerShiftCount = {}; // manager_id -> count of shifts in last 4 dates
+            const managerShiftCount = {};
 
             pastEntries.forEach(e => {
                 if (recentDates.has(e.date)) {
@@ -215,25 +212,46 @@ const GeoMonitoringPage = () => {
                 }
             });
 
-            // Only include managers with 2+ shifts out of last 4 (confirms they're active, not a one-off sub)
-            // Exception: if only 1-2 dates exist total, include anyone with 1+ shift
             const minShifts = uniqueDates.length <= 2 ? 1 : 2;
+            if (!result[geoCode]) result[geoCode] = [];
 
-            const staff = [];
             Object.entries(managerShiftCount).forEach(([mgrId, count]) => {
                 if (count >= minShifts) {
                     const mgr = mgrMap[mgrId];
                     if (mgr) {
-                        staff.push({ id: mgrId, name: mgr.name, role: mgr.role, nick: mgr.telegram_username || '' });
+                        result[geoCode].push({ id: mgrId, name: mgr.name, role: mgr.role, nick: mgr.telegram_username || '' });
                     }
                 }
             });
+        });
 
-            // Sort by role priority
-            const rolePriority = { SeniorSales: 0, Sales: 1, SalesTaro: 2, Consultant: 3, SeniorSMM: 4, SMM: 5 };
+        // === PART 2: Profile-based detection (SMM, Consultant — roles that don't use schedules) ===
+        const profileRoles = ['SMM', 'Consultant'];
+        managers.forEach(mgr => {
+            if (!profileRoles.includes(mgr.role)) return;
+            if (mgr.status === 'inactive') return;
+
+            // Parse manager.geo (can be array or string)
+            const mgrGeos = Array.isArray(mgr.geo)
+                ? mgr.geo
+                : (mgr.geo ? [mgr.geo] : []);
+
+            mgrGeos.forEach(geoCode => {
+                if (!geoCode) return;
+                if (!result[geoCode]) result[geoCode] = [];
+
+                // Avoid duplicates (in case they also appear in schedules)
+                const alreadyAdded = result[geoCode].some(s => String(s.id) === String(mgr.id));
+                if (!alreadyAdded) {
+                    result[geoCode].push({ id: mgr.id, name: mgr.name, role: mgr.role, nick: mgr.telegram_username || '' });
+                }
+            });
+        });
+
+        // Sort each GEO's staff by role priority
+        const rolePriority = { SeniorSales: 0, Sales: 1, SalesTaro: 2, Consultant: 3, SMM: 4 };
+        Object.values(result).forEach(staff => {
             staff.sort((a, b) => (rolePriority[a.role] ?? 99) - (rolePriority[b.role] ?? 99));
-
-            result[geoCode] = staff;
         });
 
         return result;
@@ -449,7 +467,7 @@ const GeoMonitoringPage = () => {
                                                 <span key={s.id} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`} title={`${s.name} (${s.role})`}>
                                                     <span className="font-bold text-[8px] opacity-60">{roleShort[s.role] || s.role}</span>
                                                     {s.name}
-                                                    {s.nick && <span className="text-[9px] opacity-50">@{s.nick.replace('@', '')}</span>}
+                                                    {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
                                                 </span>
                                             );
                                         })
@@ -464,7 +482,7 @@ const GeoMonitoringPage = () => {
                                         geo.staff.filter(s => s.role === 'Consultant').map(s => (
                                             <span key={s.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400" title={s.name}>
                                                 {s.name}
-                                                {s.nick && <span className="text-[9px] opacity-50">@{s.nick.replace('@', '')}</span>}
+                                                {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
                                             </span>
                                         ))
                                     ) : (
@@ -474,14 +492,12 @@ const GeoMonitoringPage = () => {
 
                                 {/* SMM */}
                                 <div className="flex flex-wrap gap-1 min-w-0">
-                                    {geo.staff.filter(s => ['SMM', 'SeniorSMM'].includes(s.role)).length > 0 ? (
-                                        geo.staff.filter(s => ['SMM', 'SeniorSMM'].includes(s.role)).map(s => {
-                                            const isSenior = s.role === 'SeniorSMM';
+                                    {geo.staff.filter(s => s.role === 'SMM').length > 0 ? (
+                                        geo.staff.filter(s => s.role === 'SMM').map(s => {
                                             return (
-                                                <span key={s.id} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${isSenior ? 'bg-pink-100 dark:bg-pink-900/20 text-pink-700 dark:text-pink-400' : 'bg-rose-100 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400'}`} title={`${s.name} (${s.role})`}>
-                                                    {isSenior && <span className="font-bold text-[8px] opacity-60">Sr</span>}
+                                                <span key={s.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-100 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400" title={`${s.name} (${s.role})`}>
                                                     {s.name}
-                                                    {s.nick && <span className="text-[9px] opacity-50">@{s.nick.replace('@', '')}</span>}
+                                                    {s.nick && <span className="text-[9px] opacity-50 cursor-pointer hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(s.nick.startsWith('@') ? s.nick : '@' + s.nick); const el = e.currentTarget; el.textContent = '✓'; setTimeout(() => { el.textContent = '@' + s.nick.replace('@', ''); }, 800); }} title="Нажмите чтобы скопировать">@{s.nick.replace('@', '')}</span>}
                                                 </span>
                                             );
                                         })

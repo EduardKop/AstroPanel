@@ -8,6 +8,7 @@ import {
 import { useAppStore } from '../store/appStore';
 
 const ROLES = ['Sales', 'SalesTaro', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
+const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 
 const AddEmployeePage = () => {
   const navigate = useNavigate();
@@ -72,7 +73,12 @@ const AddEmployeePage = () => {
   };
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'role' && GEO_FREE_ROLES.includes(value)) {
+      setFormData(prev => ({ ...prev, [name]: value, geo: [] }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const toggleCountry = (code) => {
@@ -86,8 +92,9 @@ const AddEmployeePage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.telegram_id || formData.geo.length === 0 || !avatarFile) {
-      alert('Ошибка: Все поля обязательны, включая аватарку и ГЕО!');
+    const needsGeo = !GEO_FREE_ROLES.includes(formData.role);
+    if (!formData.name || !formData.telegram_id || !avatarFile || (needsGeo && formData.geo.length === 0)) {
+      alert(needsGeo ? 'Ошибка: Все поля обязательны, включая аватарку и ГЕО!' : 'Ошибка: Все поля обязательны, включая аватарку!');
       return;
     }
 
@@ -243,37 +250,40 @@ const AddEmployeePage = () => {
               </InputGroup>
             </div>
 
-            {/* ✅ 3. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН ИЗ БД */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2">
-                <MapPin size={14} /> Доступные ГЕО
-              </label>
+            {/* ✅ 3. ДИНАМИЧЕСКИЙ ВЫБОР СТРАН ИЗ БД (скрыт для ролей без ГЕО) */}
+            {!GEO_FREE_ROLES.includes(formData.role) && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase ml-1 flex items-center gap-2">
+                  <MapPin size={14} /> Доступные ГЕО
+                </label>
 
-              {availableCountries.length === 0 ? (
-                <div className="text-xs text-gray-400">Загрузка стран...</div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {availableCountries.map(country => {
-                    const isActive = formData.geo.includes(country.code);
-                    return (
-                      <button
-                        key={country.code}
-                        type="button"
-                        onClick={() => toggleCountry(country.code)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30'
-                          : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                          }`}
-                      >
-                        <span>{country.emoji}</span>
-                        <span>{country.code}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-              {formData.geo.length === 0 && <p className="text-[10px] text-red-500">Выберите хотя бы одну страну</p>}
-            </div>
+                {availableCountries.length === 0 ? (
+                  <div className="text-xs text-gray-400">Загрузка стран...</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {availableCountries.map(country => {
+                      const isActive = formData.geo.includes(country.code);
+                      return (
+                        <button
+                          key={country.code}
+                          type="button"
+                          onClick={() => toggleCountry(country.code)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30'
+                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                            }`}
+                        >
+                          <span>{country.emoji}</span>
+                          <span>{country.code}</span>
+                          <span className="text-[10px] opacity-70">{country.name}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {formData.geo.length === 0 && <p className="text-[10px] text-red-500">Выберите хотя бы одну страну</p>}
+              </div>
+            )}
 
             <button
               type="submit"
