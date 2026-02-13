@@ -24,7 +24,6 @@ const SECTIONS = [
             { key: 'geo_matrix', label: 'Матрица ГЕО', icon: LayoutGrid },
             { key: 'geo_monitoring', editKey: 'geo_toggle', label: 'ГЕО', icon: Globe },
             { key: 'transactions_view', editKey: 'transactions_edit', label: 'Транзакции', icon: CreditCard },
-            { key: 'transactions_refund', label: 'Возвраты', icon: RefreshCcw },
         ]
     },
     {
@@ -284,13 +283,6 @@ const CLevelSettingsPage = () => {
                         newPerms['C-level'][item.editKey] = true;
                     }
                 });
-            });
-
-            // Set default for new permission 'transactions_refund'
-            ['Admin', 'SeniorSales'].forEach(role => {
-                if (newPerms[role] && newPerms[role]['transactions_refund'] === undefined) {
-                    newPerms[role]['transactions_refund'] = true;
-                }
             });
 
             setLocalPermissions(newPerms);

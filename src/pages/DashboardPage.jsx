@@ -506,10 +506,7 @@ const DashboardPage = () => {
 
   const stats = useMemo(() => {
     const totalEur = filteredData.reduce((sum, item) => sum + (item.amountEUR || 0), 0);
-
-    // Count only positive sales for the "Sales Count", excluding refunds
-    const count = filteredData.filter(item => item.amountEUR > 0).length;
-
+    const count = filteredData.length;
     let traffic = 0;
 
     // New metrics
@@ -519,9 +516,6 @@ const DashboardPage = () => {
 
     // Count ranks and managers from filtered Data
     filteredData.forEach(p => {
-      // Skip refunds/negative amounts for these counts
-      if ((p.amountEUR || 0) <= 0) return;
-
       if (p.manager) activeManagersSet.add(p.manager);
 
       // Use Global Rank

@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import PaymentsTable from '../components/PaymentsTable';
 import { SearchModal, SearchButton } from '../components/ui/SearchInput';
-import RefundPaymentModal from '../components/payments/RefundPaymentModal';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { extractUTCDate, getKyivDateString } from '../utils/kyivTime';
@@ -164,7 +163,7 @@ const PaymentsPage = () => {
   const [sortField, setSortField] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -177,16 +176,10 @@ const PaymentsPage = () => {
   const [bulkEditField, setBulkEditField] = useState('manager_id');
   const [bulkEditValue, setBulkEditValue] = useState('');
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
-  const [isRefundMode, setIsRefundMode] = useState(false);
-
-  // Refund Modal State
-  const [refundPayment, setRefundPayment] = useState(null);
-  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
 
   // Check if user has edit permission (C-Level always has access OR role has transactions_edit permission)
   const isCLevel = currentUser?.role === 'C-level';
   const canEditTransactions = isCLevel || (permissions?.[currentUser?.role]?.transactions_edit === true);
-  const canRefund = isCLevel || (permissions?.[currentUser?.role]?.transactions_refund === true);
 
   // Авто-обновление при маунте для получения свежих данных
   useEffect(() => {
@@ -194,8 +187,8 @@ const PaymentsPage = () => {
   }, [fetchAllData]);
 
   const hasActiveFilters = useMemo(() => {
-    return !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all' || statusFilter.length > 0);
-  }, [filters, statusFilter]);
+    return !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all');
+  }, [filters]);
 
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
@@ -214,7 +207,6 @@ const PaymentsPage = () => {
 
   const resetFilters = () => {
     setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all' });
-    setStatusFilter([]);
     setDateRange(getLastWeekRange());
     setSearchQuery('');
     setIsSearchOpen(false);
@@ -291,16 +283,6 @@ const PaymentsPage = () => {
     }
   };
 
-  const handleRefund = (payment) => {
-    setRefundPayment(payment);
-    setIsRefundModalOpen(true);
-  };
-
-  const handleRefundSuccess = () => {
-    fetchAllData(); // Refresh data to show the new refund
-    setIsRefundModalOpen(false);
-  };
-
   // --- 📊 PAYMENT RANKING LOGIC ---
   const paymentRanks = useMemo(() => {
     const ranks = new Map(); // Map<PaymentID, RankNumber>
@@ -368,14 +350,9 @@ const PaymentsPage = () => {
       }
 
       // Status filter
-      if (statusFilter.length > 0) {
-        let matchesStatus = false;
-        for (const sf of statusFilter) {
-          if (sf === 'refund' && item.status === 'refund') matchesStatus = true;
-          if (sf === 'unknown' && item.source === 'unknown' && item.status !== 'refund') matchesStatus = true;
-          if (sf === 'completed' && item.source !== 'unknown' && item.status !== 'refund') matchesStatus = true;
-        }
-        if (!matchesStatus) return false;
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'unknown' && item.source !== 'unknown') return false;
+        if (statusFilter === 'completed' && item.source === 'unknown') return false;
       }
 
       return true;
@@ -434,7 +411,7 @@ const PaymentsPage = () => {
           {/* C-Level Edit Mode Toggle */}
           {canEditTransactions && (
             <button
-              onClick={() => { setIsEditMode(!isEditMode); setIsRefundMode(false); }}
+              onClick={() => setIsEditMode(!isEditMode)}
               className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[10px] font-bold transition-all ${isEditMode
                 ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20'
                 : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/20 hover:text-amber-600'
@@ -442,19 +419,6 @@ const PaymentsPage = () => {
             >
               <Edit2 size={12} />
               {isEditMode ? 'Выключить редактирование' : 'Режим редактирования'}
-            </button>
-          )}
-
-          {canRefund && (
-            <button
-              onClick={() => { setIsRefundMode(!isRefundMode); setIsEditMode(false); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[10px] font-bold transition-all ${isRefundMode
-                ? 'bg-red-500 text-white shadow-lg shadow-red-500/20'
-                : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/20 hover:text-red-500'
-                } ${!canEditTransactions ? 'ml-auto' : ''}`}
-            >
-              <RotateCcw size={12} />
-              {isRefundMode ? 'Выключить возвраты' : 'Режим возврата'}
             </button>
           )}
         </div>
@@ -510,7 +474,6 @@ const PaymentsPage = () => {
               ]}
             />
             <DenseSelect label="Тип" value={filters.type} options={uniqueValues.types} onChange={(val) => setFilters(p => ({ ...p, type: val }))} />
-            <DenseSelect label="Статус" value={statusFilter} options={['completed', 'unknown', 'refund']} onChange={setStatusFilter} />
 
             <CustomDateRangePicker
               startDate={startDate}
@@ -583,19 +546,8 @@ const PaymentsPage = () => {
           selectedIds={selectedIds}
           onSelectionChange={handleSelectionChange}
           onSelectAll={handleSelectAll}
-          onRefund={isRefundMode && canRefund ? handleRefund : null}
         />
       </div>
-
-      {/* Refund Modal */}
-      {refundPayment && (
-        <RefundPaymentModal
-          isOpen={isRefundModalOpen}
-          onClose={() => setIsRefundModalOpen(false)}
-          payment={refundPayment}
-          onSuccess={handleRefundSuccess}
-        />
-      )}
 
       {/* Search Modal */}
       <SearchModal

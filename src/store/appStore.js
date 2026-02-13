@@ -242,33 +242,10 @@ export const useAppStore = create((set, get) => ({
     set({ isLoading: true });
 
     try {
-      // Helper for RPC pagination (bypasses 1000-row default limit)
-      const fetchAllRPC = async (rpcName, params = {}) => {
-        let allData = [];
-        let from = 0;
-        const step = 1000;
+      // А. Каналы
+      // А. Каналы
+      // Optimized: Fetch leads stats via RPC instead of raw rows
 
-        while (true) {
-          const { data, error } = await supabase
-            .rpc(rpcName, params)
-            .range(from, from + step - 1);
-
-          if (error) {
-            console.error(`Error fetching RPC ${rpcName}:`, error);
-            break;
-          }
-
-          if (data) {
-            allData = [...allData, ...data];
-            if (data.length < step) break;
-          } else {
-            break;
-          }
-          from += step;
-        }
-        console.log(`📊 fetchAllRPC('${rpcName}'): загружено ${allData.length} записей`);
-        return allData;
-      };
 
       // PARALLEL FETCHING: Group independent requests including LEADS
       const [
@@ -285,8 +262,8 @@ export const useAppStore = create((set, get) => ({
         kpiSettingsData,
         appSettingsData,
         managerRatesData,
-        leadsMappingData,
-        leadsStatsData
+        leadsMappingData, // RPC for payment attribution
+        leadsStatsData    // RPC for traffic charts
       ] = await Promise.all([
         fetchAll('channels', '*', 'id', true),
         fetchAll('managers', '*', 'created_at', false),
@@ -301,7 +278,7 @@ export const useAppStore = create((set, get) => ({
         fetchAll('kpi_settings', '*', 'key', true),
         fetchAll('app_settings', '*', 'key', true),
         fetchAll('manager_rates', '*', 'created_at', false),
-        fetchAllRPC('get_leads_mapping'),
+        supabase.rpc('get_leads_mapping').then(r => r.data || []),
         supabase.rpc('get_lead_stats').then(r => r.data || [])
       ]);
 

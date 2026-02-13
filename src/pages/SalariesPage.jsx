@@ -214,8 +214,6 @@ const SalariesPage = () => {
     const preCalcManagers = salesManagers.map(mgr => {
       const mgrPayments = payments.filter(p => {
         if (p.managerId !== mgr.id || !p.transactionDate) return false;
-        // Exclude refunds (negative amounts) from stats/bonuses
-        if ((p.amountEUR || 0) <= 0) return false;
         const tDate = new Date(p.transactionDate);
         return tDate >= startOfMonth && tDate <= endOfMonth;
       });

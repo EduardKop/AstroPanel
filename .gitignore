@@ -73,10 +73,3 @@ export_leads_nicknames.js
 backups/
 .vercel
 .env*.local
-
-# SQL migration/debug scripts (may expose DB schema)
-*.sql
-
-# Scripts with hardcoded credentials
-scripts/debug_leads.js
-scripts/backup.js
