@@ -407,6 +407,8 @@ const GeoMatrixPage = () => {
 
             payments.forEach(p => {
                 if (!p.transactionDate) return;
+                // Exclude refunds
+                if ((p.amountEUR || 0) <= 0) return;
                 // Фильтры
                 if (filters.product.length > 0 && !filters.product.includes(p.product)) return;
                 if (filters.type.length > 0 && !filters.type.includes(p.type)) return;

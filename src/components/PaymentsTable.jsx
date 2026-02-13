@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, Coins, Copy, Check, Filter, ArrowUpDown, Save, X, Square, CheckSquare } from 'lucide-react';
+import { DollarSign, Coins, Copy, Check, Filter, ArrowUpDown, Save, X, Square, CheckSquare, RotateCcw } from 'lucide-react';
 import Toast from './ui/Toast';
 import { formatKyivDate, formatKyivTime } from '../utils/kyivTime';
 
@@ -36,7 +36,8 @@ const PaymentsTable = ({
   // Bulk selection props
   selectedIds = new Set(),
   onSelectionChange,
-  onSelectAll
+  onSelectAll,
+  onRefund // Prop for refund handler
 }) => {
   const [toastVisible, setToastVisible] = useState(false);
   const [editingRow, setEditingRow] = useState(null); // ID of row being edited
@@ -174,14 +175,14 @@ const PaymentsTable = ({
                     {getStatusLabel()}
                   </button>
                 </th>
-                {isEditMode && <th className="px-4 py-3 text-center">Действия</th>}
+                {(isEditMode || onRefund) && <th className="px-4 py-3 text-center">{isEditMode ? 'Действия' : 'Возврат'}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
               {loading ? (
-                <tr><td colSpan={isEditMode ? "12" : "11"} className="px-4 py-8 text-center">Загрузка...</td></tr>
+                <tr><td colSpan={(isEditMode || onRefund) ? "12" : "11"} className="px-4 py-8 text-center">Загрузка...</td></tr>
               ) : payments.length === 0 ? (
-                <tr><td colSpan={isEditMode ? "12" : "11"} className="px-4 py-8 text-center">Нет данных</td></tr>
+                <tr><td colSpan={(isEditMode || onRefund) ? "12" : "11"} className="px-4 py-8 text-center">Нет данных</td></tr>
               ) : (
                 payments.map((p) => {
                   const isEditing = editingRow === p.id;
@@ -407,34 +408,47 @@ const PaymentsTable = ({
                         )}
                       </td>
 
-                      {/* Actions (Edit Mode) */}
-                      {isEditMode && (
+                      {/* Actions (Edit Mode or Refund) */}
+                      {(isEditMode || onRefund) && (
                         <td className="px-4 py-2 text-center">
-                          {isEditing ? (
-                            <div className="flex items-center justify-center gap-1">
+                          {isEditMode ? (
+                            isEditing ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => saveEdit(p.id)}
+                                  disabled={saving}
+                                  className="p-1.5 rounded bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                                  title="Сохранить"
+                                >
+                                  <Save size={12} />
+                                </button>
+                                <button
+                                  onClick={cancelEdit}
+                                  className="p-1.5 rounded bg-gray-400 text-white hover:bg-gray-500 transition-colors"
+                                  title="Отмена"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            ) : (
                               <button
-                                onClick={() => saveEdit(p.id)}
-                                disabled={saving}
-                                className="p-1.5 rounded bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors"
-                                title="Сохранить"
+                                onClick={() => startEdit(p)}
+                                className="px-2 py-1 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/30 transition-colors"
                               >
-                                <Save size={12} />
+                                Изменить
                               </button>
-                              <button
-                                onClick={cancelEdit}
-                                className="p-1.5 rounded bg-gray-400 text-white hover:bg-gray-500 transition-colors"
-                                title="Отмена"
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>
+                            )
                           ) : (
-                            <button
-                              onClick={() => startEdit(p)}
-                              className="px-2 py-1 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/30 transition-colors"
-                            >
-                              Изменить
-                            </button>
+                            /* Refund Button - Only if onRefund is present AND payment is not a refund itself */
+                            onRefund && (p.amountEUR > 0) && (
+                              <button
+                                onClick={() => onRefund(p)}
+                                className="p-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors"
+                                title="Сделать возврат"
+                              >
+                                <RotateCcw size={14} />
+                              </button>
+                            )
                           )}
                         </td>
                       )}

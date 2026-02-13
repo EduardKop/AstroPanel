@@ -475,6 +475,8 @@ const StatsPage = () => {
 
     let data = payments.filter(item => {
       if (!item.transactionDate) return false;
+      // Exclude refunds (negative amounts) from stats
+      if ((item.amountEUR || 0) <= 0) return false;
 
       // Берем дату из базы в Kyiv timezone
       const dbDateStr = extractUTCDate(item.transactionDate);
