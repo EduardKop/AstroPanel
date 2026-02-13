@@ -36,6 +36,7 @@ import TimeLogPage from './pages/TimeLogPage';
 import CLevelSettingsPage from './pages/CLevelSettingsPage';
 import ActivityLogsPage from './pages/ActivityLogsPage';
 import PaymentTimesPage from './pages/PaymentTimesPage';
+import HRDashboardPage from './pages/HRDashboardPage';
 
 // Sales Department Pages
 import SalesDashboardPage from './pages/sales/SalesDashboardPage';
@@ -489,11 +490,14 @@ function App() {
                         <div className="flex items-center gap-2.5"><Users size={16} /><span>Сотрудники</span></div>
                         <ChevronRight size={12} className={`transition-transform duration-200 ${isEmployeesOpen ? 'rotate-90' : ''}`} />
                       </button>
-                      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isEmployeesOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
+                      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isEmployeesOpen ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
                         <SidebarItem icon={Contact} label="Все сотрудники" path="/all-employees" isChild />
                         <SidebarItem icon={Briefcase} label="Отдел Продаж" path="/sales-team" isChild />
                         <SidebarItem icon={Headphones} label="Консультанты" path="/consultants" isChild />
                         <SidebarItem icon={Gift} label="Дни Рождения" path="/birthdays" isChild />
+                        {hasAccess('hr_dashboard') && (
+                          <SidebarItem icon={Users} label="HR Дашборд" path="/hr-dashboard" isChild />
+                        )}
                         {hasAccess('salaries') && (
                           <SidebarItem icon={Coins} label="Зарплаты" path="/salaries" isChild />
                         )}
@@ -602,6 +606,7 @@ function App() {
               <Route path="/add-employee" element={<ProtectedRoute resource="employees_manage"><AddEmployeePage /></ProtectedRoute>} />
               <Route path="/edit-employee/:id" element={<ProtectedRoute resource="employees_manage"><EditEmployeePage /></ProtectedRoute>} />
               <Route path="/birthdays" element={<ProtectedRoute resource="employees_list"><BirthdaysPage /></ProtectedRoute>} />
+              <Route path="/hr-dashboard" element={<ProtectedRoute resource="hr_dashboard"><HRDashboardPage /></ProtectedRoute>} />
 
               {/* ✅ РОУТ ЗАРПЛАТЫ */}
               <Route path="/salaries" element={<ProtectedRoute resource="salaries"><SalariesPage /></ProtectedRoute>} />
