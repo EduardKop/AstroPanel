@@ -56,6 +56,7 @@ import ConsStatsPage from './pages/consultations/ConsStatsPage';
 import ConsConversionsPage from './pages/consultations/ConsConversionsPage';
 
 import GeoSettingsPage from './pages/GeoSettingsPage';
+import GeoMonitoringPage from './pages/GeoMonitoringPage';
 import PaymentAuditPage from './pages/PaymentAuditPage';
 import AddPaymentButton from './components/payments/AddPaymentButton';
 
@@ -306,7 +307,7 @@ function App() {
   const closeToast = () => setToast(prev => ({ ...prev, visible: false }));
 
   // --- SECTION VISIBILITY LOGIC ---
-  const showDashboardsSection = hasAccess('dashboard_view') || hasAccess('stats') || hasAccess('geo') || hasAccess('geo_matrix') || hasAccess('transactions_view');
+  const showDashboardsSection = hasAccess('dashboard_view') || hasAccess('stats') || hasAccess('geo') || hasAccess('geo_matrix') || hasAccess('transactions_view') || hasAccess('geo_monitoring');
 
   const showSalesSection = hasAccess('sales_dashboard') || hasAccess('sales_payments') || hasAccess('sales_quick_stats') || hasAccess('sales_matrix') || hasAccess('sales_geo') || hasAccess('sales_stats');
 
@@ -388,6 +389,7 @@ function App() {
                   {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
                   {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
                   {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
+                  {hasAccess('geo_monitoring') && <SidebarItem icon={Globe} label="ГЕО" path="/geo-monitoring" />}
                   {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
                 </div>
@@ -616,6 +618,7 @@ function App() {
               <Route path="/learning" element={<ProtectedRoute resource="knowledge_base"><LearningCenterPage /></ProtectedRoute>} />
 
               {/* ✅ ADMIN ROUTES */}
+              <Route path="/geo-monitoring" element={<ProtectedRoute resource="geo_monitoring"><GeoMonitoringPage /></ProtectedRoute>} />
               <Route path="/activity-logs" element={<ProtectedRoute allowedRoles={['Admin', 'C-level']}><ActivityLogsPage /></ProtectedRoute>} />
 
               {/* ✅ C-LEVEL SETTINGS: ТОЛЬКО C-LEVEL */}

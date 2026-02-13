@@ -8,7 +8,7 @@ import {
     BookOpen, Coins, Calendar, Clock, Lock, CheckSquare, Square, PieChart, Eye, ShieldAlert, Activity
 } from 'lucide-react';
 
-const ROLES = ['C-level', 'Admin', 'HR', 'SeniorSales', 'Sales', 'SalesTaro', 'Consultant'];
+const ROLES = ['C-level', 'Admin', 'HR', 'SeniorSales', 'Sales', 'SalesTaro', 'Consultant', 'SeniorSMM', 'SMM'];
 
 // Configuration mapping sections to permissions with Icons
 const SECTIONS = [
@@ -22,6 +22,7 @@ const SECTIONS = [
             { key: 'quick_stats', label: 'Сравн. Анализ', icon: BarChart3 },
             { key: 'geo', label: 'География', icon: Globe },
             { key: 'geo_matrix', label: 'Матрица ГЕО', icon: LayoutGrid },
+            { key: 'geo_monitoring', label: 'ГЕО', icon: Globe },
             { key: 'transactions_view', editKey: 'transactions_edit', label: 'Транзакции', icon: CreditCard },
         ]
     },

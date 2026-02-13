@@ -173,3 +173,36 @@ export const deleteCountry = async (code) => {
   if (error) throw error;
   return true;
 };
+
+// --- 8. TOGGLE GEO STATUS (Active/Inactive) ---
+export const toggleGeoStatus = async (code, newIsActive, userName) => {
+  // 1. Get current status_history
+  const { data: country, error: fetchError } = await supabase
+    .from('countries')
+    .select('status_history')
+    .eq('code', code)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const history = Array.isArray(country?.status_history) ? country.status_history : [];
+
+  // 2. Append new entry
+  history.push({
+    action: newIsActive ? 'activated' : 'deactivated',
+    at: new Date().toISOString(),
+    by: userName || 'Unknown'
+  });
+
+  // 3. Update both fields
+  const { error } = await supabase
+    .from('countries')
+    .update({
+      is_active: newIsActive,
+      status_history: history
+    })
+    .eq('code', code);
+
+  if (error) throw error;
+  return true;
+};
