@@ -392,6 +392,7 @@ function App() {
                   {hasAccess('geo_monitoring') && <SidebarItem icon={Globe} label="ГЕО" path="/geo-monitoring" />}
                   {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
+                  {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. Анализ" path="/quick-stats" />}
                 </div>
               </>
             )}
@@ -571,7 +572,7 @@ function App() {
           <div className="p-3 md:p-6 pb-safe">{/* pb-safe for notch devices */}
             <Routes>
               <Route path="/" element={<ProtectedRoute resource="dashboard_view"><DashboardPage /></ProtectedRoute>} />
-              <Route path="/quick-stats" element={<ProtectedRoute resource="quick_stats"><QuickStatsPage /></ProtectedRoute>} />
+              <Route path="/quick-stats" element={<ProtectedRoute resource="quick_stats"><SalesQuickStatsPage /></ProtectedRoute>} />
               <Route path="/stats" element={<ProtectedRoute resource="stats"><StatsPage /></ProtectedRoute>} />
               <Route path="/list" element={<ProtectedRoute resource="transactions_view"><PaymentsPage /></ProtectedRoute>} />
 

@@ -463,7 +463,7 @@ export const useAppStore = create((set, get) => ({
         fetchAll('app_settings', '*', 'key', true),
         fetchAll('manager_rates', '*', 'created_at', false),
         supabase.rpc('get_leads_mapping').then(r => r.data || []),
-        supabase.rpc('get_lead_stats').then(r => r.data || [])
+        supabase.rpc('get_lead_stats_v2', { start_date: '2020-01-01', end_date: '2030-01-01' }).then(r => r.data || [])
       ]);
 
 
