@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { showToast } from '../utils/toastEvents';
-import { Save, Loader2, Calculator, DollarSign } from 'lucide-react';
+import { Save, Loader2, Calculator } from 'lucide-react';
 
-const EXTRA_SHIFT_RATE = 10; // $150 / 15 = $10 за доп смену
+
 
 const ScheduleStats = ({ rows, currentDate, managerRates, kpiSettings, onDataChange }) => {
     const [adjustments, setAdjustments] = useState({});
@@ -17,37 +17,7 @@ const ScheduleStats = ({ rows, currentDate, managerRates, kpiSettings, onDataCha
         return `${year}-${month}-01`;
     };
 
-    // Ключ месяца для поиска override в manager_rates
-    const monthKey = useMemo(() => {
-        const year = currentDate.getFullYear();
-        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-        return `${year}-${month}`;
-    }, [currentDate]);
 
-    // Map индивидуальных ставок: manager_id -> { default: {...}, 'YYYY-MM': {...} }
-    const mgrRatesMap = useMemo(() => {
-        const map = {};
-        (managerRates || []).forEach(r => {
-            if (!map[r.manager_id]) map[r.manager_id] = {};
-            const key = r.month || 'default';
-            map[r.manager_id][key] = r;
-        });
-        return map;
-    }, [managerRates]);
-
-    const baseSalary = Number(kpiSettings?.base_salary || 0);
-
-    // Хелпер: получить ставку менеджера
-    const getManagerRate = (managerId) => {
-        const mRates = mgrRatesMap[managerId] || {};
-        const monthRate = mRates[monthKey];
-        const defaultRate = mRates['default'];
-        const src = monthRate || defaultRate;
-        return {
-            base_rate: Number(src?.base_rate || 0),
-            hasIndividualRate: !!src
-        };
-    };
 
     // Load adjustments
     useEffect(() => {
@@ -116,34 +86,11 @@ const ScheduleStats = ({ rows, currentDate, managerRates, kpiSettings, onDataCha
         const multiGeoShifts = shiftsValues.filter(geo => geo.includes(',')).length;
         const extraShifts = adjustments[row.id] || 0;
 
-        // Расчет стоимости смен
-        const rate = getManagerRate(row.id);
-        const effectiveRate = rate.hasIndividualRate ? rate.base_rate : baseSalary;
-        const perShiftRate = effectiveRate / 15; // Ставка / 15
-        const extraShiftRate = EXTRA_SHIFT_RATE; // $10 за доп смену
-
-        // Обычные смены (все кроме Доп смена) * perShiftRate
-        // Доп смены = multiGeoShifts (когда 2 ГЕО в 1 день)
-        const regularShifts = totalShifts - multiGeoShifts;
-        const regularCost = regularShifts * perShiftRate;
-
-        // Мульти-ГЕО дни: основная смена ($perShiftRate) + доп смена ($10)
-        const multiGeoCost = multiGeoShifts * (perShiftRate + extraShiftRate);
-
-        // Доп смены из adjustments (ручные)
-        const extraCost = extraShifts * extraShiftRate;
-
-        const totalShiftSalary = regularCost + multiGeoCost + extraCost;
-
         return {
             ...row,
             totalShifts,
             multiGeoShifts,
-            extraShifts,
-            perShiftRate,
-            effectiveRate,
-            hasIndividualRate: rate.hasIndividualRate,
-            totalShiftSalary
+            extraShifts
         };
     });
 
@@ -171,10 +118,7 @@ const ScheduleStats = ({ rows, currentDate, managerRates, kpiSettings, onDataCha
                             <th className="px-4 py-3 font-medium">ГЕО</th>
                             <th className="px-4 py-3 font-medium text-center">Всего смен</th>
                             <th className="px-4 py-3 font-medium text-center">Совмещения (2 ГЕО)</th>
-                            <th className="px-4 py-3 font-medium text-center w-[180px]">Доп. смены</th>
-                            <th className="px-4 py-3 font-medium text-right">Ставка</th>
-                            <th className="px-4 py-3 font-medium text-right">$/Смена</th>
-                            <th className="px-4 py-3 rounded-r-xl font-medium text-right text-emerald-600 dark:text-emerald-400">ЗП по сменам</th>
+                            <th className="px-4 py-3 rounded-r-xl font-medium text-center w-[180px]">Доп. смены</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
@@ -221,20 +165,6 @@ const ScheduleStats = ({ rows, currentDate, managerRates, kpiSettings, onDataCha
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-4 py-3 text-right font-mono text-gray-500 text-xs">
-                                    <div className="flex flex-col items-end">
-                                        <span>${stat.effectiveRate}</span>
-                                        {stat.hasIndividualRate && <span className="text-[9px] text-blue-400">инд.</span>}
-                                    </div>
-                                </td>
-                                <td className="px-4 py-3 text-right font-mono text-xs text-gray-600 dark:text-gray-400">
-                                    ${fmt(stat.perShiftRate)}
-                                </td>
-                                <td className="px-4 py-3 text-right">
-                                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                        ${fmt(stat.totalShiftSalary)}
-                                    </span>
-                                </td>
                             </tr>
                         ))}
                     </tbody>
@@ -251,11 +181,6 @@ const ScheduleStats = ({ rows, currentDate, managerRates, kpiSettings, onDataCha
                             </td>
                             <td className="px-4 py-4 text-center font-bold text-gray-700 dark:text-gray-300">
                                 {stats.reduce((acc, s) => acc + (parseInt(s.extraShifts) || 0), 0)}
-                            </td>
-                            <td className="px-4 py-4"></td>
-                            <td className="px-4 py-4"></td>
-                            <td className="px-4 py-4 text-right font-bold text-emerald-600 dark:text-emerald-400 text-base">
-                                ${fmt(stats.reduce((acc, s) => acc + s.totalShiftSalary, 0))}
                             </td>
                         </tr>
                     </tfoot>
