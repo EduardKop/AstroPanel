@@ -86,6 +86,7 @@ export const useAppStore = create((set, get) => ({
 
   // Данные трафика
   trafficStats: {},
+  salesStats: [], // NEW: Optimized sales stats from RPC
 
   // Dynamic Settings (Role Permissions & Docs)
   permissions: {},
@@ -141,6 +142,7 @@ export const useAppStore = create((set, get) => ({
       // ...
       auditExceptions: [],
       trafficStats: {},
+      salesStats: [],
       kpiRates: [],
       kpiSettings: {},
       managerRates: [],
@@ -153,7 +155,7 @@ export const useAppStore = create((set, get) => ({
       const map = get().channelsMap;
 
       // Use RPC for filtered stats
-      const { data, error } = await supabase.rpc('get_lead_stats', {
+      const { data, error } = await supabase.rpc('get_lead_stats_v2', {
         start_date: dateFrom,
         end_date: dateTo
       });
@@ -184,6 +186,131 @@ export const useAppStore = create((set, get) => ({
       set({ trafficStats: formattedStats });
     } catch (error) {
       console.error('Error fetching traffic stats:', error);
+    }
+  },
+
+  // NEW: Time Comparison Actions (Fetch P1 and P2 separately and merge)
+  fetchSalesStatsTimeComparison: async (p1Start, p1End, p2Start, p2End) => {
+    try {
+      const [p1Data, p2Data] = await Promise.all([
+        supabase.rpc('get_sales_stats_v2', { start_date: p1Start, end_date: p1End }),
+        supabase.rpc('get_sales_stats_v2', { start_date: p2Start, end_date: p2End })
+      ]);
+
+      const processStats = (data) => {
+        const stats = {};
+        (data.data || []).forEach(item => {
+          if (!stats[item.country]) stats[item.country] = {};
+          if (!stats[item.country][item.created_date]) {
+            stats[item.country][item.created_date] = { all: 0, whatsapp: 0, direct: 0, comments: 0, unknown: 0 };
+          }
+          const counts = stats[item.country][item.created_date];
+          counts.all += Number(item.count);
+          if (item.source === 'whatsapp') counts.whatsapp += Number(item.count);
+          else if (item.source === 'direct') counts.direct += Number(item.count);
+          else if (item.source === 'comments') counts.comments += Number(item.count);
+          else counts.unknown += Number(item.count);
+        });
+        return stats;
+      };
+
+      // Merge logic: Since dates are usually distinct (Yesterday vs Today), we can just merge objects?
+      // If keys overlap (e.g. comparing Today vs Today), last one wins (which is fine if identical).
+      // But usually P1 is Past, P2 is Today. "created_date" keys will be different.
+      // So we can merge the country objects.
+
+      const stats1 = processStats(p1Data);
+      const stats2 = processStats(p2Data);
+
+      const mergedStats = { ...stats1 };
+      Object.keys(stats2).forEach(country => {
+        if (!mergedStats[country]) mergedStats[country] = {};
+        Object.assign(mergedStats[country], stats2[country]);
+      });
+
+      set({ salesStats: mergedStats });
+    } catch (error) {
+      console.error('Error fetching time comparison sales stats:', error);
+    }
+  },
+
+  fetchTrafficStatsTimeComparison: async (p1Start, p1End, p2Start, p2End) => {
+    try {
+      const [p1Data, p2Data] = await Promise.all([
+        supabase.rpc('get_lead_stats_v2', { start_date: p1Start, end_date: p1End }),
+        supabase.rpc('get_lead_stats_v2', { start_date: p2Start, end_date: p2End })
+      ]);
+
+      const processStats = (data) => {
+        const stats = {};
+        (data.data || []).forEach(item => {
+          // created_date is YYYY-MM-DD
+          const country = get().channelsMap[item.channel_id] || 'Unknown';
+          if (!stats[country]) stats[country] = {};
+          if (!stats[country][item.created_date]) {
+            stats[country][item.created_date] = { all: 0, whatsapp: 0, comments: 0, direct: 0 };
+          }
+          const counts = stats[country][item.created_date];
+          counts.all += Number(item.count);
+          if (item.is_whatsapp) counts.whatsapp += Number(item.count);
+          else if (item.is_comment) counts.comments += Number(item.count);
+          else counts.direct += Number(item.count);
+        });
+        return stats;
+      };
+
+      const stats1 = processStats(p1Data);
+      const stats2 = processStats(p2Data);
+
+      const mergedStats = { ...stats1 };
+      Object.keys(stats2).forEach(country => {
+        if (!mergedStats[country]) mergedStats[country] = {};
+        Object.assign(mergedStats[country], stats2[country]);
+      });
+
+      set({ trafficStats: mergedStats });
+
+    } catch (error) {
+      console.error('Error fetching time comparison traffic stats:', error);
+    }
+  },
+
+  fetchSalesStats: async (dateFrom, dateTo) => {
+    try {
+      const { data, error } = await supabase.rpc('get_sales_stats', {
+        start_date: dateFrom,
+        end_date: dateTo
+      });
+
+      if (error) throw error;
+
+      const formattedStats = {};
+      if (data) {
+        data.forEach(stat => {
+          const countryCode = stat.country || 'Other';
+          const dateStr = stat.created_date; // YYYY-MM-DD from RPC
+
+          if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
+          if (!formattedStats[countryCode][dateStr]) {
+            formattedStats[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0, unknown: 0 };
+          }
+
+          const count = Number(stat.count || 0);
+          const source = stat.source || 'unknown';
+
+          if (formattedStats[countryCode][dateStr][source] !== undefined) {
+            formattedStats[countryCode][dateStr][source] += count;
+          } else {
+            formattedStats[countryCode][dateStr].unknown += count;
+          }
+
+          formattedStats[countryCode][dateStr].all += count;
+        });
+      }
+
+      set({ salesStats: formattedStats });
+    } catch (error) {
+      console.error('Error fetching sales stats:', error);
     }
   },
 
@@ -236,8 +363,65 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  fetchReferenceData: async () => {
+    // If we already have managers and schedules, we assume reference data is loaded
+    if (get().managers.length > 0 && get().schedules.length > 0) return;
+
+    set({ isLoading: true });
+    try {
+      // Load everything EXCEPT payments and activity logs
+      const [
+        channelsData,
+        managersData,
+        productsData,
+        rulesData,
+        learningData,
+        countriesData,
+        schedulesData,
+        appSettingsData
+      ] = await Promise.all([
+        fetchAll('channels', '*', 'id', true),
+        fetchAll('managers', '*', 'created_at', false),
+        fetchAll('knowledge_products', '*', 'created_at', false),
+        fetchAll('knowledge_rules', '*', 'created_at', false),
+        fetchAll('knowledge_learning', '*', 'created_at', false),
+        fetchAll('countries', '*', 'code', true),
+        fetchAll('schedules', '*', 'date', false),
+        fetchAll('app_settings', '*', 'key', true),
+      ]);
+
+      // Process Channels
+      const newChannelsMap = {};
+      (channelsData || []).forEach(ch => {
+        newChannelsMap[ch.wazzup_id] = ch.country_code;
+      });
+
+      // Process App Settings
+      const permissionsMap = (appSettingsData || []).find(s => s.key === 'role_permissions')?.value || {};
+      const roleDocsMap = (appSettingsData || []).find(s => s.key === 'role_documentation')?.value || {};
+
+      set({
+        channels: channelsData || [],
+        channelsMap: newChannelsMap,
+        managers: managersData || [],
+        products: productsData || [],
+        rules: rulesData || [],
+        learningArticles: learningData || [],
+        countries: countriesData || [],
+        schedules: schedulesData || [],
+        permissions: permissionsMap,
+        roleDocs: roleDocsMap,
+        isLoading: false
+      });
+    } catch (error) {
+      console.error('Error fetching reference data:', error);
+      set({ isLoading: false });
+    }
+  },
+
   fetchAllData: async (forceUpdate = false) => {
     if (get().isLoading && !forceUpdate) return;
+    // ... existing implementation ...
 
     set({ isLoading: true });
 

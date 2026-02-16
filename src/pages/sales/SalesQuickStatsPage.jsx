@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../../store/appStore';
 import {
     Filter, RotateCcw, X, XCircle, LayoutDashboard,
-    TrendingUp, TrendingDown, Minus, AlertTriangle, Users2, Calendar as CalendarIcon, MessageCircle, MessageSquare, Phone
+    TrendingUp, TrendingDown, Minus, AlertTriangle, Users2, Calendar as CalendarIcon, MessageCircle, MessageSquare, Phone, Clock
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -306,7 +306,18 @@ const CustomPeriodPicker = ({ startDate, endDate, onChange, label, variant = 'pr
 };
 
 const SalesQuickStatsPage = () => {
-    const { user, payments, schedules, trafficStats, fetchAllData, fetchTrafficStats, managers } = useAppStore();
+    const {
+        user,
+        salesStats,
+        trafficStats,
+        fetchSalesStats,
+        fetchTrafficStats,
+        fetchSalesStatsTimeComparison,
+        fetchTrafficStatsTimeComparison,
+        managers,
+        schedules,
+        fetchReferenceData
+    } = useAppStore();
 
     // Period 1 (left column)
     const [period1, setPeriod1] = useState(() => {
@@ -330,29 +341,78 @@ const SalesQuickStatsPage = () => {
     const [filters, setFilters] = useState({ source: 'all' });
     const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-    useEffect(() => { fetchAllData(); }, [fetchAllData]);
+    // TABS: 'general' | 'time'
+    const [activeTab, setActiveTab] = useState('general');
 
+    // TIME COMPARISON STATE
+    // Period 2 is ALWAYS Today (00:00 - Now UTC)
+    // Period 1 is Selectable Date (00:00 - Same Time as Now UTC)
+    const [timeComparisonDate, setTimeComparisonDate] = useState(() => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday;
+    });
+
+    // Initial load - fetch managers for names (lightweight)
     useEffect(() => {
-        // Fetch traffic for the full range covering both periods
-        const allDates = [period1Start, period1End, period2Start, period2End].filter(d => d);
-        if (allDates.length > 0) {
-            const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
-            const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
-            const isoStart = new Date(minDate.setHours(0, 0, 0, 0)).toISOString();
-            const isoEnd = new Date(maxDate.setHours(23, 59, 59, 999)).toISOString();
-            fetchTrafficStats(isoStart, isoEnd);
+        // Use lightweight fetch instead of heavy fetchAllData
+        if (managers.length === 0) fetchReferenceData();
+    }, []);
+
+    // FETCH LOGIC
+    useEffect(() => {
+        if (activeTab === 'general') {
+            // ORIGINAL LOGIC (Full Days)
+            const allDates = [period1Start, period1End, period2Start, period2End].filter(d => d);
+            if (allDates.length > 0) {
+                const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+                const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+
+                const isoStart = new Date(minDate.setHours(0, 0, 0, 0)).toISOString();
+                const isoEnd = new Date(maxDate.setHours(23, 59, 59, 999)).toISOString();
+
+                fetchTrafficStats(isoStart, isoEnd);
+                fetchSalesStats(isoStart, isoEnd);
+            }
+        } else {
+            // TIME COMPARISON LOGIC (Partial Days based on Current UTC Time)
+            const now = new Date();
+            const todayStart = new Date(now);
+            todayStart.setHours(0, 0, 0, 0);
+
+            // Period 2: Today 00:00 - Now
+            const p2StartIso = todayStart.toISOString();
+            const p2EndIso = now.toISOString();
+
+            // Period 1: SelectedDate 00:00 - SelectedDate + (Now - TodayStart)
+            if (timeComparisonDate) {
+                const p1Start = new Date(timeComparisonDate);
+                p1Start.setHours(0, 0, 0, 0);
+
+                const timeDiff = now.getTime() - todayStart.getTime();
+                const p1End = new Date(p1Start.getTime() + timeDiff);
+
+                const p1StartIso = p1Start.toISOString();
+                const p1EndIso = p1End.toISOString();
+
+                fetchTrafficStatsTimeComparison(p1StartIso, p1EndIso, p2StartIso, p2EndIso);
+                fetchSalesStatsTimeComparison(p1StartIso, p1EndIso, p2StartIso, p2EndIso);
+            }
         }
-    }, [fetchTrafficStats, period1Start, period1End, period2Start, period2End]);
+    }, [activeTab, timeComparisonDate, period1Start, period1End, period2Start, period2End, fetchSalesStats, fetchTrafficStats, fetchSalesStatsTimeComparison, fetchTrafficStatsTimeComparison]);
 
     const uniqueGeos = useMemo(() => {
         const geos = new Set();
-        payments.forEach(p => p.country && geos.add(p.country));
+        // Extract from stats instead of payments
+        // Extract from stats (salesStats is a map: { Country: { Date: { ... } } })
+        if (salesStats) Object.keys(salesStats).forEach(country => geos.add(country));
+        // Keep schedules check if needed
         schedules.forEach(s => {
             if (s.geo_code) s.geo_code.split(',').forEach(g => geos.add(g.trim()));
         });
         if (trafficStats) Object.keys(trafficStats).forEach(g => geos.add(g));
         return Array.from(geos).sort();
-    }, [payments, schedules, trafficStats]);
+    }, [salesStats, schedules, trafficStats]);
 
     // ✅ Filter GEOs based on User's assigned GEOs
     const filteredGeos = useMemo(() => {
@@ -364,12 +424,23 @@ const SalesQuickStatsPage = () => {
     }, [uniqueGeos, user]);
 
     const geoData = useMemo(() => {
-        // Period 1 dates (left column)
-        const p1StartStr = period1Start ? toYMD(period1Start) : toYMD(new Date());
-        const p1EndStr = period1End ? toYMD(period1End) : p1StartStr;
-        // Period 2 dates (right column)
-        const p2StartStr = period2Start ? toYMD(period2Start) : toYMD(new Date());
-        const p2EndStr = period2End ? toYMD(period2End) : p2StartStr;
+        // Determine Dates based on Tab
+        let p1StartStr, p1EndStr, p2StartStr, p2EndStr;
+
+        if (activeTab === 'general') {
+            p1StartStr = period1Start ? toYMD(period1Start) : toYMD(new Date());
+            p1EndStr = period1End ? toYMD(period1End) : p1StartStr;
+            p2StartStr = period2Start ? toYMD(period2Start) : toYMD(new Date());
+            p2EndStr = period2End ? toYMD(period2End) : p2StartStr;
+        } else {
+            // TIME MODE:
+            // P1 is timeComparisonDate
+            p1StartStr = timeComparisonDate ? toYMD(timeComparisonDate) : toYMD(new Date());
+            p1EndStr = p1StartStr;
+            // P2 is Today
+            p2StartStr = toYMD(new Date());
+            p2EndStr = p2StartStr;
+        }
 
         const managerMap = managers.reduce((acc, m) => ({ ...acc, [m.id]: m.name }), {});
         // Create a set of visible manager IDs
@@ -402,56 +473,58 @@ const SalesQuickStatsPage = () => {
         };
 
         return filteredGeos.map(geo => {
-            const getMetrics = (start, end) => {
-                let salesCount = 0;
-                let transactionCount = 0;
-                let trafficCount = 0;
+            // Helper to aggregate stats for a range of dates
+            const aggregate = (startStr, endStr) => {
+                let sales = 0;
+                let traffic = 0;
 
-                // Sales
-                payments.forEach(p => {
-                    // 🔥 ФИЛЬТР ПО РОЛИ: Только Sales
-                    if (!['Sales', 'SeniorSales'].includes(p.managerRole)) return;
+                // Simple date iteration
+                let curr = new Date(startStr);
+                const end = new Date(endStr);
 
-                    const pDate = extractUTCDate(p.transactionDate);
-                    if (p.country === geo && pDate >= start && pDate <= end) {
-                        if (filters.source !== 'all' && p.source !== filters.source) return;
-                        salesCount++;
+                while (curr <= end) {
+                    const dStr = toYMD(curr);
+
+                    // Sum Sales
+                    if (salesStats && salesStats[geo] && salesStats[geo][dStr]) {
+                        const s = salesStats[geo][dStr];
+                        if (filters.source === 'all') sales += s.all;
+                        else if (filters.source === 'whatsapp') sales += s.whatsapp;
+                        else if (filters.source === 'comments') sales += s.comments;
+                        else if (filters.source === 'direct') sales += s.direct;
+                        else if (filters.source === 'unknown') sales += s.unknown || 0;
                     }
-                    // Separate transaction count logic if needed differently, but here salesCount IS transaction count
-                });
 
-                // Traffic
-                if (trafficStats && trafficStats[geo]) {
-                    Object.entries(trafficStats[geo]).forEach(([dateStr, val]) => {
-                        if (dateStr >= start && dateStr <= end) {
-                            if (typeof val === 'object' && val !== null) {
-                                if (filters.source === 'all') trafficCount += (val.all || 0);
-                                else if (filters.source === 'direct') trafficCount += (val.direct || 0);
-                                else if (filters.source === 'comments') trafficCount += (val.comments || 0);
-                                else if (filters.source === 'whatsapp') trafficCount += (val.whatsapp || 0);
-                            } else {
-                                trafficCount += (Number(val) || 0);
-                            }
-                        }
-                    });
+                    // Sum Traffic
+                    if (trafficStats && trafficStats[geo] && trafficStats[geo][dStr]) {
+                        const t = trafficStats[geo][dStr];
+                        if (filters.source === 'all') traffic += t.all;
+                        else if (filters.source === 'whatsapp') traffic += t.whatsapp;
+                        else if (filters.source === 'comments') traffic += t.comments;
+                        else if (filters.source === 'direct') traffic += t.direct;
+                    }
+
+                    curr.setDate(curr.getDate() + 1);
                 }
-
-                return {
-                    sales: salesCount,
-                    traffic: trafficCount,
-                    conversion: trafficCount > 0 ? (salesCount / trafficCount) * 100 : 0
-                };
+                return { sales, traffic, conversion: traffic > 0 ? (sales / traffic) * 100 : 0 };
             };
 
             // LEFT column = Period 1, RIGHT column = Period 2
-            const current = getMetrics(p1StartStr, p1EndStr);  // Period 1 (left column)
-            const previous = getMetrics(p2StartStr, p2EndStr);  // Period 2 (right column)
+            const current = aggregate(p1StartStr, p1EndStr);  // Period 1 (left column)
+            const previous = aggregate(p2StartStr, p2EndStr);  // Period 2 (right column)
 
             // Add dates for UI display
-            current.startDate = period1Start;
-            current.endDate = period1End;
-            previous.startDate = period2Start;
-            previous.endDate = period2End;
+            if (activeTab === 'general') {
+                current.startDate = period1Start;
+                current.endDate = period1End;
+                previous.startDate = period2Start;
+                previous.endDate = period2End;
+            } else {
+                current.startDate = timeComparisonDate;
+                current.endDate = timeComparisonDate;
+                previous.startDate = new Date();
+                previous.endDate = new Date();
+            }
 
             const currentManagerName = formatManagerName(getScheduledManagers(p1StartStr, p1EndStr, geo));
             const previousManagerName = formatManagerName(getScheduledManagers(p2StartStr, p2EndStr, geo));
@@ -465,7 +538,36 @@ const SalesQuickStatsPage = () => {
                 previous
             };
         });
-    }, [filteredGeos, period1Start, period1End, period2Start, period2End, filters, payments, schedules, trafficStats, managers]);
+    }, [filteredGeos, period1Start, period1End, period2Start, period2End, activeTab, timeComparisonDate, filters, salesStats, schedules, trafficStats, managers]);
+
+    // ✅ Calculate Totals
+    const totalStats = useMemo(() => {
+        const stats = {
+            current: { traffic: 0, sales: 0, conversion: 0 },
+            previous: { traffic: 0, sales: 0, conversion: 0 },
+            trafficDiff: 0,
+            salesDiff: 0,
+            convDiff: 0
+        };
+
+        geoData.forEach(geo => {
+            stats.current.traffic += geo.current.traffic;
+            stats.current.sales += geo.current.sales;
+            stats.previous.traffic += geo.previous.traffic;
+            stats.previous.sales += geo.previous.sales;
+        });
+
+        // Calc weighted average conversion
+        stats.current.conversion = stats.current.traffic > 0 ? (stats.current.sales / stats.current.traffic) * 100 : 0;
+        stats.previous.conversion = stats.previous.traffic > 0 ? (stats.previous.sales / stats.previous.traffic) * 100 : 0;
+
+        // Calc diffs
+        stats.trafficDiff = stats.previous.traffic - stats.current.traffic;
+        stats.salesDiff = stats.previous.sales - stats.current.sales;
+        stats.convDiff = stats.previous.conversion - stats.current.conversion;
+
+        return stats;
+    }, [geoData]);
 
     const resetPeriods = () => {
         const today = new Date();
@@ -473,62 +575,41 @@ const SalesQuickStatsPage = () => {
         yesterday.setDate(yesterday.getDate() - 1);
         setPeriod1([yesterday, yesterday]);
         setPeriod2([today, today]);
+        setTimeComparisonDate(yesterday); // Reset time comparison date too
         setFilters(p => ({ ...p, source: 'all' }));
         setShowMobileFilters(false);
     };
 
-    // --- RENDER HELPERS ---
-    const MetricItem = ({ label, current, previous, isPercent }) => {
-        const diff = current - previous;
-        const diffPercent = previous !== 0 ? ((diff / previous) * 100).toFixed(1) : (current > 0 ? '100.0' : '0.0');
-        const isPositive = diff > 0;
-        const isNegative = diff < 0;
-        const isZero = diff === 0;
 
-        let badgeClass = 'text-gray-400 bg-gray-100 dark:bg-gray-800';
-        if (isPositive) badgeClass = 'text-emerald-600 bg-emerald-500/10 dark:text-emerald-400';
-        if (isNegative) badgeClass = 'text-rose-600 bg-rose-500/10 dark:text-rose-400';
-
-        const fmt = (val) => isPercent ? `${val.toFixed(2)}%` : val.toLocaleString();
-
-        return (
-            <>
-                {/* Label */}
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 py-2 border-b border-gray-100 dark:border-[#222]">
-                    {label}
-                </div>
-
-                {/* Current Value */}
-                <div className="text-center font-bold text-gray-900 dark:text-white py-2 border-b border-gray-100 dark:border-[#222]">
-                    {fmt(current)}
-                </div>
-
-                {/* Diff */}
-                <div className="flex justify-center py-2 border-b border-gray-100 dark:border-[#222]">
-                    <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold inline-flex items-center gap-0.5 ${badgeClass}`}>
-                        {diff > 0 ? '+' : ''}{diffPercent}%
-                    </div>
-                </div>
-
-                {/* Past Value */}
-                <div className="text-center font-medium text-gray-400 py-2 border-b border-gray-100 dark:border-[#222]">
-                    {fmt(previous)}
-                </div>
-            </>
-        );
-    };
 
     return (
         <div className="pb-10 w-full max-w-full overflow-x-hidden">
             {/* HEADER */}
             <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-3 border-b border-transparent flex flex-col gap-3">
 
-                {/* ROW 1: Title */}
-                <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate">
+                {/* ROW 1: Title & Tabs */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
                         <TrendingUp size={18} className="text-blue-600 dark:text-blue-500" />
-                        <span>Сравнительный анализ</span>
-                    </h2>
+                        <h2 className="text-lg font-bold dark:text-white tracking-tight">Сравнительный анализ</h2>
+                    </div>
+
+                    {/* TABS */}
+                    <div className="flex bg-gray-200 dark:bg-[#222] p-1 rounded-lg">
+                        <button
+                            onClick={() => setActiveTab('general')}
+                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'general' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                        >
+                            Общие
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('time')}
+                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'time' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                        >
+                            <Clock size={12} />
+                            По времени (Сегодня)
+                        </button>
+                    </div>
                 </div>
 
                 {/* ROW 2: Filters */}
@@ -554,18 +635,39 @@ const SalesQuickStatsPage = () => {
                             {/* MOBILE COLLAPSIBLE FILTERS - DATES ONLY */}
                             {showMobileFilters && (
                                 <div className="mt-2 space-y-3 p-3 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg animate-in fade-in slide-in-from-top-2 duration-200">
-                                    <MobileDateRangePicker
-                                        label="Первый период"
-                                        startDate={period1Start}
-                                        endDate={period1End}
-                                        onChange={setPeriod1}
-                                    />
-                                    <MobileDateRangePicker
-                                        label="Второй период"
-                                        startDate={period2Start}
-                                        endDate={period2End}
-                                        onChange={setPeriod2}
-                                    />
+                                    {activeTab === 'general' ? (
+                                        <>
+                                            <MobileDateRangePicker
+                                                label="Первый период"
+                                                startDate={period1Start}
+                                                endDate={period1End}
+                                                onChange={setPeriod1}
+                                            />
+                                            <MobileDateRangePicker
+                                                label="Второй период"
+                                                startDate={period2Start}
+                                                endDate={period2End}
+                                                onChange={setPeriod2}
+                                            />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <MobileDateRangePicker
+                                                label="Дата для сравнения"
+                                                startDate={timeComparisonDate}
+                                                endDate={timeComparisonDate}
+                                                onChange={(update) => setTimeComparisonDate(update[0])}
+                                                singleDate
+                                            />
+                                            <div className="flex flex-col gap-1 opacity-60 cursor-not-allowed">
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Текущая дата</span>
+                                                <div className="h-[34px] px-3 py-1.5 bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] rounded-[6px] text-xs font-bold flex items-center gap-2 text-gray-500">
+                                                    <CalendarIcon size={12} />
+                                                    {toDateStr(new Date())} (Сейчас)
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
 
                                     <button
                                         onClick={resetPeriods}
@@ -585,24 +687,50 @@ const SalesQuickStatsPage = () => {
 
                     {/* RIGHT SIDE: DESKTOP DATE PICKERS */}
                     <div className="hidden md:flex items-end gap-4">
-                        {/* PERIOD 1 */}
-                        <CustomPeriodPicker
-                            startDate={period1Start}
-                            endDate={period1End}
-                            onChange={(update) => setPeriod1(update)}
-                            label="Первый период"
-                            variant="primary"
-                        />
+                        {activeTab === 'general' ? (
+                            <>
+                                {/* PERIOD 1 */}
+                                <CustomPeriodPicker
+                                    startDate={period1Start}
+                                    endDate={period1End}
+                                    onChange={(update) => setPeriod1(update)}
+                                    label="Первый период"
+                                    variant="primary"
+                                />
 
-                        {/* PERIOD 2 */}
-                        <CustomPeriodPicker
-                            startDate={period2Start}
-                            endDate={period2End}
-                            onChange={(update) => setPeriod2(update)}
-                            label="Второй период"
-                            variant="secondary"
-                        />
+                                {/* PERIOD 2 */}
+                                <CustomPeriodPicker
+                                    startDate={period2Start}
+                                    endDate={period2End}
+                                    onChange={(update) => setPeriod2(update)}
+                                    label="Второй период"
+                                    variant="secondary"
+                                />
+                            </>
+                        ) : (
+                            <>
+                                {/* Time Comparison Controls */}
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[9px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">Дата для сравнения</span>
+                                    <CustomPeriodPicker
+                                        startDate={timeComparisonDate}
+                                        endDate={timeComparisonDate}
+                                        onChange={(update) => setTimeComparisonDate(update[0])}
+                                        label="Выберите дату"
+                                        variant="primary"
+                                        singleDate
+                                    />
+                                </div>
 
+                                <div className="flex flex-col gap-1 opacity-60 cursor-not-allowed">
+                                    <span className="text-[9px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Текущая дата</span>
+                                    <div className="h-[34px] px-3 py-1.5 bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] rounded-[6px] text-xs font-bold flex items-center gap-2 text-gray-500">
+                                        <CalendarIcon size={12} className="shrink-0 text-gray-400" />
+                                        {toDateStr(new Date())} (Сейчас)
+                                    </div>
+                                </div>
+                            </>
+                        )}
                         <button
                             onClick={resetPeriods}
                             className="bg-gray-200 dark:bg-[#1A1A1A] hover:bg-gray-300 dark:hover:bg-[#333] text-gray-500 dark:text-gray-400 p-1.5 rounded-[6px] transition-colors h-[34px] w-[34px] flex items-center justify-center mb-1"
@@ -699,87 +827,39 @@ const SalesQuickStatsPage = () => {
                             );
                         })}
                     </tbody>
+                    {/* TOTAL FOOTER */}
+                    <tfoot className="bg-gray-100 dark:bg-[#1A1A1A] font-bold text-xs sticky bottom-0 z-10 border-t-2 border-gray-200 dark:border-[#333]">
+                        <tr>
+                            <td className="px-3 py-3 text-gray-900 dark:text-white">ВСЕГО</td>
+                            {/* Period 1 Total */}
+                            <td className="px-2 py-3 text-center text-blue-700 dark:text-blue-300 border-l border-gray-200 dark:border-[#333]">{totalStats.current.traffic}</td>
+                            <td className="px-2 py-3 text-center text-blue-700 dark:text-blue-300">{totalStats.current.sales}</td>
+                            <td className="px-2 py-3 text-center text-blue-700 dark:text-blue-300">{totalStats.current.conversion.toFixed(1)}%</td>
+                            <td className="px-2 py-3 text-center text-gray-400">—</td>
+                            <td className="px-2 py-3 text-center text-gray-400">—</td>
+                            {/* Period 2 Total */}
+                            <td className="px-2 py-3 text-center text-gray-700 dark:text-gray-300 border-l border-gray-200 dark:border-[#333]">{totalStats.previous.traffic}</td>
+                            <td className={`px-1 py-3 text-center text-[10px] ${totalStats.trafficDiff > 0 ? 'text-emerald-600' : totalStats.trafficDiff < 0 ? 'text-rose-600' : 'text-gray-400'}`}>
+                                {totalStats.trafficDiff > 0 ? '+' : ''}{totalStats.trafficDiff}
+                            </td>
+                            <td className="px-2 py-3 text-center text-gray-700 dark:text-gray-300">{totalStats.previous.sales}</td>
+                            <td className={`px-1 py-3 text-center text-[10px] ${totalStats.salesDiff > 0 ? 'text-emerald-600' : totalStats.salesDiff < 0 ? 'text-rose-600' : 'text-gray-400'}`}>
+                                {totalStats.salesDiff > 0 ? '+' : ''}{totalStats.salesDiff}
+                            </td>
+                            <td className="px-2 py-3 text-center text-gray-700 dark:text-gray-300">{totalStats.previous.conversion.toFixed(1)}%</td>
+                            <td className={`px-1 py-3 text-center text-[10px] ${totalStats.convDiff > 0 ? 'text-emerald-600' : totalStats.convDiff < 0 ? 'text-rose-600' : 'text-gray-400'}`}>
+                                {totalStats.convDiff > 0 ? '+' : ''}{totalStats.convDiff.toFixed(1)}
+                            </td>
+                            <td className="px-2 py-3 text-center text-gray-400">—</td>
+                            <td className="px-1 py-3 text-center text-gray-400 text-[10px]">—</td>
+                            <td className="px-2 py-3 text-center text-gray-400">—</td>
+                            <td className="px-1 py-3 text-center text-gray-400 text-[10px]">—</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
 
-            {/* GEO CARDS GRID */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-                {geoData.map(geo => (
-                    <div key={geo.geo} className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-4 shadow-sm hover:border-blue-400 dark:hover:border-blue-700 transition-colors">
-                        {/* Header */}
-                        <div className="flex items-center gap-2 mb-4">
-                            <span className="text-2xl">{geo.flag}</span>
-                            <h3 className="font-bold text-lg leading-none text-gray-900 dark:text-white">{geo.geo}</h3>
-                        </div>
 
-                        {/* CONTENT GRID */}
-                        {/* Columns: Label | Current | Diff | Past */}
-                        <div className="grid grid-cols-[80px_minmax(0,1fr)_60px_minmax(0,1fr)] gap-y-0 text-xs items-center">
-
-                            {/* HEADERS ROW */}
-                            <div className="pb-2"></div> {/* Label placeholder */}
-
-                            {/* Current Header (Period 1) */}
-                            <div className="flex flex-col items-center pb-2 px-0.5 overflow-hidden">
-                                <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mb-1">
-                                    {geo.current.startDate && geo.current.endDate && geo.current.startDate.getTime() !== geo.current.endDate.getTime()
-                                        ? `${toDateStr(geo.current.startDate)} - ${toDateStr(geo.current.endDate)}`
-                                        : (geo.current.startDate ? toDateStr(geo.current.startDate) : 'П1')}
-                                </div>
-                                {geo.currentManagerName && geo.currentManagerName !== '—' ? (
-                                    <div className="flex items-center justify-center gap-1.5 px-2 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-[10px] font-bold w-full max-w-full" title={geo.currentManagerName}>
-                                        <Users2 size={10} className="shrink-0" />
-                                        <span className="truncate">{geo.currentManagerName}</span>
-                                    </div>
-                                ) : (
-                                    <span className="text-gray-300">—</span>
-                                )}
-                            </div>
-
-                            <div className="pb-2"></div> {/* Diff placeholder */}
-
-                            {/* Past Header (Period 2) */}
-                            <div className="flex flex-col items-center pb-2 px-0.5 overflow-hidden">
-                                <div className="text-[10px] text-gray-500 font-bold mb-1">
-                                    {geo.previous.startDate && geo.previous.endDate && geo.previous.startDate.getTime() !== geo.previous.endDate.getTime()
-                                        ? `${toDateStr(geo.previous.startDate)} - ${toDateStr(geo.previous.endDate)}`
-                                        : (geo.previous.startDate ? toDateStr(geo.previous.startDate) : 'П2')}
-                                </div>
-                                {geo.previousManagerName && geo.previousManagerName !== '—' ? (
-                                    <div className="flex items-center justify-center gap-1.5 px-2 py-1 rounded-full bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] font-bold w-full max-w-full" title={geo.previousManagerName}>
-                                        <Users2 size={10} className="shrink-0" />
-                                        <span className="truncate">{geo.previousManagerName}</span>
-                                    </div>
-                                ) : (
-                                    <span className="text-gray-300">—</span>
-                                )}
-                            </div>
-
-                            {/* ROW DIVIDER */}
-                            <div className="col-span-4 h-px bg-gray-100 dark:bg-[#222] mb-0" />
-
-                            {/* METRIC ROWS */}
-                            <MetricItem
-                                label="Продажи"
-                                current={geo.current.sales}
-                                previous={geo.previous.sales}
-                            />
-                            <MetricItem
-                                label="Трафик"
-                                current={geo.current.traffic}
-                                previous={geo.previous.traffic}
-                            />
-                            <MetricItem
-                                label="Конверсия"
-                                current={geo.current.conversion}
-                                previous={geo.previous.conversion}
-                                isPercent
-                            />
-
-                        </div>
-                    </div>
-                ))}
-            </div>
         </div>
     );
 };
