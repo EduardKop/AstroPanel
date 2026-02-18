@@ -23,12 +23,10 @@ const PublicSharedPage = () => {
             if (data) {
                 setPageData(data);
 
-                // Fetch Content Data (KPI rates, Products etc.)
                 if (data.page_key) {
                     await useAppStore.getState().fetchPublicData(data.page_key);
                 }
 
-                // Apply Theme
                 const theme = data.settings?.theme || 'system';
                 if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                     document.documentElement.classList.add('dark');
@@ -36,7 +34,6 @@ const PublicSharedPage = () => {
                     document.documentElement.classList.remove('dark');
                 }
 
-                // Set Title
                 if (data.settings?.title) {
                     document.title = `${data.settings.title} | AstroPanel`;
                 }
@@ -68,15 +65,9 @@ const PublicSharedPage = () => {
         );
     }
 
-    // Render Content based on page_key
     const renderContent = () => {
         const lang = pageData.settings?.lang || 'ru';
-        const commonProps = {
-            isPublic: true,
-            publicSettings: pageData.settings,
-            lang: lang
-        };
-
+        const commonProps = { isPublic: true, publicSettings: pageData.settings, lang };
         switch (pageData.page_key) {
             case 'products': return <ProductsPage {...commonProps} />;
             case 'rules': return <RulesPage {...commonProps} />;
@@ -86,25 +77,45 @@ const PublicSharedPage = () => {
         }
     };
 
+    const coverImage = pageData.settings?.cover_image;
+
     return (
-        <div className="min-h-screen bg-[#F5F5F5] dark:bg-[#0A0A0A] font-sans text-[13px]">
-            {/* Public Header */}
-            <header className="h-14 bg-white dark:bg-[#111] border-b border-gray-200 dark:border-[#222] flex items-center justify-between px-4 lg:px-8 sticky top-0 z-20">
+        <div
+            className="min-h-screen font-sans text-[13px] relative"
+            style={coverImage ? {
+                backgroundImage: `url(${coverImage.url})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundAttachment: 'fixed',
+            } : {}}
+        >
+            {/* Dark overlay when cover image is set */}
+            {coverImage && <div className="fixed inset-0 bg-black/40 pointer-events-none z-0" />}
+            {/* Fallback bg */}
+            {!coverImage && <div className="fixed inset-0 bg-[#F5F5F5] dark:bg-[#0A0A0A] pointer-events-none z-0" />}
+
+            {/* Header — glass when cover, solid otherwise */}
+            <header className={`h-14 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-20 border-b ${coverImage
+                    ? 'bg-white/10 dark:bg-black/20 backdrop-blur-md border-white/20'
+                    : 'bg-white dark:bg-[#111] border-gray-200 dark:border-[#222]'
+                }`}>
                 <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 bg-black dark:bg-white rounded flex items-center justify-center text-white dark:text-black font-bold text-[10px]">AP</div>
-                    <h1 className="font-bold text-base text-gray-900 dark:text-white tracking-tight">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center font-bold text-[10px] ${coverImage ? 'bg-white text-black' : 'bg-black dark:bg-white text-white dark:text-black'
+                        }`}>AP</div>
+                    <h1 className={`font-bold text-base tracking-tight ${coverImage ? 'text-white drop-shadow' : 'text-gray-900 dark:text-white'
+                        }`}>
                         {pageData.settings?.title || 'Knowledge Base'}
                     </h1>
                 </div>
-
-                {/* Optional: Branding or Login Link */}
-                <a href="/" className="text-xs font-medium text-gray-500 hover:text-blue-500 transition-colors flex items-center gap-1.5">
+                <a href="/" className={`text-xs font-medium transition-colors flex items-center gap-1.5 ${coverImage ? 'text-white/80 hover:text-white' : 'text-gray-500 hover:text-blue-500'
+                    }`}>
                     <Globe size={14} />
                     <span>AstroPanel</span>
                 </a>
             </header>
 
-            <main className="max-w-7xl mx-auto p-4 md:p-8">
+            {/* Main content */}
+            <main className="relative z-10 max-w-7xl mx-auto p-4 md:p-8">
                 {pageData.settings?.description && (
                     <div className="mb-6 p-4 bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm">
                         <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
@@ -113,16 +124,28 @@ const PublicSharedPage = () => {
                     </div>
                 )}
 
-                {/* Content Injection */}
-                <div className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm min-h-[500px] overflow-hidden">
+                <div className="bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm min-h-[500px] overflow-hidden py-6">
                     {renderContent()}
                 </div>
             </main>
 
             {/* Footer */}
-            <footer className="py-8 text-center text-gray-400 text-xs">
+            <footer className={`relative z-10 py-8 text-center text-xs ${coverImage ? 'text-white/50' : 'text-gray-400'
+                }`}>
                 &copy; {new Date().getFullYear()} AstroPanel Knowledge Base
             </footer>
+
+            {/* Photographer attribution */}
+            {coverImage?.photographer && (
+                <a
+                    href={coverImage.photographer_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="fixed bottom-3 right-3 z-30 text-[10px] text-white/70 hover:text-white transition-colors bg-black/30 hover:bg-black/50 px-2 py-1 rounded-lg backdrop-blur-sm"
+                >
+                    📷 {coverImage.photographer} · Unsplash
+                </a>
+            )}
         </div>
     );
 };

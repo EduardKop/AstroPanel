@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/appStore';
 import {
-    Globe, Copy, Check, X, Settings2, BarChart3,
-    Palette, Eye, LayoutTemplate, ExternalLink
+    Globe, Copy, Check, X, Settings2,
+    Palette, Eye, LayoutTemplate, ExternalLink, Image, Trash2
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import UnsplashPicker from './UnsplashPicker';
 
 const ShareModal = ({ pageKey, pageTitle, onClose }) => {
     const { fetchSharedPage, createSharedPage, updateSharedPage, sharedPages } = useAppStore();
@@ -15,8 +16,10 @@ const ShareModal = ({ pageKey, pageTitle, onClose }) => {
         title: pageTitle || '',
         description: '',
         theme: 'system', // light, dark, system
-        sections: {} // key-value pairs for section visibility
+        sections: {}, // key-value pairs for section visibility
+        cover_image: null // { id, url, alt, photographer, photographer_url }
     });
+    const [showUnsplash, setShowUnsplash] = useState(false);
     const [isActive, setIsActive] = useState(false);
     const [copied, setCopied] = useState(false);
 
@@ -31,7 +34,8 @@ const ShareModal = ({ pageKey, pageTitle, onClose }) => {
                     title: data.settings?.title || pageTitle || '',
                     description: data.settings?.description || '',
                     theme: data.settings?.theme || 'system',
-                    sections: data.settings?.sections || {}
+                    sections: data.settings?.sections || {},
+                    cover_image: data.settings?.cover_image || null
                 });
             } else {
                 // Default new state
@@ -233,6 +237,67 @@ const ShareModal = ({ pageKey, pageTitle, onClose }) => {
                                         <Globe size={14} /> Українська 🇺🇦
                                     </button>
                                 </div>
+                            </div>
+
+                            {/* Cover Image */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-2">Обложка страницы</label>
+
+                                {settings.cover_image ? (
+                                    <div className="relative rounded-lg overflow-hidden border border-gray-200 dark:border-[#333]">
+                                        <img
+                                            src={settings.cover_image.url}
+                                            alt={settings.cover_image.alt}
+                                            className="w-full h-24 object-cover"
+                                        />
+                                        <div className="absolute inset-0 bg-black/30 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                            <button
+                                                onClick={() => setShowUnsplash(true)}
+                                                className="px-3 py-1.5 bg-white/90 text-gray-800 rounded-lg text-xs font-bold hover:bg-white transition-colors flex items-center gap-1.5"
+                                            >
+                                                <Image size={12} /> Сменить
+                                            </button>
+                                            <button
+                                                onClick={() => setSettings({ ...settings, cover_image: null })}
+                                                className="px-3 py-1.5 bg-red-500/90 text-white rounded-lg text-xs font-bold hover:bg-red-500 transition-colors flex items-center gap-1.5"
+                                            >
+                                                <Trash2 size={12} /> Удалить
+                                            </button>
+                                        </div>
+                                        <div className="absolute bottom-1 right-2 text-[9px] text-white/70">
+                                            📷 {settings.cover_image.photographer}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowUnsplash(true)}
+                                        className="w-full h-20 border-2 border-dashed border-gray-200 dark:border-[#333] rounded-lg flex flex-col items-center justify-center gap-1.5 text-gray-400 hover:text-blue-500 hover:border-blue-400 transition-colors"
+                                    >
+                                        <Image size={18} />
+                                        <span className="text-xs font-medium">Добавить обложку</span>
+                                        <span className="text-[10px] opacity-60">Поиск фото на Unsplash</span>
+                                    </button>
+                                )}
+
+                                {/* Unsplash Picker Panel */}
+                                {showUnsplash && (
+                                    <div className="mt-3 bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-xl p-3" style={{ maxHeight: 340, display: 'flex', flexDirection: 'column' }}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Выбрать фото</span>
+                                            <button onClick={() => setShowUnsplash(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                        <UnsplashPicker
+                                            currentImage={settings.cover_image}
+                                            onSelect={(photo) => {
+                                                setSettings({ ...settings, cover_image: photo });
+                                                setShowUnsplash(false);
+                                            }}
+                                            onClose={() => setShowUnsplash(false)}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
 
