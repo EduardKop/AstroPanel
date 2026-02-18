@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { showToast } from '../../utils/toastEvents';
 import { toKyivISOString, getKyivDateString, getKyivTimeString } from '../../utils/kyivTime';
-import { X, Check, Instagram, Phone, Calendar, DollarSign, AlertCircle, ChevronRight, Calculator } from 'lucide-react';
+import { X, Check, Instagram, Phone, Calendar, DollarSign, AlertCircle, ChevronRight, Calculator, RefreshCw } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { supabase } from '../../services/supabaseClient';
 import confetti from 'canvas-confetti';
+import { convertToEUR } from '../../services/exchangeRateService';
 
 // --- CONFETTI EFFECTS ---
 const fireBasicConfetti = () => {
@@ -111,17 +112,13 @@ const PAYMENT_METHODS = [
     'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты'
 ];
 
-const CURRENCIES = {
-    'PL': 'PLN', 'RO': 'RON', 'CZ': 'CZK', 'UA': 'UAH',
-    'DE': 'EUR', 'PT': 'EUR', 'IT': 'EUR', 'ES': 'EUR',
-    'US': 'USD', 'KZ': 'KZT', 'TR': 'TRY'
-};
-
 const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
     const { user, logActivity, kpiRates, countries } = useAppStore();
-    const [step, setStep] = useState('form'); // form, confirm
+    const [step, setStep] = useState('form');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [productTab, setProductTab] = useState('general'); // general, tarot
+    const [isConvertingRate, setIsConvertingRate] = useState(false);
+    const [rateInfo, setRateInfo] = useState(null); // { rate, fromCache }
+    const [productTab, setProductTab] = useState('general');
 
     // Check if user is SalesTaro (sees all countries) or has multiple geos
     const isSalesTaro = user?.role === 'SalesTaro';
@@ -154,16 +151,20 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
     useEffect(() => {
         if (isOpen && user) {
             const userCountry = user.geo && user.geo.length > 0 ? user.geo[0] : 'UA';
+            // Get currency from countries store (DB-driven)
+            const countryObj = countries.find(c => c.code === userCountry);
+            const currency = countryObj?.currency_code || 'EUR';
             setFormData(prev => ({
                 ...prev,
                 managerId: user.id,
                 country: userCountry,
-                currency: CURRENCIES[userCountry] || 'EUR',
+                currency,
                 date: new Date()
             }));
             setStep('form');
+            setRateInfo(null);
         }
-    }, [isOpen, user]);
+    }, [isOpen, user, countries]);
 
     // Auto-parse Nickname
     useEffect(() => {
@@ -187,23 +188,24 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
         setFormData(p => ({ ...p, nickname: nick }));
     }, [formData.link]);
 
-    // Handle Amount Change & Auto-Conversion
-    // We assume simple manual rate or 1:1 if EUR. 
-    // Ideally we'd have a rate map. For now simple estimation:
-    // PL: ~4.3, CZ: ~25, RO: ~5, UA: ~42
-    const estimateEUR = (amount, cur) => {
-        if (!amount) return '';
-        const val = parseFloat(amount);
-        if (cur === 'EUR') return val;
-        // Simple hardcoded rates for UX estimation
-        const RATES = { 'PLN': 4.3, 'RON': 4.97, 'CZK': 25.3, 'UAH': 42.5, 'USD': 1.05, 'KZT': 530, 'TRY': 36 };
-        if (RATES[cur]) return (val / RATES[cur]).toFixed(2);
-        return val; // Fallback
-    };
+    // Handle Amount Change & Auto-Conversion via exchange rate API
+    const handleLocalAmountChange = async (val) => {
+        setFormData(p => ({ ...p, amountLocal: val, amountEUR: '' }));
+        if (!val || isNaN(parseFloat(val))) return;
 
-    const handleLocalAmountChange = (val) => {
-        const eur = estimateEUR(val, formData.currency);
-        setFormData(p => ({ ...p, amountLocal: val, amountEUR: eur }));
+        setIsConvertingRate(true);
+        try {
+            const result = await convertToEUR(parseFloat(val), formData.currency);
+            if (result) {
+                setFormData(p => ({ ...p, amountLocal: val, amountEUR: result.eur }));
+                setRateInfo({ rate: result.rate, fromCache: result.fromCache, currency: formData.currency });
+            } else {
+                // API failed — let user enter EUR manually
+                showToast('Не удалось получить курс: введите EUR вручную', 'warning');
+            }
+        } finally {
+            setIsConvertingRate(false);
+        }
     };
 
     const handleSubmit = async () => {
@@ -424,7 +426,7 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                                 onClick={() => setFormData(p => ({
                                                     ...p,
                                                     country: c.code,
-                                                    currency: CURRENCIES[c.code] || 'EUR'
+                                                    currency: c.currency_code || 'EUR'
                                                 }))}
                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${formData.country === c.code
                                                     ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30'
@@ -510,13 +512,24 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase">В Евро (€)</label>
-                                    <input
-                                        type="number"
-                                        value={formData.amountEUR}
-                                        onChange={e => setFormData(p => ({ ...p, amountEUR: e.target.value }))}
-                                        className="w-full bg-gray-100 dark:bg-[#222] border border-transparent rounded-lg px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300"
-                                        placeholder="0.00"
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            value={formData.amountEUR}
+                                            onChange={e => setFormData(p => ({ ...p, amountEUR: e.target.value }))}
+                                            className="w-full bg-gray-100 dark:bg-[#222] border border-transparent rounded-lg px-3 py-2 text-sm font-bold text-gray-700 dark:text-gray-300"
+                                            placeholder="0.00"
+                                        />
+                                        {isConvertingRate && (
+                                            <RefreshCw size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-400 animate-spin" />
+                                        )}
+                                    </div>
+                                    {rateInfo && !isConvertingRate && (
+                                        <p className="text-[10px] text-gray-400 mt-1">
+                                            1 EUR = {rateInfo.rate?.toFixed(2)} {rateInfo.currency}
+                                            {rateInfo.fromCache ? ' · кэш' : ' · апи'}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 

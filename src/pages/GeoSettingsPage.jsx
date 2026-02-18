@@ -3,21 +3,34 @@ import { useAppStore } from '../store/appStore';
 import { addCountry, deleteCountry } from '../services/dataService';
 import { Globe, Plus, Trash2, Search, X, AlertCircle, Save, Info, Clock, Flag } from 'lucide-react';
 
-// Common flags for the dropdown
+// Common flags for the dropdown — includes default currency
 const COMMON_FLAGS = [
-    { code: 'KZ', emoji: '🇰🇿', name: 'Казахстан' },
-    { code: 'UA', emoji: '🇺🇦', name: 'Украина' },
-    { code: 'PL', emoji: '🇵🇱', name: 'Польша' },
-    { code: 'UZ', emoji: '🇺🇿', name: 'Узбекистан' },
-    { code: 'TR', emoji: '🇹🇷', name: 'Турция' },
-    { code: 'CZ', emoji: '🇨🇿', name: 'Чехия' },
-    { code: 'DE', emoji: '🇩🇪', name: 'Германия' },
-    { code: 'US', emoji: '🇺🇸', name: 'США' },
-    { code: 'GB', emoji: '🇬🇧', name: 'Великобритания' },
-    { code: 'FR', emoji: '🇫🇷', name: 'Франция' },
-    { code: 'NL', emoji: '🇳🇱', name: 'Нидерланды' },
-    { code: 'ES', emoji: '🇪🇸', name: 'Испания' },
-    { code: 'IT', emoji: '🇮🇹', name: 'Италия' },
+    { code: 'KZ', emoji: '🇰🇿', name: 'Казахстан', currency: 'KZT' },
+    { code: 'UA', emoji: '🇺🇦', name: 'Украина', currency: 'UAH' },
+    { code: 'PL', emoji: '🇵🇱', name: 'Польша', currency: 'PLN' },
+    { code: 'UZ', emoji: '🇺🇿', name: 'Узбекистан', currency: 'UZS' },
+    { code: 'TR', emoji: '🇹🇷', name: 'Турция', currency: 'TRY' },
+    { code: 'CZ', emoji: '🇨🇿', name: 'Чехия', currency: 'CZK' },
+    { code: 'RO', emoji: '🇷🇴', name: 'Румыния', currency: 'RON' },
+    { code: 'DE', emoji: '🇩🇪', name: 'Германия', currency: 'EUR' },
+    { code: 'US', emoji: '🇺🇸', name: 'США', currency: 'USD' },
+    { code: 'GB', emoji: '🇬🇧', name: 'Великобритания', currency: 'GBP' },
+    { code: 'FR', emoji: '🇫🇷', name: 'Франция', currency: 'EUR' },
+    { code: 'NL', emoji: '🇳🇱', name: 'Нидерланды', currency: 'EUR' },
+    { code: 'ES', emoji: '🇪🇸', name: 'Испания', currency: 'EUR' },
+    { code: 'IT', emoji: '🇮🇹', name: 'Италия', currency: 'EUR' },
+    { code: 'BG', emoji: '🇧🇬', name: 'Болгария', currency: 'BGN' },
+    { code: 'HU', emoji: '🇭🇺', name: 'Венгрия', currency: 'HUF' },
+    { code: 'CH', emoji: '🇨🇭', name: 'Швейцария', currency: 'CHF' },
+    { code: 'SE', emoji: '🇸🇪', name: 'Швеция', currency: 'SEK' },
+    { code: 'NO', emoji: '🇳🇴', name: 'Норвегия', currency: 'NOK' },
+];
+
+// Popular currency codes for the select dropdown
+const CURRENCY_OPTIONS = [
+    'EUR', 'USD', 'GBP', 'UAH', 'PLN', 'CZK', 'RON', 'KZT', 'TRY',
+    'UZS', 'BGN', 'HUF', 'CHF', 'SEK', 'NOK', 'DKK', 'GEL', 'AMD',
+    'AZN', 'BYN', 'MDL', 'RSD',
 ];
 
 const GeoSettingsPage = () => {
@@ -32,6 +45,7 @@ const GeoSettingsPage = () => {
         code: '',
         name: '',
         emoji: '',
+        currency_code: 'EUR',
         shift_start: '09:00',
         shift_end: '18:00'
     });
@@ -49,7 +63,8 @@ const GeoSettingsPage = () => {
             ...prev,
             emoji: flagObj.emoji,
             code: flagObj.code,
-            name: flagObj.name
+            name: flagObj.name,
+            currency_code: flagObj.currency || 'EUR',
         }));
     };
 
@@ -65,12 +80,13 @@ const GeoSettingsPage = () => {
                 code: formData.code.toUpperCase(),
                 name: formData.name,
                 emoji: formData.emoji,
+                currency_code: formData.currency_code.toUpperCase() || 'EUR',
                 shift_start: formData.shift_start,
                 shift_end: formData.shift_end
             });
             await fetchAllData(true);
             setIsAddModalOpen(false);
-            setFormData({ code: '', name: '', emoji: '', shift_start: '09:00', shift_end: '18:00' });
+            setFormData({ code: '', name: '', emoji: '', currency_code: 'EUR', shift_start: '09:00', shift_end: '18:00' });
         } catch (error) {
             alert('Ошибка при добавлении: ' + error.message);
         } finally {
@@ -158,7 +174,14 @@ const GeoSettingsPage = () => {
 
                         <div className="mb-4">
                             <h3 className="font-bold text-lg dark:text-white mb-0.5">{country.name}</h3>
-                            <span className="text-xs font-mono font-medium bg-gray-100 dark:bg-[#222] text-gray-500 px-2 py-0.5 rounded">{country.code}</span>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs font-mono font-medium bg-gray-100 dark:bg-[#222] text-gray-500 px-2 py-0.5 rounded">{country.code}</span>
+                                {country.currency_code && (
+                                    <span className="text-xs font-mono font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-800">
+                                        {country.currency_code}
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-[#1A1A1A] p-2 rounded-lg">
@@ -215,6 +238,22 @@ const GeoSettingsPage = () => {
                                 <label className="text-xs font-bold text-gray-500 dark:text-gray-400">Название</label>
                                 <input required name="name" value={formData.name} onChange={handleChange} placeholder="Казахстан" className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm dark:text-white" />
                                 <p className="text-[10px] text-gray-400">Отображаемое название (на Русском)</p>
+                            </div>
+
+                            {/* Currency */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400">💱 Валюта</label>
+                                <select
+                                    name="currency_code"
+                                    value={formData.currency_code}
+                                    onChange={handleChange}
+                                    className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm dark:text-white font-mono"
+                                >
+                                    {CURRENCY_OPTIONS.map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                                <p className="text-[10px] text-gray-400">Автоматически подставляется при выборе флага</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
