@@ -96,7 +96,149 @@ export const useAppStore = create((set, get) => ({
   isLoading: false,
   isInitialized: false,
 
+  // Knowledge Base Sharing
+  sharedPages: {}, // { pageKey: { slug, isActive, settings, visitCount } }
+
   // --- ACTIONS ---
+
+  // SHARED PAGES ACTIONS
+  fetchSharedPage: async (pageKey) => {
+    try {
+      const { data, error } = await supabase
+        .from('shared_pages')
+        .select('*')
+        .eq('page_key', pageKey)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching shared page:', error);
+        return null;
+      }
+
+      set(state => ({
+        sharedPages: { ...state.sharedPages, [pageKey]: data || null }
+      }));
+      return data;
+    } catch (e) {
+      console.error('Fetch shared page failed', e);
+      return null;
+    }
+  },
+
+  createSharedPage: async (pageKey, settings = {}) => {
+    try {
+      const user = get().user;
+      // Generate a random slug
+      const randomSlug = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+
+      const { data, error } = await supabase
+        .from('shared_pages')
+        .insert({
+          page_key: pageKey,
+          slug: randomSlug,
+          is_active: true,
+          settings,
+          updated_by: user?.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      set(state => ({
+        sharedPages: { ...state.sharedPages, [pageKey]: data }
+      }));
+      return data;
+    } catch (e) {
+      console.error('Create shared page failed', e);
+      return null;
+    }
+  },
+
+  updateSharedPage: async (pageKey, updates) => {
+    try {
+      const { data, error } = await supabase
+        .from('shared_pages')
+        .update({ ...updates, updated_at: new Date() })
+        .eq('page_key', pageKey)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      set(state => ({
+        sharedPages: { ...state.sharedPages, [pageKey]: data }
+      }));
+      return data;
+    } catch (e) {
+      console.error('Update shared page failed', e);
+      return null;
+    }
+  },
+
+  getPublicPage: async (slug) => {
+    try {
+      // Public Access via RLS (anon key)
+      const { data, error } = await supabase
+        .from('shared_pages')
+        .select('*')
+        .eq('slug', slug)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      // Increment visit count (fire and forget)
+      if (data) {
+        await supabase.rpc('increment_visit_count', { page_id: data.id });
+      }
+
+      return data;
+    } catch (e) {
+      console.error('Get public page failed', e);
+      return null;
+    }
+  },
+
+  // NEW: Fetch specific data for public pages (KPI, Products, etc.)
+  fetchPublicData: async (pageKey) => {
+    try {
+      switch (pageKey) {
+        case 'kpi': {
+          const [rates, settings] = await Promise.all([
+            supabase.from('kpi_product_rates').select('*'),
+            supabase.from('kpi_settings').select('*')
+          ]);
+
+          const kpiSettingsMap = {};
+          (settings.data || []).forEach(s => kpiSettingsMap[s.key] = s.value);
+
+          set({
+            kpiRates: rates.data || [],
+            kpiSettings: kpiSettingsMap
+          });
+          break;
+        }
+        case 'products': {
+          const { data } = await supabase.from('knowledge_products').select('*');
+          set({ products: data || [] });
+          break;
+        }
+        case 'rules': {
+          const { data } = await supabase.from('knowledge_rules').select('*');
+          set({ rules: data || [] });
+          break;
+        }
+        case 'learning': {
+          const { data } = await supabase.from('knowledge_learning').select('*');
+          set({ learningArticles: data || [] });
+          break;
+        }
+      }
+    } catch (e) {
+      console.error('Fetch public data failed', e);
+    }
+  },
 
   setUser: (user) => set({ user }),
 
@@ -446,12 +588,13 @@ export const useAppStore = create((set, get) => ({
         kpiSettingsData,
         appSettingsData,
         managerRatesData,
-        leadsMappingData, // RPC for payment attribution
-        leadsStatsData    // RPC for traffic charts
+        // leadsMappingData REMOVED - using View now
+        leadsStatsData,    // RPC for traffic charts
+        sharedPagesData    // Added: Fetch all shared pages
       ] = await Promise.all([
         fetchAll('channels', '*', 'id', true),
         fetchAll('managers', '*', 'created_at', false),
-        fetchAll('payments', '*', 'transaction_date', false),
+        fetchAll('enriched_payments_view', '*', 'transaction_date', false), // USED VIEW
         fetchAll('knowledge_products', '*', 'created_at', false),
         fetchAll('knowledge_rules', '*', 'created_at', false),
         fetchAll('knowledge_learning', '*', 'created_at', false),
@@ -462,52 +605,48 @@ export const useAppStore = create((set, get) => ({
         fetchAll('kpi_settings', '*', 'key', true),
         fetchAll('app_settings', '*', 'key', true),
         fetchAll('manager_rates', '*', 'created_at', false),
-        supabase.rpc('get_leads_mapping').then(r => r.data || []),
-        supabase.rpc('get_lead_stats_v2', { start_date: '2020-01-01', end_date: '2030-01-01' }).then(r => r.data || [])
+        // supabase.rpc('get_leads_mapping').then(r => r.data || []), // REMOVED
+        supabase.rpc('get_lead_stats_v2', { start_date: '2020-01-01', end_date: '2030-01-01' }).then(r => r.data || []),
+        fetchAll('shared_pages', '*', 'page_key', true).catch(err => {
+          console.warn('Shared pages table not found or empty (skipping):', err);
+          return [];
+        })
       ]);
 
 
       // Process Channels
       const newChannelsMap = {};
-      channelsData.forEach(ch => {
+      (channelsData || []).forEach(ch => {
         newChannelsMap[ch.wazzup_id] = ch.country_code;
       });
       set({ channelsMap: newChannelsMap, channels: channelsData || [] });
 
       // Process Managers
       const managersMap = {};
-      managersData.forEach(m => managersMap[m.id] = { name: m.name, role: m.role });
+      (managersData || []).forEach(m => managersMap[m.id] = { name: m.name, role: m.role });
 
       // Process KPI Settings
       const kpiSettingsMap = {};
-      kpiSettingsData.forEach(s => kpiSettingsMap[s.key] = s.value);
+      (kpiSettingsData || []).forEach(s => kpiSettingsMap[s.key] = s.value);
 
       // Process App Settings
-      const permissionsMap = appSettingsData.find(s => s.key === 'role_permissions')?.value || {};
-      const roleDocsMap = appSettingsData.find(s => s.key === 'role_documentation')?.value || {};
+      const permissionsMap = (appSettingsData || []).find(s => s.key === 'role_permissions')?.value || {};
+      const roleDocsMap = (appSettingsData || []).find(s => s.key === 'role_documentation')?.value || {};
+
+      // Process Shared Pages
+      const sharedPagesMap = {};
+      (sharedPagesData || []).forEach(p => {
+        sharedPagesMap[p.page_key] = p;
+      });
+
 
       // SAVE TO CACHE
       localStorage.setItem('astroPermissions', JSON.stringify(permissionsMap));
       localStorage.setItem('astroRoleDocs', JSON.stringify(roleDocsMap));
 
 
-      // 1. Создаем карту источников: nickname -> 'comments' | 'direct'
-      // 1. Создаем карту источников: nickname -> 'comments' | 'direct'
-      const leadsSourceMap = {};
-      if (leadsMappingData) {
-        leadsMappingData.forEach(item => {
-          if (item.wazzup_chat_id) {
-            const normNick = normalizeNick(item.wazzup_chat_id);
-            if (normNick) {
-              // If duplicates exist, 'comments' has priority if present? 
-              // Or just overwrite. The original logic checked `if !== 'comments'`
-              if (leadsSourceMap[normNick] !== 'comments') {
-                leadsSourceMap[normNick] = item.is_comment ? 'comments' : 'direct';
-              }
-            }
-          }
-        });
-      }
+      // 1. Создаем карту источников: REMOVED (Logic moved to View)
+      // const leadsSourceMap = {}; ...
 
       // 2. Статистика трафика (RPC data)
       let trafficResult = {};
@@ -535,29 +674,32 @@ export const useAppStore = create((set, get) => ({
       const formattedPayments = (paymentsData || []).map(item => {
         const rawDate = item.transaction_date || item.created_at;
 
-        // Определяем источник по никнейму
-        let source = 'direct'; // Default fallback
+        // Определяем источник из View
+        let source = item.derived_source || 'direct'; // Default to direct if missing
+        if (source === 'unknown') source = 'direct';  // Unknown usually means direct in legacy logic? Or just 'unknown'?
+        // The previous logic defaulted to 'unknown' if not found in leads.
+        // But here user said "if not comment then Direct".
+        // My view logic:
+        // WHEN p.crm_link ~ '^\+?[0-9\s()-]+$' THEN 'whatsapp'
+        // WHEN l.is_comment IS TRUE THEN 'comments'
+        // WHEN l.is_comment IS FALSE THEN 'direct'
+        // ELSE 'unknown'
 
-        if (item.crm_link) {
-          const cleanNick = normalizeNick(item.crm_link);
+        // Let's trust the View. If 'unknown' -> maybe treat as 'direct' or keep 'unknown'?
+        // In dashboard, filters are 'direct', 'comments', 'whatsapp'.
+        // If I return 'unknown', it won't match any filter except 'all'.
 
-          // Проверяем, является ли crm_link телефонным номером
-          // Телефон: только цифры (может быть с + в начале)
-          const isPhoneNumber = /^[\d+\s()-]+$/.test(item.crm_link.trim());
-
-          if (isPhoneNumber) {
-            // Это WhatsApp контакт (телефонный номер)
-            source = 'whatsapp';
-          } else {
-            // Пытаемся найти в карте лидов (Instagram)
-            if (leadsSourceMap[cleanNick]) {
-              source = leadsSourceMap[cleanNick]; // 'direct' или 'comments'
-            } else {
-              // Не нашли в leads и это не телефон - unknown
-              source = 'unknown';
-            }
-          }
-        }
+        // User request: "если оно true тогда это коментарий если нет тогда Direct"
+        // So 'unknown' (no lead match) implies 'direct' (or maybe they assume every client is in leads?)
+        // If crm_link exists but no lead match -> it's a lead that we missed or manually entered?
+        // Let's Default 'unknown' to 'direct' if crm_link is present?
+        // Or better: stick to View logic and let user see 'unknown' if they want? 
+        // User said: "трафик и тут есть поле is_comment если оно true тогда это коментарий если нет тогда Direct".
+        // This implies boolean: true -> comment, false -> direct.
+        // If there IS NO LEAD, then is_comment is NULL.
+        // My View returns 'unknown' for NULL.
+        // I should probably map 'unknown' to 'direct' to match user expectation "if no comment then Direct".
+        if (source === 'unknown') source = 'direct';
 
         return {
           ...item,
@@ -593,6 +735,7 @@ export const useAppStore = create((set, get) => ({
         roleDocs: roleDocsMap,
         trafficStats: trafficResult,
         stats: { totalEur: total.toFixed(2), count: formattedPayments.length },
+        sharedPages: sharedPagesMap, // Added: Set shared pages state
         isLoading: false,
         isInitialized: true
       });

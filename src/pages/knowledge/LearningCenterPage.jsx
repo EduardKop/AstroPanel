@@ -4,7 +4,7 @@ import { supabase } from '../../services/supabaseClient';
 import {
     BookOpen, Search, ChevronRight, X, Trash2, Plus, Edit3, Save, Loader2,
     GraduationCap, Clock, Tag, Star, Filter, Play, ExternalLink,
-    Bold, Heading1, Heading2, Heading3, List, Minus, Youtube, Link2
+    Bold, Heading1, Heading2, Heading3, List, Minus, Youtube, Link2, Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -372,27 +372,45 @@ const MarkdownContent = ({ content }) => {
     return <div className="space-y-1">{renderContent()}</div>;
 };
 
+import ShareModal from '../../components/sharing/ShareModal';
+// ... existing imports ...
+
 // --- MAIN COMPONENT ---
-const LearningCenterPage = () => {
-    const { learningArticles, user, fetchAllData } = useAppStore();
+const LearningCenterPage = ({ isPublic = false, publicSettings = {}, lang = 'ru' }) => {
+    const { learningArticles, user, fetchAllData, sharedPages } = useAppStore();
     const [selectedArticle, setSelectedArticle] = useState(null);
     const [editingArticle, setEditingArticle] = useState(null);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState('all');
 
-    const isAdmin = user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
+    const isAdmin = !isPublic && user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
+    const canShare = !isPublic && user && ['Admin', 'C-level'].includes(user.role);
+
+    const isShared = sharedPages['learning']?.is_active;
+
+    // Helper to get localized content
+    const getLocalizedContent = (article, field) => {
+        if (lang === 'ua') {
+            return article[`${field}_ua`] || article[field];
+        }
+        return article[field];
+    };
 
     // Filter articles
     const filteredArticles = useMemo(() => {
         return learningArticles.filter(article => {
+            const title = getLocalizedContent(article, 'title');
+            const desc = getLocalizedContent(article, 'description');
+
             const matchesSearch =
-                article.title?.toLowerCase().includes(search.toLowerCase()) ||
-                article.description?.toLowerCase().includes(search.toLowerCase());
+                title?.toLowerCase().includes(search.toLowerCase()) ||
+                desc?.toLowerCase().includes(search.toLowerCase());
             const matchesCategory = activeCategory === 'all' || article.category === activeCategory;
             return matchesSearch && matchesCategory;
         });
-    }, [learningArticles, search, activeCategory]);
+    }, [learningArticles, search, activeCategory, lang]);
 
     // Featured articles first
     const sortedArticles = useMemo(() => {
@@ -419,43 +437,61 @@ const LearningCenterPage = () => {
     };
 
     return (
-        <div className="animate-in fade-in zoom-in duration-300 pb-10">
+        <div className={`animate-in fade-in zoom-in duration-300 ${isPublic ? 'py-10 px-6 md:px-10' : 'pb-10'}`}>
 
             {/* HEADER */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-                <div>
-                    <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
-                        <GraduationCap className="text-indigo-500" size={24} />
-                        Центр обучения
-                    </h2>
-                    <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
-                        Обучающие материалы, скрипты и гайды
-                    </p>
-                </div>
-
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-64">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Поиск статей..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-indigo-500 dark:text-white transition-colors"
-                        />
+            {(!isPublic || publicSettings.show_title !== false) && (
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+                    <div>
+                        <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
+                            <GraduationCap className="text-indigo-500" size={24} />
+                            Центр обучения
+                        </h2>
+                        {!isPublic && (
+                            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
+                                Обучающие материалы, скрипты и гайды
+                            </p>
+                        )}
                     </div>
 
-                    {/* Add button (Admin only) */}
-                    {isAdmin && (
-                        <button
-                            onClick={() => handleOpenEditor(null)}
-                            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-lg shadow-indigo-500/20"
-                        >
-                            <Plus size={18} /> <span className="hidden sm:inline">Добавить</span>
-                        </button>
-                    )}
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <div className="relative flex-1 md:w-64">
+                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Поиск статей..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-indigo-500 dark:text-white transition-colors"
+                            />
+                        </div>
+
+                        {/* SHARE BUTTON */}
+                        {canShare && (
+                            <button
+                                onClick={() => setIsShareModalOpen(true)}
+                                className="relative p-2 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-500 hover:text-blue-500 rounded-lg transition-colors"
+                                title={isShared ? "Доступ открыт (Настроить)" : "Настройки доступа"}
+                            >
+                                <Globe size={18} />
+                                {isShared && (
+                                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white dark:border-[#111]"></span>
+                                )}
+                            </button>
+                        )}
+
+                        {/* Add button (Admin only) */}
+                        {isAdmin && (
+                            <button
+                                onClick={() => handleOpenEditor(null)}
+                                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-lg shadow-indigo-500/20"
+                            >
+                                <Plus size={18} /> <span className="hidden sm:inline">Добавить</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* CATEGORY TABS */}
             <div className="flex gap-2 mb-6 overflow-x-auto pb-2 -mx-3 px-3 custom-scrollbar">
@@ -515,16 +551,16 @@ const LearningCenterPage = () => {
                         </div>
 
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">
-                            {article.title}
+                            {getLocalizedContent(article, 'title')}
                         </h3>
                         <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-4">
-                            {article.description}
+                            {getLocalizedContent(article, 'description')}
                         </p>
 
                         {/* Tags */}
                         {article.tags && article.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mb-4">
-                                {article.tags.slice(0, 3).map((tag, idx) => (
+                                {(lang === 'ua' && article.tags_ua?.length > 0 ? article.tags_ua : article.tags).slice(0, 3).map((tag, idx) => (
                                     <span
                                         key={idx}
                                         className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold rounded-full"
@@ -532,9 +568,9 @@ const LearningCenterPage = () => {
                                         {tag}
                                     </span>
                                 ))}
-                                {article.tags.length > 3 && (
+                                {(lang === 'ua' && article.tags_ua?.length > 0 ? article.tags_ua : article.tags).length > 3 && (
                                     <span className="px-2 py-0.5 text-gray-400 text-[10px]">
-                                        +{article.tags.length - 3}
+                                        +{(lang === 'ua' && article.tags_ua?.length > 0 ? article.tags_ua : article.tags).length - 3}
                                     </span>
                                 )}
                             </div>
@@ -545,7 +581,7 @@ const LearningCenterPage = () => {
                                 <Clock size={12} /> {article.read_time || '5 min'}
                             </span>
                             <div className="flex items-center text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-wider">
-                                Читать <ChevronRight size={14} className="ml-1 group-hover:translate-x-1 transition-transform" />
+                                {lang === 'ua' ? 'Читати' : 'Читать'} <ChevronRight size={14} className="ml-1 group-hover:translate-x-1 transition-transform" />
                             </div>
                         </div>
                     </div>
@@ -555,7 +591,7 @@ const LearningCenterPage = () => {
                     <div className="col-span-full py-16 text-center">
                         <GraduationCap size={48} className="mx-auto text-gray-300 dark:text-gray-700 mb-4" />
                         <p className="text-gray-400 text-sm">
-                            {search || activeCategory !== 'all' ? 'Статьи не найдены' : 'Добавьте первую статью'}
+                            {search || activeCategory !== 'all' ? (lang === 'ua' ? 'Статті не знайдені' : 'Статьи не найдены') : (lang === 'ua' ? 'Додайте першу статтю' : 'Добавьте первую статью')}
                         </p>
                     </div>
                 )}
@@ -566,6 +602,7 @@ const LearningCenterPage = () => {
                 {selectedArticle && (
                     <ArticleViewModal
                         article={selectedArticle}
+                        lang={lang}
                         onClose={() => setSelectedArticle(null)}
                     />
                 )}
@@ -585,12 +622,27 @@ const LearningCenterPage = () => {
                     />
                 )}
             </AnimatePresence>
+
+            {/* SHARE MODAL */}
+            {isShareModalOpen && (
+                <ShareModal
+                    pageKey="learning"
+                    pageTitle="Центр Обучения"
+                    onClose={() => setIsShareModalOpen(false)}
+                />
+            )}
         </div>
     );
 };
 
 // --- ARTICLE VIEW MODAL (WIDER - 80%) ---
-const ArticleViewModal = ({ article, onClose }) => {
+const ArticleViewModal = ({ article, onClose, lang = 'ru' }) => {
+    // Determine content based on language
+    const title = (lang === 'ua' && article.title_ua) ? article.title_ua : article.title;
+    const description = (lang === 'ua' && article.description_ua) ? article.description_ua : article.description;
+    const content = (lang === 'ua' && article.content_ua) ? article.content_ua : article.content;
+    const tags = (lang === 'ua' && article.tags_ua?.length > 0) ? article.tags_ua : article.tags;
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
             <motion.div
@@ -607,7 +659,7 @@ const ArticleViewModal = ({ article, onClose }) => {
                             {article.emoji || '📚'}
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-gray-900 dark:text-white">{article.title}</h2>
+                            <h2 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h2>
                             <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                                 {article.author_name && <span>👤 {article.author_name}</span>}
                                 {article.read_time && <span className="flex items-center gap-1"><Clock size={12} /> {article.read_time}</span>}
@@ -622,9 +674,9 @@ const ArticleViewModal = ({ article, onClose }) => {
                 {/* SCROLLABLE CONTENT */}
                 <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                     {/* Tags */}
-                    {article.tags && article.tags.length > 0 && (
+                    {tags && tags.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-6">
-                            {article.tags.map((tag, idx) => (
+                            {tags.map((tag, idx) => (
                                 <span
                                     key={idx}
                                     className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs font-semibold rounded-full"
@@ -636,14 +688,14 @@ const ArticleViewModal = ({ article, onClose }) => {
                     )}
 
                     {/* Description */}
-                    {article.description && (
+                    {description && (
                         <p className="text-gray-600 dark:text-gray-400 mb-6 pb-6 border-b border-gray-100 dark:border-[#222] text-lg">
-                            {article.description}
+                            {description}
                         </p>
                     )}
 
                     {/* Content with Markdown rendering */}
-                    <MarkdownContent content={article.content} />
+                    <MarkdownContent content={content} />
                 </div>
             </motion.div>
         </div>
@@ -654,16 +706,26 @@ const ArticleViewModal = ({ article, onClose }) => {
 const ArticleEditorModal = ({ article, user, onClose, onSave }) => {
     const [loading, setLoading] = useState(false);
     const textareaRef = useRef(null);
+    const [lang, setLang] = useState('ru'); // 'ru' or 'ua'
 
     const [form, setForm] = useState({
+        // RU Fields
         title: article?.title || '',
         emoji: article?.emoji || '📚',
         description: article?.description || '',
         content: article?.content || '',
+
+        // Settings
         category: article?.category || 'general',
         tags: article?.tags?.join(', ') || '',
         is_featured: article?.is_featured || false,
         read_time: article?.read_time || '5 min',
+
+        // UA Fields
+        title_ua: article?.title_ua || '',
+        description_ua: article?.description_ua || '',
+        content_ua: article?.content_ua || '',
+        tags_ua: article?.tags_ua?.join(', ') || '',
     });
 
     const handleChange = (e) => {
@@ -671,13 +733,26 @@ const ArticleEditorModal = ({ article, user, onClose, onSave }) => {
         setForm({ ...form, [name]: type === 'checkbox' ? checked : value });
     };
 
+    const handleContentChange = (value) => {
+        if (lang === 'ru') {
+            setForm({ ...form, content: value });
+        } else {
+            setForm({ ...form, content_ua: value });
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!form.title.trim()) return alert('Введите название статьи');
+        if (!form.title.trim() && !form.title_ua.trim()) return alert('Введите название статьи');
 
         setLoading(true);
         try {
             const tagsArray = form.tags
+                .split(',')
+                .map(t => t.trim())
+                .filter(Boolean);
+
+            const tagsArrayUA = form.tags_ua
                 .split(',')
                 .map(t => t.trim())
                 .filter(Boolean);
@@ -694,6 +769,11 @@ const ArticleEditorModal = ({ article, user, onClose, onSave }) => {
                 author_id: user?.id,
                 author_name: user?.name || 'Unknown',
                 updated_at: new Date().toISOString(),
+                // UA
+                title_ua: form.title_ua,
+                description_ua: form.description_ua,
+                content_ua: form.content_ua,
+                tags_ua: tagsArrayUA,
             };
 
             if (article?.id) {
@@ -720,9 +800,26 @@ const ArticleEditorModal = ({ article, user, onClose, onSave }) => {
                 className="bg-white dark:bg-[#09090b] w-[90%] max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col border border-gray-200 dark:border-[#333]"
             >
                 <div className="p-6 border-b border-gray-100 dark:border-[#222] flex justify-between items-center bg-gray-50 dark:bg-[#111]">
-                    <h2 className="text-xl font-bold dark:text-white">
-                        {article ? 'Редактировать статью' : 'Новая статья'}
-                    </h2>
+                    <div className="flex items-center gap-4">
+                        <h2 className="text-xl font-bold dark:text-white">
+                            {article ? 'Редактировать статью' : 'Новая статья'}
+                        </h2>
+                        {/* Language Toggle */}
+                        <div className="flex bg-gray-200 dark:bg-[#222] rounded-lg p-1">
+                            <button
+                                onClick={() => setLang('ru')}
+                                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${lang === 'ru' ? 'bg-white dark:bg-[#333] shadow text-blue-600' : 'text-gray-500'}`}
+                            >
+                                RU 🇷🇺
+                            </button>
+                            <button
+                                onClick={() => setLang('ua')}
+                                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${lang === 'ua' ? 'bg-white dark:bg-[#333] shadow text-blue-600' : 'text-gray-500'}`}
+                            >
+                                UA 🇺🇦
+                            </button>
+                        </div>
+                    </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-[#222] rounded-full text-gray-500"><X size={24} /></button>
                 </div>
 
@@ -731,14 +828,16 @@ const ArticleEditorModal = ({ article, user, onClose, onSave }) => {
                     {/* Title & Emoji */}
                     <div className="grid grid-cols-6 gap-4">
                         <div className="col-span-5">
-                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Название</label>
+                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">
+                                Название {lang === 'ua' && '(UA)'}
+                            </label>
                             <input
-                                required
-                                name="title"
-                                value={form.title}
+                                required={lang === 'ru'}
+                                name={lang === 'ru' ? 'title' : 'title_ua'}
+                                value={lang === 'ru' ? form.title : form.title_ua}
                                 onChange={handleChange}
                                 className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2.5 text-sm dark:text-white outline-none focus:border-indigo-500"
-                                placeholder="Как продавать эффективно..."
+                                placeholder={lang === 'ru' ? "Как продавать эффективно..." : "Як продавати ефективно..."}
                             />
                         </div>
                         <div>
@@ -756,7 +855,7 @@ const ArticleEditorModal = ({ article, user, onClose, onSave }) => {
                         </div>
                     </div>
 
-                    {/* Category & Read Time */}
+                    {/* Category & Read Time (Shared) */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Категория</label>
@@ -766,7 +865,7 @@ const ArticleEditorModal = ({ article, user, onClose, onSave }) => {
                                 onChange={handleChange}
                                 className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2.5 text-sm dark:text-white outline-none focus:border-indigo-500 cursor-pointer"
                             >
-                                {CATEGORIES.filter(c => c.value !== 'all').map(cat => (
+                                {CATEGORIES.map(cat => (
                                     <option key={cat.value} value={cat.value}>{cat.label}</option>
                                 ))}
                             </select>
@@ -783,48 +882,56 @@ const ArticleEditorModal = ({ article, user, onClose, onSave }) => {
                         </div>
                     </div>
 
-                    {/* Description */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Краткое описание</label>
-                        <input
-                            name="description"
-                            value={form.description}
-                            onChange={handleChange}
-                            className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2.5 text-sm dark:text-white outline-none focus:border-indigo-500"
-                            placeholder="Краткое описание для карточки..."
-                        />
-                    </div>
-
                     {/* Tags */}
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Теги</label>
+                        <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">
+                            Теги {lang === 'ua' && '(UA)'}
+                        </label>
                         <p className="text-[10px] text-gray-400 mb-1">Через запятую: продажи, скрипты, новичкам</p>
                         <input
-                            name="tags"
-                            value={form.tags}
+                            name={lang === 'ru' ? 'tags' : 'tags_ua'}
+                            value={lang === 'ru' ? form.tags : form.tags_ua}
                             onChange={handleChange}
                             className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2.5 text-sm dark:text-white outline-none focus:border-indigo-500"
-                            placeholder="продажи, скрипты, новичкам"
+                            placeholder="продажи, скрипты, новички (через запятую)"
                         />
                     </div>
 
-                    {/* Content with Rich Text Toolbar */}
+                    {/* Description */}
                     <div>
-                        <label className="block text-xs font-bold text-indigo-500 mb-1.5 uppercase tracking-wider">Содержание статьи</label>
-                        <RichTextToolbar
-                            textareaRef={textareaRef}
-                            value={form.content}
-                            onChange={(newContent) => setForm({ ...form, content: newContent })}
-                        />
+                        <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">
+                            Краткое описание {lang === 'ua' && '(UA)'}
+                        </label>
                         <textarea
-                            ref={textareaRef}
-                            name="content"
-                            value={form.content}
+                            name={lang === 'ru' ? 'description' : 'description_ua'}
+                            value={lang === 'ru' ? form.description : form.description_ua}
                             onChange={handleChange}
-                            rows={14}
-                            className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-b-lg rounded-t-none px-4 py-3 text-sm dark:text-white outline-none focus:border-indigo-500 resize-none"
-                            placeholder="Начните писать текст или используйте кнопки выше для форматирования..."
+                            rows={3}
+                            className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2.5 text-sm dark:text-white outline-none focus:border-indigo-500 resize-none"
+                            placeholder={lang === 'ru' ? "О чем эта статья..." : "Про що ця стаття..."}
                         />
+                    </div>
+
+                    {/* Content Editor */}
+                    <div className="flex-1 flex flex-col min-h-[400px]">
+                        <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">
+                            Содержание статьи {lang === 'ua' && '(UA)'} (Markdown)
+                        </label>
+                        <div className="flex-1 flex flex-col border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden bg-gray-50 dark:bg-[#1A1A1A]">
+                            <RichTextToolbar
+                                textareaRef={textareaRef}
+                                value={lang === 'ru' ? form.content : form.content_ua}
+                                onChange={handleContentChange}
+                            />
+                            <textarea
+                                ref={textareaRef}
+                                name={lang === 'ru' ? 'content' : 'content_ua'}
+                                value={lang === 'ru' ? form.content : form.content_ua}
+                                onChange={handleChange}
+                                className="flex-1 w-full p-4 bg-transparent outline-none text-sm dark:text-white font-mono resize-none leading-relaxed"
+                                placeholder="# Заголовок..."
+                            />
+                        </div>
                     </div>
 
                     {/* Featured */}

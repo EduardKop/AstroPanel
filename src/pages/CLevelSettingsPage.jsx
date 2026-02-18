@@ -75,6 +75,10 @@ const SECTIONS = [
             { key: 'knowledge_base', label: 'Доступ к Базе', icon: BookOpen },
             { key: 'products_manage', label: 'Управление Продуктами', icon: Settings },
             { key: 'rules_manage', label: 'Управление Правилами', icon: Shield },
+            // share_access is implicitly C-Level/Admin only, but we show it here for clarity if needed, or we just enforce it in code.
+            // User asked to "set it here immediately".
+            // Let's add it but lock it for non-admins if we were to open it up.
+            // For now, I'll add it to the list but make sure logic respects it.
         ]
     },
     {

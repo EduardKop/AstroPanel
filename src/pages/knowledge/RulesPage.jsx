@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { supabase } from '../../services/supabaseClient';
+import ShareModal from '../../components/sharing/ShareModal';
 import {
   Shield, Clock, Heart, FileText, Check, Plus,
-  Edit3, Trash2, X, Save, ToggleLeft, ToggleRight, Loader2, AlertCircle
+  Edit3, Trash2, X, Save, ToggleLeft, ToggleRight, Loader2, AlertCircle, Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -17,14 +18,27 @@ const ICONS = {
   Alert: <AlertCircle className="text-red-500" size={20} />,
 };
 
-const RulesPage = () => {
-  const { rules, user, fetchAllData } = useAppStore();
+const RulesPage = ({ isPublic = false, publicSettings = {}, lang: initialLang = 'ru' }) => {
+  const [lang, setLang] = useState(initialLang);
+  const { rules, user, fetchAllData, sharedPages } = useAppStore();
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Состояние модалки: null = закрыто, {} = новый, {id: ...} = редактирование
   const [editingSection, setEditingSection] = useState(null);
 
-  const isAdmin = user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
+  const isAdmin = !isPublic && user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
+  const canShare = !isPublic && user && ['Admin', 'C-level'].includes(user.role);
+
+  const isShared = sharedPages['rules']?.is_active;
+
+  // Helper to get localized content
+  const getLocalizedContent = (section, field) => {
+    if (lang === 'ua') {
+      return section[`${field}_ua`] || section[field];
+    }
+    return section[field];
+  };
 
   // Удаление всей секции
   const handleDeleteSection = async (id) => {
@@ -34,40 +48,60 @@ const RulesPage = () => {
   };
 
   return (
-    <div className="animate-in fade-in zoom-in duration-300 pb-20">
+    <div className={`animate-in fade-in zoom-in duration-300 ${isPublic ? 'py-10 px-4 md:px-6' : 'pb-20'}`}>
 
       {/* HEADER */}
-      <div className="max-w-4xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold dark:text-white flex items-center gap-3">
-            <Shield className="text-blue-600 dark:text-blue-500" size={28} />
-            Регламент компании
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Официальный свод правил и стандартов работы</p>
-        </div>
+      {(!isPublic || publicSettings.show_title !== false) && (
+        <div className="max-w-4xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h2 className="text-2xl font-bold dark:text-white flex items-center gap-3">
+              <Shield className="text-blue-600 dark:text-blue-500" size={28} />
+              Регламент компании
+            </h2>
+          </div>
 
-        {isAdmin && (
-          <div className="flex items-center gap-3 bg-white dark:bg-[#111] p-1.5 rounded-lg border border-gray-200 dark:border-[#333] shadow-sm">
-            <button
-              onClick={() => setIsEditMode(!isEditMode)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${isEditMode ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
-            >
-              {isEditMode ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-              {isEditMode ? 'Редактор' : 'Просмотр'}
-            </button>
+          <div className="flex items-center gap-2">
 
-            {isEditMode && (
+            {/* Language Toggle removed from main view per user request */}
+
+            {/* Share Button (C-Level Only) */}
+            {canShare && (
               <button
-                // ✅ ИСПРАВЛЕНО: Передаем пустой объект для создания нового
-                onClick={() => setEditingSection({ title: '', items: [] })}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-all"
+                onClick={() => setIsShareModalOpen(true)}
+                className="relative p-2 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-500 hover:text-blue-500 rounded-lg transition-colors shadow-sm"
+                title={isShared ? "Доступ открыт (Настроить)" : "Настройки доступа"}
               >
-                <Plus size={14} /> Раздел
+                <Globe size={18} />
+                {isShared && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white dark:border-[#111]"></span>
+                )}
               </button>
             )}
+
+            {isAdmin && (
+              <div className="flex items-center gap-3 bg-white dark:bg-[#111] p-1.5 rounded-lg border border-gray-200 dark:border-[#333] shadow-sm">
+                <button
+                  onClick={() => setIsEditMode(!isEditMode)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${isEditMode ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'}`}
+                >
+                  {isEditMode ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                  {isEditMode ? 'Редактор' : 'Просмотр'}
+                </button>
+
+                {isEditMode && (
+                  <button
+                    // ✅ ИСПРАВЛЕНО: Передаем пустой объект для создания нового
+                    onClick={() => setEditingSection({ title: '', items: [] })}
+                    className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-all"
+                  >
+                    <Plus size={14} /> Раздел
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* DOCUMENT LIST LAYOUT (Строгий стиль) */}
       <div className="max-w-4xl mx-auto space-y-6">
@@ -90,7 +124,7 @@ const RulesPage = () => {
                 <div className="flex items-center gap-2">
                   {ICONS[section.icon] || ICONS.FileText}
                   <h3 className="text-base font-bold text-gray-900 dark:text-white uppercase tracking-wide">
-                    {section.title}
+                    {getLocalizedContent(section, 'title')}
                   </h3>
                 </div>
               </div>
@@ -119,16 +153,19 @@ const RulesPage = () => {
             {/* Тело раздела (Список) */}
             <div className="p-6">
               <ul className="space-y-3">
-                {section.items && Array.isArray(section.items) && section.items.length > 0 ? (
-                  section.items.map((item, idx) => (
-                    <li key={idx} className="flex gap-4 text-[13px] leading-relaxed text-gray-700 dark:text-gray-300">
-                      <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-blue-400 mt-2" />
-                      <span>{item}</span>
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-sm text-gray-400 italic pl-5">Список пуст...</li>
-                )}
+                {(() => {
+                  const items = (lang === 'ua' && section.items_ua?.length > 0) ? section.items_ua : section.items;
+                  return items && Array.isArray(items) && items.length > 0 ? (
+                    items.map((item, idx) => (
+                      <li key={idx} className="flex gap-4 text-[13px] leading-relaxed text-gray-700 dark:text-gray-300">
+                        <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-blue-400 mt-2" />
+                        <span>{item}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-sm text-gray-400 italic pl-5">Список пуст...</li>
+                  );
+                })()}
               </ul>
             </div>
           </div>
@@ -146,6 +183,15 @@ const RulesPage = () => {
         )}
       </AnimatePresence>
 
+      {/* SHARE MODAL */}
+      {isShareModalOpen && (
+        <ShareModal
+          pageKey="rules"
+          pageTitle="Регламент Компании"
+          onClose={() => setIsShareModalOpen(false)}
+        />
+      )}
+
     </div>
   );
 };
@@ -153,36 +199,63 @@ const RulesPage = () => {
 // --- МОДАЛКА РЕДАКТИРОВАНИЯ ---
 const RuleEditorModal = ({ section, onClose, onSave }) => {
   const [loading, setLoading] = useState(false);
+  const [lang, setLang] = useState('ru'); // 'ru' or 'ua'
 
   // State формы
   const [title, setTitle] = useState(section?.title || '');
   const [icon, setIcon] = useState(section?.icon || 'FileText');
   const [items, setItems] = useState(section?.items || []);
+
+  // UA State
+  const [titleUA, setTitleUA] = useState(section?.title_ua || '');
+  const [itemsUA, setItemsUA] = useState(section?.items_ua || []);
+
   const [newItemText, setNewItemText] = useState('');
 
   const handleAddItem = () => {
     if (!newItemText.trim()) return;
-    setItems([...items, newItemText.trim()]);
+
+    if (lang === 'ru') {
+      setItems([...items, newItemText.trim()]);
+    } else {
+      setItemsUA([...itemsUA, newItemText.trim()]);
+    }
     setNewItemText('');
   };
 
   const handleRemoveItem = (index) => {
-    setItems(items.filter((_, i) => i !== index));
+    if (lang === 'ru') {
+      setItems(items.filter((_, i) => i !== index));
+    } else {
+      setItemsUA(itemsUA.filter((_, i) => i !== index));
+    }
   };
 
   const handleUpdateItem = (index, val) => {
-    const newItems = [...items];
-    newItems[index] = val;
-    setItems(newItems);
+    if (lang === 'ru') {
+      const newItems = [...items];
+      newItems[index] = val;
+      setItems(newItems);
+    } else {
+      const newItems = [...itemsUA];
+      newItems[index] = val;
+      setItemsUA(newItems);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title) return alert('Введите название раздела');
+    if (!title && !titleUA) return alert('Введите название раздела');
 
     setLoading(true);
     try {
-      const payload = { title, icon, items };
+      const payload = {
+        title,
+        icon,
+        items,
+        title_ua: titleUA,
+        items_ua: itemsUA
+      };
 
       if (section?.id) {
         // Обновление
@@ -200,6 +273,8 @@ const RuleEditorModal = ({ section, onClose, onSave }) => {
     }
   };
 
+  const currentItems = lang === 'ru' ? items : itemsUA;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <motion.div
@@ -210,10 +285,27 @@ const RuleEditorModal = ({ section, onClose, onSave }) => {
         className="bg-white dark:bg-[#09090b] w-full max-w-2xl rounded-xl shadow-2xl flex flex-col border border-gray-200 dark:border-[#333] max-h-[90vh]"
       >
         <div className="p-5 border-b border-gray-100 dark:border-[#222] flex justify-between items-center bg-gray-50 dark:bg-[#111]">
-          <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
-            {section?.id ? <Edit3 size={18} /> : <Plus size={18} />}
-            {section?.id ? 'Редактировать раздел' : 'Новый раздел'}
-          </h3>
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
+              {section?.id ? <Edit3 size={18} /> : <Plus size={18} />}
+              {section?.id ? 'Редактировать раздел' : 'Новый раздел'}
+            </h3>
+            {/* Language Toggle */}
+            <div className="flex bg-gray-200 dark:bg-[#222] rounded-lg p-1">
+              <button
+                onClick={() => setLang('ru')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${lang === 'ru' ? 'bg-white dark:bg-[#333] shadow text-blue-600' : 'text-gray-500'}`}
+              >
+                RU 🇷🇺
+              </button>
+              <button
+                onClick={() => setLang('ua')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${lang === 'ua' ? 'bg-white dark:bg-[#333] shadow text-blue-600' : 'text-gray-500'}`}
+              >
+                UA 🇺🇦
+              </button>
+            </div>
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-[#222] rounded-full text-gray-500"><X size={20} /></button>
         </div>
 
@@ -221,17 +313,19 @@ const RuleEditorModal = ({ section, onClose, onSave }) => {
           {/* Title & Icon */}
           <div className="grid grid-cols-4 gap-4">
             <div className="col-span-3">
-              <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Название раздела</label>
+              <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">
+                Название раздела {lang === 'ua' && '(UA)'}
+              </label>
               <input
-                value={title}
-                onChange={e => setTitle(e.target.value)}
+                value={lang === 'ru' ? title : titleUA}
+                onChange={e => lang === 'ru' ? setTitle(e.target.value) : setTitleUA(e.target.value)}
                 className="w-full bg-white dark:bg-[#1A1A1A] border border-gray-300 dark:border-[#333] rounded-lg px-4 py-2.5 text-sm dark:text-white outline-none focus:border-blue-500 transition-colors"
-                placeholder="Например: График работы"
+                placeholder={lang === 'ru' ? "Например: График работы" : "Наприклад: Графік роботи"}
                 autoFocus
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Иконка</label>
+              <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Иконка (Общая)</label>
               <select
                 value={icon}
                 onChange={e => setIcon(e.target.value)}
@@ -251,10 +345,12 @@ const RuleEditorModal = ({ section, onClose, onSave }) => {
 
           {/* Rules List Editor */}
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">Пункты правил</label>
+            <label className="block text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">
+              Пункты правил {lang === 'ua' && '(UA)'}
+            </label>
 
             <div className="space-y-3 mb-4">
-              {items.map((item, idx) => (
+              {currentItems.map((item, idx) => (
                 <div key={idx} className="flex gap-3 items-start group">
                   <span className="mt-3 w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0"></span>
                   <textarea
@@ -277,7 +373,7 @@ const RuleEditorModal = ({ section, onClose, onSave }) => {
                 value={newItemText}
                 onChange={e => setNewItemText(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleAddItem()}
-                placeholder="Напишите новый пункт и нажмите Enter..."
+                placeholder={lang === 'ru' ? "Напишите новый пункт и нажмите Enter..." : "Напишіть новий пункт і натисніть Enter..."}
                 className="flex-1 bg-transparent text-sm outline-none dark:text-white placeholder-gray-400"
               />
               <button

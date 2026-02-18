@@ -15,25 +15,82 @@ const ICONS = {
   Book: <BookOpen className="text-purple-500" size={24} />,
 };
 
+import ShareModal from '../../components/sharing/ShareModal';
+
 // --- ГЛАВНЫЙ КОМПОНЕНТ ---
-const ProductsPage = () => {
-  const { products, user, fetchAllData } = useAppStore();
+const ProductsPage = ({ isPublic = false, publicSettings = {}, lang = 'ru' }) => {
+  const { products, user, fetchAllData, sharedPages } = useAppStore();
   const [selectedProduct, setSelectedProduct] = useState(null); // Для просмотра
   const [editingProduct, setEditingProduct] = useState(null);   // Для редактирования
   const [isEditorOpen, setIsEditorOpen] = useState(false);      // Открыт ли редактор
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false); // Модалка шеринга
   const [search, setSearch] = useState('');
 
-  const isAdmin = user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
+  // Helper to get localized content
+  const getLocalizedContent = (product, field) => {
+    if (lang === 'ua') {
+      return product[`${field}_ua`] || product[field];
+    }
+    return product[field];
+  };
 
-  const filteredProducts = products.filter(p =>
-    p.title.toLowerCase().includes(search.toLowerCase()) ||
-    p.short_description?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Translations
+  const t = {
+    ru: {
+      all: 'Все',
+      taro: 'Таро',
+      matrix: 'Матрица',
+      search: 'Поиск продукта...',
+      productLine: 'Продуктовая линейка',
+      productLineDesc: 'Информация, цены и скрипты для продаж',
+      readMore: 'Подробнее',
+      notFound: 'Продукты не найдены',
+      add: 'Добавить',
+      edit: 'Редактировать',
+      delete: 'Удалить',
+      accessOpen: 'Доступ открыт (Настроить)',
+      accessSettings: 'Настройки доступа',
+      deleteConfirm: 'Удалить этот продукт из базы?'
+    },
+    ua: {
+      all: 'Всі',
+      taro: 'Таро',
+      matrix: 'Матриця',
+      search: 'Пошук продукту...',
+      productLine: 'Продуктова лінійка',
+      productLineDesc: 'Інформація, ціни та скрипти для продажу',
+      readMore: 'Детальніше',
+      notFound: 'Продукти не знайдено',
+      add: 'Додати',
+      edit: 'Редагувати',
+      delete: 'Видалити',
+      accessOpen: 'Доступ відкрито (Налаштувати)',
+      accessSettings: 'Налаштування доступу',
+      deleteConfirm: 'Видалити цей продукт з бази?'
+    }
+  };
+
+  const text = t[lang] || t.ru;
+
+  // Admin rights (Internal only)
+  const isAdmin = !isPublic && user && ['Admin', 'C-level', 'SeniorSales'].includes(user.role);
+
+  // Share rights (C-Level/Admin only)
+  const canShare = !isPublic && user && ['Admin', 'C-level'].includes(user.role);
+
+  const isShared = sharedPages['products']?.is_active;
+
+  const filteredProducts = products.filter(p => {
+    const title = getLocalizedContent(p, 'title');
+    const desc = getLocalizedContent(p, 'short_description');
+    return title?.toLowerCase().includes(search.toLowerCase()) ||
+      desc?.toLowerCase().includes(search.toLowerCase());
+  });
 
   // Удаление
   const handleDelete = async (id, e) => {
     e.stopPropagation();
-    if (!window.confirm('Удалить этот продукт из базы?')) return;
+    if (!window.confirm(text.deleteConfirm)) return;
     const { error } = await supabase.from('knowledge_products').delete().eq('id', id);
     if (!error) fetchAllData(true);
   };
@@ -46,41 +103,72 @@ const ProductsPage = () => {
   };
 
   return (
-    <div className="animate-in fade-in zoom-in duration-300 pb-10">
+    <div className={`animate-in fade-in zoom-in duration-300 ${isPublic ? 'px-4 md:px-6' : 'pb-10'}`}>
 
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-        <div>
-          <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
-            <BookOpen className="text-purple-500" size={24} />
-            Продуктовая линейка
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">Информация, цены и скрипты для продаж</p>
-        </div>
-
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Поиск продукта..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-purple-500 dark:text-white transition-colors"
-            />
+      {/* HEADER (Hidden in Public Mode if Title is handled by Wrapper, but let's keep search) */}
+      {!isPublic && (
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+          <div>
+            <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
+              <BookOpen className="text-purple-500" size={24} />
+              {text.productLine}
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{text.productLineDesc}</p>
           </div>
 
-          {/* Кнопка добавления (Только Админ) */}
-          {isAdmin && (
-            <button
-              onClick={() => handleOpenEditor(null)}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-lg shadow-purple-500/20"
-            >
-              <Plus size={18} /> <span className="hidden sm:inline">Добавить</span>
-            </button>
-          )}
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            {/* SEARCH */}
+            <div className="relative flex-1 md:w-64">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder={text.search}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-purple-500 dark:text-white transition-colors"
+              />
+            </div>
+
+            {/* SHARE BUTTON */}
+            {canShare && (
+              <button
+                onClick={() => setIsShareModalOpen(true)}
+                className="relative p-2 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] hover:border-blue-500 text-gray-500 hover:text-blue-500 rounded-lg transition-colors"
+                title={isShared ? text.accessOpen : text.accessSettings}
+              >
+                <Globe size={18} />
+                {isShared && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white dark:border-[#111]"></span>
+                )}
+              </button>
+            )}
+
+            {/* ADD BUTTON */}
+            {isAdmin && (
+              <button
+                onClick={() => handleOpenEditor(null)}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-lg shadow-purple-500/20"
+              >
+                <Plus size={18} /> <span className="hidden sm:inline">{text.add}</span>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* PUBLIC SEARCH (If header is hidden) */}
+      {isPublic && (
+        <div className="mb-6 relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder={text.search}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-purple-500 dark:text-white transition-colors"
+          />
+        </div>
+      )}
 
       {/* GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -101,14 +189,14 @@ const ProductsPage = () => {
                   <button
                     onClick={(e) => handleOpenEditor(product, e)}
                     className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                    title="Редактировать"
+                    title={text.edit}
                   >
                     <Edit3 size={16} />
                   </button>
                   <button
                     onClick={(e) => handleDelete(product.id, e)}
                     className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                    title="Удалить"
+                    title={text.delete}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -117,21 +205,21 @@ const ProductsPage = () => {
             </div>
 
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-              {product.title}
+              {getLocalizedContent(product, 'title')}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-3 mb-4">
-              {product.short_description}
+              {getLocalizedContent(product, 'short_description')}
             </p>
 
             <div className="flex items-center text-purple-600 dark:text-purple-400 text-xs font-bold uppercase tracking-wider">
-              Подробнее <ChevronRight size={14} className="ml-1 group-hover:translate-x-1 transition-transform" />
+              {text.readMore} <ChevronRight size={14} className="ml-1 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
         ))}
 
         {filteredProducts.length === 0 && (
           <div className="col-span-full py-10 text-center text-gray-400 text-sm">
-            Продукты не найдены
+            {text.notFound}
           </div>
         )}
       </div>
@@ -141,6 +229,7 @@ const ProductsPage = () => {
         {selectedProduct && (
           <ProductViewModal
             product={selectedProduct}
+            lang={lang}
             onClose={() => setSelectedProduct(null)}
           />
         )}
@@ -159,13 +248,25 @@ const ProductsPage = () => {
           />
         )}
       </AnimatePresence>
+
+      {/* SHARE MODAL */}
+      {isShareModalOpen && (
+        <ShareModal
+          pageKey="products"
+          pageTitle="Продуктовая Линейка"
+          onClose={() => setIsShareModalOpen(false)}
+        />
+      )}
     </div>
   );
 };
 
 // --- КОМПОНЕНТ ПРОСМОТРА (VIEW ONLY) ---
-const ProductViewModal = ({ product, onClose }) => {
-  const content = product.content || {};
+const ProductViewModal = ({ product, lang = 'ru', onClose }) => {
+  // Determine content based on language
+  const content = lang === 'ua' && product.content_ua ? product.content_ua : (product.content || {});
+  // Fallback for title/desc if UA is missing
+  const title = lang === 'ua' ? (product.title_ua || product.title) : product.title;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -176,15 +277,16 @@ const ProductViewModal = ({ product, onClose }) => {
         onClick={(e) => e.stopPropagation()}
         className="bg-white dark:bg-[#09090b] w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-gray-200 dark:border-[#333]"
       >
-        {/* HEADER */}
         <div className="p-6 border-b border-gray-100 dark:border-[#222] flex justify-between items-start bg-gray-50 dark:bg-[#111]">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-white dark:bg-[#222] rounded-xl border border-gray-200 dark:border-[#333] shadow-sm">
               {ICONS[product.icon] || ICONS.Star}
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{product.title}</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Детальное описание продукта</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {lang === 'ua' ? 'Детальний опис продукту' : 'Детальное описание продукта'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-[#222] rounded-full text-gray-500 transition-colors">
@@ -192,12 +294,11 @@ const ProductViewModal = ({ product, onClose }) => {
           </button>
         </div>
 
-        {/* SCROLLABLE CONTENT */}
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-8">
-          {/* 1. ЧТО ЭТО */}
+          {/* 1. WHAT IS IT */}
           <section>
             <h3 className="text-sm font-bold uppercase text-purple-600 dark:text-purple-400 tracking-wider mb-3 flex items-center gap-2">
-              <BookOpen size={16} /> О продукте
+              <BookOpen size={16} /> {lang === 'ua' ? 'Про продукт' : 'О продукте'}
             </h3>
             <div className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm whitespace-pre-wrap">
               {content.what_is_it}
@@ -214,11 +315,11 @@ const ProductViewModal = ({ product, onClose }) => {
             )}
           </section>
 
-          {/* 2. ДЛЯ КОГО */}
+          {/* 2. FOR WHOM & VALUE */}
           <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
               <h3 className="text-sm font-bold uppercase text-blue-600 dark:text-blue-400 tracking-wider mb-3 flex items-center gap-2">
-                <Users size={16} /> Целевая аудитория
+                <Users size={16} /> {lang === 'ua' ? 'Цільова аудиторія' : 'Целевая аудитория'}
               </h3>
               <ul className="space-y-2">
                 {content.for_whom?.map((item, idx) => (
@@ -231,7 +332,7 @@ const ProductViewModal = ({ product, onClose }) => {
             </div>
             <div>
               <h3 className="text-sm font-bold uppercase text-emerald-600 dark:text-emerald-400 tracking-wider mb-3 flex items-center gap-2">
-                <Star size={16} /> Ценность
+                <Star size={16} /> {lang === 'ua' ? 'Цінність' : 'Ценность'}
               </h3>
               <ul className="space-y-2">
                 {content.value?.map((item, idx) => (
@@ -244,10 +345,10 @@ const ProductViewModal = ({ product, onClose }) => {
             </div>
           </section>
 
-          {/* 3. ПРОЦЕСС */}
+          {/* 3. PROCESS */}
           <section className="bg-gray-50 dark:bg-[#161616] p-5 rounded-xl border border-gray-200 dark:border-[#333]">
             <h3 className="text-sm font-bold uppercase text-orange-600 dark:text-orange-400 tracking-wider mb-3 flex items-center gap-2">
-              <Zap size={16} /> Процесс продажи
+              <Zap size={16} /> {lang === 'ua' ? 'Процес продажу' : 'Процесс продажи'}
             </h3>
             <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
               {content.sales_process}
@@ -296,6 +397,9 @@ const ProductViewModal = ({ product, onClose }) => {
 const ProductEditorModal = ({ product, onClose, onSave }) => {
   const [loading, setLoading] = useState(false);
 
+  // State for language toggle
+  const [lang, setLang] = useState('ru'); // 'ru' or 'ua'
+
   // Инициализация формы (если product передан - заполняем, иначе пусто)
   const [form, setForm] = useState({
     title: product?.title || '',
@@ -309,7 +413,17 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
     sales_process: product?.content?.sales_process || '',
     deliverables: product?.content?.deliverables || '',
     // Цены (храним как массив объектов)
-    pricing: product?.content?.pricing || []
+    pricing: product?.content?.pricing || [],
+
+    // UA Fields
+    title_ua: product?.title_ua || '',
+    short_description_ua: product?.short_description_ua || '',
+    what_is_it_ua: product?.content_ua?.what_is_it || '',
+    includes_ua: product?.content_ua?.includes?.join('\n') || '',
+    for_whom_ua: product?.content_ua?.for_whom?.join('\n') || '',
+    value_ua: product?.content_ua?.value?.join('\n') || '',
+    sales_process_ua: product?.content_ua?.sales_process || '',
+    deliverables_ua: product?.content_ua?.deliverables || '',
   });
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -352,11 +466,25 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
         value: form.value.split('\n').map(s => s.trim()).filter(Boolean),
       };
 
+      // Собираем UA content
+      const content_ua = {
+        what_is_it: form.what_is_it_ua,
+        sales_process: form.sales_process_ua,
+        deliverables: form.deliverables_ua,
+        pricing: form.pricing, // Pricing is shared for now, or could be separate if needed
+        includes: form.includes_ua.split('\n').map(s => s.trim()).filter(Boolean),
+        for_whom: form.for_whom_ua.split('\n').map(s => s.trim()).filter(Boolean),
+        value: form.value_ua.split('\n').map(s => s.trim()).filter(Boolean),
+      };
+
       const payload = {
         title: form.title,
         short_description: form.short_description,
         icon: form.icon,
-        content
+        content,
+        title_ua: form.title_ua,
+        short_description_ua: form.short_description_ua,
+        content_ua
       };
 
       if (product?.id) {
@@ -385,9 +513,26 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
         className="bg-white dark:bg-[#09090b] w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col border border-gray-200 dark:border-[#333]"
       >
         <div className="p-6 border-b border-gray-100 dark:border-[#222] flex justify-between items-center bg-gray-50 dark:bg-[#111]">
-          <h2 className="text-xl font-bold dark:text-white">
-            {product ? 'Редактировать продукт' : 'Новый продукт'}
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold dark:text-white">
+              {product ? 'Редактировать продукт' : 'Новый продукт'}
+            </h2>
+            {/* Language Toggle */}
+            <div className="flex bg-gray-200 dark:bg-[#222] rounded-lg p-1">
+              <button
+                onClick={() => setLang('ru')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${lang === 'ru' ? 'bg-white dark:bg-[#333] shadow text-blue-600' : 'text-gray-500'}`}
+              >
+                RU 🇷🇺
+              </button>
+              <button
+                onClick={() => setLang('ua')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${lang === 'ua' ? 'bg-white dark:bg-[#333] shadow text-blue-600' : 'text-gray-500'}`}
+              >
+                UA 🇺🇦
+              </button>
+            </div>
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-[#222] rounded-full text-gray-500"><X size={24} /></button>
         </div>
 
@@ -396,11 +541,20 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
           {/* MAIN INFO */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Название продукта</label>
-              <input required name="title" value={form.title} onChange={handleChange} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500" placeholder="Личный разбор..." />
+              <label className="block text-xs font-bold text-gray-500 mb-1">
+                Название продукта {lang === 'ua' && '(UA)'}
+              </label>
+              <input
+                required={lang === 'ru'}
+                name={lang === 'ru' ? 'title' : 'title_ua'}
+                value={lang === 'ru' ? form.title : form.title_ua}
+                onChange={handleChange}
+                className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500"
+                placeholder={lang === 'ru' ? "Личный разбор..." : "Особистий розбір..."}
+              />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Иконка</label>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Иконка (Общая)</label>
               <select name="icon" value={form.icon} onChange={handleChange} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500">
                 <option value="Star">Звезда</option>
                 <option value="Heart">Сердце</option>
@@ -411,52 +565,103 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1">Краткое описание (для карточки)</label>
-            <input name="short_description" value={form.short_description} onChange={handleChange} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500" placeholder="Пару предложений о сути..." />
+            <label className="block text-xs font-bold text-gray-500 mb-1">
+              Краткое описание {lang === 'ua' && '(UA)'}
+            </label>
+            <input
+              name={lang === 'ru' ? 'short_description' : 'short_description_ua'}
+              value={lang === 'ru' ? form.short_description : form.short_description_ua}
+              onChange={handleChange}
+              className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500"
+              placeholder={lang === 'ru' ? "Пару предложений о сути..." : "Кілька речень про суть..."}
+            />
           </div>
 
           <div className="h-px bg-gray-200 dark:bg-[#222] my-4"></div>
 
           {/* DETAILS */}
           <div>
-            <label className="block text-xs font-bold text-purple-500 mb-1 uppercase tracking-wider">Подробное описание (Что это?)</label>
-            <textarea name="what_is_it" value={form.what_is_it} onChange={handleChange} rows={4} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500" placeholder="Полное описание продукта..." />
+            <label className="block text-xs font-bold text-purple-500 mb-1 uppercase tracking-wider">
+              Подробное описание {lang === 'ua' && '(UA)'}
+            </label>
+            <textarea
+              name={lang === 'ru' ? 'what_is_it' : 'what_is_it_ua'}
+              value={lang === 'ru' ? form.what_is_it : form.what_is_it_ua}
+              onChange={handleChange}
+              rows={4}
+              className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500"
+              placeholder={lang === 'ru' ? "Полное описание..." : "Повний опис..."}
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-xs font-bold text-purple-500 mb-1 uppercase tracking-wider">Что включено (список)</label>
+              <label className="block text-xs font-bold text-purple-500 mb-1 uppercase tracking-wider">
+                Что включено {lang === 'ua' && '(UA)'}
+              </label>
               <p className="text-[10px] text-gray-400 mb-1">Каждый пункт с новой строки</p>
-              <textarea name="includes" value={form.includes} onChange={handleChange} rows={5} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500" placeholder="Пункт 1&#10;Пункт 2&#10;Пункт 3" />
+              <textarea
+                name={lang === 'ru' ? 'includes' : 'includes_ua'}
+                value={lang === 'ru' ? form.includes : form.includes_ua}
+                onChange={handleChange}
+                rows={5}
+                className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500"
+                placeholder="Пункт 1&#10;Пункт 2"
+              />
             </div>
             <div>
-              <label className="block text-xs font-bold text-blue-500 mb-1 uppercase tracking-wider">Целевая аудитория (Для кого)</label>
+              <label className="block text-xs font-bold text-blue-500 mb-1 uppercase tracking-wider">
+                Целевая аудитория {lang === 'ua' && '(UA)'}
+              </label>
               <p className="text-[10px] text-gray-400 mb-1">Каждый пункт с новой строки</p>
-              <textarea name="for_whom" value={form.for_whom} onChange={handleChange} rows={5} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-blue-500" placeholder="Для тех кто...&#10;Для тех кто..." />
+              <textarea
+                name={lang === 'ru' ? 'for_whom' : 'for_whom_ua'}
+                value={lang === 'ru' ? form.for_whom : form.for_whom_ua}
+                onChange={handleChange}
+                rows={5}
+                className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-blue-500"
+                placeholder="Для тех кто..."
+              />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-emerald-500 mb-1 uppercase tracking-wider">Ценность продукта</label>
+            <label className="block text-xs font-bold text-emerald-500 mb-1 uppercase tracking-wider">
+              Ценность продукта {lang === 'ua' && '(UA)'}
+            </label>
             <p className="text-[10px] text-gray-400 mb-1">Каждый пункт с новой строки</p>
-            <textarea name="value" value={form.value} onChange={handleChange} rows={4} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-emerald-500" placeholder="Понимание себя...&#10;Экономия времени..." />
+            <textarea
+              name={lang === 'ru' ? 'value' : 'value_ua'}
+              value={lang === 'ru' ? form.value : form.value_ua}
+              onChange={handleChange}
+              rows={4}
+              className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-emerald-500"
+            />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-orange-500 mb-1 uppercase tracking-wider">Процесс продажи и скрипт</label>
-            <textarea name="sales_process" value={form.sales_process} onChange={handleChange} rows={4} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-orange-500" placeholder="Этапы продажи..." />
+            <label className="block text-xs font-bold text-orange-500 mb-1 uppercase tracking-wider">
+              Процесс продажи и скрипт {lang === 'ua' && '(UA)'}
+            </label>
+            <textarea
+              name={lang === 'ru' ? 'sales_process' : 'sales_process_ua'}
+              value={lang === 'ru' ? form.sales_process : form.sales_process_ua}
+              onChange={handleChange}
+              rows={4}
+              className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-orange-500"
+            />
           </div>
 
-          {/* PRICING TABLE EDITOR */}
+          {/* PRICING TABLE EDITOR (SHARED) */}
           <div className="bg-gray-50 dark:bg-[#1A1A1A] p-4 rounded-xl border border-gray-200 dark:border-[#333]">
             <div className="flex justify-between items-center mb-2">
-              <label className="block text-xs font-bold text-green-500 uppercase tracking-wider">Прайс-лист</label>
+              <label className="block text-xs font-bold text-green-500 uppercase tracking-wider">Прайс-лист (Общий)</label>
               <button type="button" onClick={addPriceRow} className="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 flex items-center gap-1"><Plus size={12} /> Добавить строку</button>
             </div>
             <div className="space-y-2">
               {form.pricing.map((row, idx) => (
                 <div key={idx} className="flex gap-2 items-center">
-                  <input value={row.geo} onChange={(e) => updatePriceRow(idx, 'geo', e.target.value)} placeholder="ГЕО (Страна)" className="flex-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-sm dark:text-white" />
+                  <input value={row.geo} onChange={(e) => updatePriceRow(idx, 'geo', e.target.value)} placeholder="ГЕО" className="flex-1 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-sm dark:text-white" />
                   <input value={row.price1} onChange={(e) => updatePriceRow(idx, 'price1', e.target.value)} placeholder="Цена 1" className="w-24 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-sm dark:text-white" />
                   <input value={row.price5} onChange={(e) => updatePriceRow(idx, 'price5', e.target.value)} placeholder="Цена 2" className="w-24 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded px-2 py-1 text-sm dark:text-white" />
                   <button type="button" onClick={() => removePriceRow(idx)} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button>
@@ -467,8 +672,16 @@ const ProductEditorModal = ({ product, onClose, onSave }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-purple-500 mb-1 uppercase tracking-wider">Что получает клиент (Итог)</label>
-            <textarea name="deliverables" value={form.deliverables} onChange={handleChange} rows={2} className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500" placeholder="PDF файл + консультация..." />
+            <label className="block text-xs font-bold text-purple-500 mb-1 uppercase tracking-wider">
+              Что получает клиент {lang === 'ua' && '(UA)'}
+            </label>
+            <textarea
+              name={lang === 'ru' ? 'deliverables' : 'deliverables_ua'}
+              value={lang === 'ru' ? form.deliverables : form.deliverables_ua}
+              onChange={handleChange}
+              rows={2}
+              className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-4 py-2 text-sm dark:text-white outline-none focus:border-purple-500"
+            />
           </div>
 
         </form>

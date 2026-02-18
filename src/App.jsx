@@ -59,6 +59,7 @@ import GeoSettingsPage from './pages/GeoSettingsPage';
 import GeoMonitoringPage from './pages/GeoMonitoringPage';
 import PaymentAuditPage from './pages/PaymentAuditPage';
 import AddPaymentButton from './components/payments/AddPaymentButton';
+import PublicSharedPage from './pages/public/PublicSharedPage';
 
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild, children, isOpen, onToggle }) => {
@@ -317,7 +318,21 @@ function App() {
 
   const showPeopleSection = hasAccess('schedule') || hasAccess('time_log') || hasAccess('employees_manage') || hasAccess('employees_list') || hasAccess('stats');
 
+  const isPublicRoute = window.location.pathname.startsWith('/s/');
+
   if (isAuthChecking) return <div className="min-h-screen bg-[#0A0A0A]" />
+
+  // ✅ PUBLIC ROUTE EXCEPTION: Bypass login and render shared page directly
+  if (isPublicRoute) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/s/:slug" element={<PublicSharedPage />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
+
   if (!user) return <LoginPage onLoginSuccess={handleLoginSuccess} />
 
   return (
@@ -629,6 +644,9 @@ function App() {
 
               {/* ✅ NOVELTY: PAYMENT TIMES */}
               <Route path="/payment-times" element={<ProtectedRoute resource="stats"><PaymentTimesPage /></ProtectedRoute>} />
+
+              {/* ✅ PUBLIC SHARED PAGES */}
+              <Route path="/s/:slug" element={<PublicSharedPage />} />
 
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>

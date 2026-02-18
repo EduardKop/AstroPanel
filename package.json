@@ -16,7 +16,7 @@
     "@nivo/pie": "^0.99.0",
     "@nivo/stream": "^0.99.0",
     "@nivo/sunburst": "^0.99.0",
-    "@supabase/supabase-js": "^2.87.3",
+    "@supabase/supabase-js": "^2.96.0",
     "axios": "^1.6.0",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
