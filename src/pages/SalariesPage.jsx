@@ -12,15 +12,15 @@ import ru from 'date-fns/locale/ru';
 import "react-datepicker/dist/react-datepicker.css";
 registerLocale('ru', ru);
 
-// --- ГРУППЫ СТРАН ---
-const TEAM_GROUPS = {
+// --- ГРУППЫ СТРАН (дефолт, если не настроено в БД) ---
+const DEFAULT_TEAM_GROUPS = {
   'I': ['UA', 'PL', 'IT', 'HR'],
   'II': ['BG', 'CZ', 'RO', 'LT'],
   'III': ['TR', 'FR', 'PT', 'DE']
 };
 
-const getTeamName = (countryCode) => {
-  for (const [groupName, countries] of Object.entries(TEAM_GROUPS)) {
+const getTeamName = (countryCode, teamGroups) => {
+  for (const [groupName, countries] of Object.entries(teamGroups)) {
     if (countries.includes(countryCode)) return groupName;
   }
   return 'N/A';
@@ -110,6 +110,16 @@ const fmt = (num) => num.toLocaleString('ru-RU', { maximumFractionDigits: 2, min
 
 const SalariesPage = () => {
   const { managers, payments, kpiRates, kpiSettings, trafficStats, fetchTrafficStats, managerRates } = useAppStore();
+
+  // Read team groups from kpiSettings (DB-driven), fallback to defaults
+  const teamGroups = React.useMemo(() => {
+    if (!kpiSettings?.team_groups) return DEFAULT_TEAM_GROUPS;
+    try {
+      return typeof kpiSettings.team_groups === 'string'
+        ? JSON.parse(kpiSettings.team_groups)
+        : kpiSettings.team_groups;
+    } catch { return DEFAULT_TEAM_GROUPS; }
+  }, [kpiSettings]);
 
   const [selectedMonth, setSelectedMonth] = useState(new Date());
 
@@ -220,7 +230,7 @@ const SalariesPage = () => {
 
       const salesCount = mgrPayments.length;
       const primaryGeo = Array.isArray(mgr.geo) ? mgr.geo[0] : (mgr.geo || 'Other');
-      const teamGroup = getTeamName(primaryGeo);
+      const teamGroup = getTeamName(primaryGeo, teamGroups);
 
       return { mgr, mgrPayments, salesCount, teamGroup, primaryGeo };
     });
@@ -368,7 +378,7 @@ const SalariesPage = () => {
     });
 
     return { processedData: data, winningTeam: winner, teamScores: scores };
-  }, [managers, payments, kpiRates, kpiSettings, trafficStats, selectedGeos, selectedManagers, sortBy, selectedMonth, managerRates, monthSchedules]);
+  }, [managers, payments, kpiRates, kpiSettings, trafficStats, selectedGeos, selectedManagers, sortBy, selectedMonth, managerRates, monthSchedules, teamGroups]);
 
   const handleExport = () => {
     const monthStr = selectedMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });

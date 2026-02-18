@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import ShareModal from '../components/sharing/ShareModal';
+import EditKPIModal from '../components/kpi/EditKPIModal';
+
 
 const FLAGS = {
   UA: '🇺🇦', PL: '🇵🇱', DE: '🇩🇪', KZ: '🇰🇿',
