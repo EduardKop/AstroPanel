@@ -616,24 +616,40 @@ const DashboardPage = () => {
     };
   }, [filteredData]);
 
+  // ✅ CONSULTANT STATS — always by role, ignores source filter
+  const consultantStats = useMemo(() => {
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
+    const consultPayments = payments.filter(item => {
+      if (!item.transactionDate) return false;
+      if (item.managerRole !== 'Consultant') return false;
+      const dbDateStr = extractUTCDate(item.transactionDate);
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
+      if (filters.country.length > 0 && !filters.country.includes(item.country)) return false;
+      if (filters.manager.length > 0 && !filters.manager.includes(item.manager)) return false;
+      if (isRestrictedUser && item.manager !== currentUser?.name) return false;
+      return true;
+    });
+
+    const totalEur = consultPayments.reduce((s, p) => s + (p.amountEUR || 0), 0);
+    const activeMgrs = new Set(consultPayments.map(p => p.manager));
+    return {
+      sales: consultPayments.length,
+      depositSum: totalEur.toFixed(2),
+      activeMgrs: activeMgrs.size,
+      avgCheck: consultPayments.length > 0 ? (totalEur / consultPayments.length).toFixed(2) : '0.00',
+    };
+  }, [payments, startDate, endDate, filters.country, filters.manager, isRestrictedUser, currentUser]);
+
   // --- STATIC EMPLOYEE COUNTS ---
   const employeeCounts = useMemo(() => {
-    // Безопасное чтение managers из стора (нужно добавить в destructure)
     const allManagers = useAppStore.getState().managers || [];
-
-    // Counts by role
-    const salesCount = allManagers.filter(m => m.role === 'Sales').length;
+    const salesCount = allManagers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro'].includes(m.role)).length;
     const consCount = allManagers.filter(m => m.role === 'Consultant').length;
-
-    // For Key Metrics: Sales + Consultant + SeniorSales + SalesTaro
     const totalCount = allManagers.filter(m => ['Sales', 'Consultant', 'SeniorSales', 'SalesTaro'].includes(m.role)).length;
-
-    return {
-      sales: salesCount,
-      consultants: consCount,
-      total: totalCount
-    };
-  }, [useAppStore.getState().managers]); // Subscribe to changes if managers update
+    return { sales: salesCount, consultants: consCount, total: totalCount };
+  }, [useAppStore.getState().managers]);
 
   const chartData = useMemo(() => {
     const grouped = {};
@@ -934,12 +950,12 @@ const DashboardPage = () => {
           <ProductCard
             title="Консультанты"
             subtitle="Продажи с Консультаций"
-            mainValue={(filters.source === 'comments' || filters.source === 'all') ? kpiData.comments.sales : 0}
+            mainValue={consultantStats.sales}
             mainType="count"
             data={[
-              { label: 'Активных менеджеров', val: employeeCounts.consultants },
-              { label: 'Сумма депозитов', val: (filters.source === 'comments' || filters.source === 'all') ? `€${kpiData.comments.depositSum}` : '€0.00' },
-              { label: 'Средний чек', val: (filters.source === 'comments' || filters.source === 'all') ? `€${kpiData.comments.sales > 0 ? (Number(kpiData.comments.depositSum) / kpiData.comments.sales).toFixed(2) : '0.00'}` : '€0.00' }
+              { label: 'Активных менеджеров', val: consultantStats.activeMgrs },
+              { label: 'Сумма депозитов', val: `€${consultantStats.depositSum}` },
+              { label: 'Средний чек', val: `€${consultantStats.avgCheck}` }
             ]}
           />
 

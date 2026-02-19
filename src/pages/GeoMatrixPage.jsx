@@ -319,7 +319,8 @@ const GeoMatrixPage = () => {
     const [metricMode, setMetricMode] = useState('sales'); // 'sales', 'traffic', 'conversion'
     const [trafficSource, setTrafficSource] = useState('all'); // 'all', 'direct', 'comments', 'whatsapp'
 
-    const [filters, setFilters] = useState({ product: [], type: [], department: 'all', showMobileFilters: false });
+    const [filters, setFilters] = useState({ product: [], type: [], department: ['sales', 'taro'], showMobileFilters: false });
+
     const [sortOrder, setSortOrder] = useState('desc'); // Default to descending sort
 
     // 📌 Pinning Logic
@@ -411,15 +412,15 @@ const GeoMatrixPage = () => {
                 if (filters.product.length > 0 && !filters.product.includes(p.product)) return;
                 if (filters.type.length > 0 && !filters.type.includes(p.type)) return;
 
-                // Filter by Department
-                if (filters.department !== 'all') {
-                    if (filters.department === 'sales') {
-                        if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return;
-                    } else if (filters.department === 'consultant') {
-                        if (p.managerRole !== 'Consultant') return;
-                    } else if (filters.department === 'taro') {
-                        if (!/(?:Taro|Таро)\s*[2-9]/.test(p.product)) return;
-                    }
+                // Filter by Department (multi-select array, empty = all)
+                if (filters.department.length > 0) {
+                    const matchesDept = filters.department.some(dept => {
+                        if (dept === 'sales') return p.managerRole === 'Sales' || p.managerRole === 'SeniorSales';
+                        if (dept === 'consultant') return p.managerRole === 'Consultant';
+                        if (dept === 'taro') return p.managerRole === 'SalesTaro';
+                        return false;
+                    });
+                    if (!matchesDept) return;
                 }
 
                 // Filter by Traffic Source (if not 'all')
@@ -543,7 +544,7 @@ const GeoMatrixPage = () => {
     const uniqueTypes = useMemo(() => [...new Set(payments.map(p => p.type).filter(Boolean))], [payments]);
 
     const resetFilters = () => {
-        setFilters({ product: [], type: [], department: 'all' });
+        setFilters({ product: [], type: [], department: [] });
         setDateRange([null, null]);
         setMetricMode('sales');
         setTrafficSource('all');
@@ -563,15 +564,15 @@ const GeoMatrixPage = () => {
             if (filters.product.length > 0 && !filters.product.includes(p.product)) return false;
             if (filters.type.length > 0 && !filters.type.includes(p.type)) return false;
 
-            // Filter by Department
-            if (filters.department !== 'all') {
-                if (filters.department === 'sales') {
-                    if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return false;
-                } else if (filters.department === 'consultant') {
-                    if (p.managerRole !== 'Consultant') return false;
-                } else if (filters.department === 'taro') {
-                    if (!/(?:Taro|Таро)\s*[2-9]/.test(p.product)) return false;
-                }
+            // Filter by Department (multi-select array, empty = all)
+            if (filters.department.length > 0) {
+                const matchesDept = filters.department.some(dept => {
+                    if (dept === 'sales') return p.managerRole === 'Sales' || p.managerRole === 'SeniorSales';
+                    if (dept === 'consultant') return p.managerRole === 'Consultant';
+                    if (dept === 'taro') return p.managerRole === 'SalesTaro';
+                    return false;
+                });
+                if (!matchesDept) return false;
             }
             // Filter by Traffic Source
             if (trafficSource !== 'all') {
@@ -635,13 +636,15 @@ const GeoMatrixPage = () => {
                         if (filters.product.length > 0 && !filters.product.includes(p.product)) return;
                         if (filters.type.length > 0 && !filters.type.includes(p.type)) return;
 
-                        // Filter by Department
-                        if (filters.department !== 'all') {
-                            if (filters.department === 'sales') {
-                                if (p.managerRole !== 'Sales' && p.managerRole !== 'SeniorSales') return;
-                            } else if (filters.department === 'consultant') {
-                                if (p.managerRole !== 'Consultant') return;
-                            }
+                        // Filter by Department (multi-select array, empty = all)
+                        if (filters.department.length > 0) {
+                            const matchesDept = filters.department.some(dept => {
+                                if (dept === 'sales') return p.managerRole === 'Sales' || p.managerRole === 'SeniorSales';
+                                if (dept === 'consultant') return p.managerRole === 'Consultant';
+                                if (dept === 'taro') return p.managerRole === 'SalesTaro';
+                                return false;
+                            });
+                            if (!matchesDept) return;
                         }
 
                         // Date check
@@ -835,10 +838,22 @@ const GeoMatrixPage = () => {
 
                                 {/* Depts Toggle */}
                                 <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center justify-center">
-                                    <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
-                                    <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
-                                    <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
-                                    <button onClick={() => setFilters(prev => ({ ...prev, department: 'taro' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'taro' ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Таро</button>
+                                    <button
+                                        onClick={() => setFilters(prev => ({ ...prev, department: [] }))}
+                                        className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.length === 0 ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                    >Все</button>
+                                    <button
+                                        onClick={() => setFilters(prev => ({ ...prev, department: prev.department.includes('sales') ? prev.department.filter(d => d !== 'sales') : [...prev.department, 'sales'] }))}
+                                        className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.includes('sales') ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                    >ОП</button>
+                                    <button
+                                        onClick={() => setFilters(prev => ({ ...prev, department: prev.department.includes('consultant') ? prev.department.filter(d => d !== 'consultant') : [...prev.department, 'consultant'] }))}
+                                        className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.includes('consultant') ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                    >Конс.</button>
+                                    <button
+                                        onClick={() => setFilters(prev => ({ ...prev, department: prev.department.includes('taro') ? prev.department.filter(d => d !== 'taro') : [...prev.department, 'taro'] }))}
+                                        className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.includes('taro') ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                    >Таро</button>
                                 </div>
                             </div>
 
