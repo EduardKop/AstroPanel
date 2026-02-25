@@ -101,7 +101,7 @@ const PRODUCTS = [
     'Общий1', 'Общий5',
     'Дети', 'Мандала лич', 'Мандала фин',
     'ТАРО', 'Соляр', 'Календарь',
-    'Курс (с куратором)', 'Курс (без куратора)'
+    'Курс (с куратором)', 'Курс (без куратора)', 'Ключи'
 ];
 
 const TAROT_PRODUCTS = [
@@ -401,13 +401,21 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                             {/* Source Toggle */}
                             <div className="grid grid-cols-2 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg">
                                 <button
-                                    onClick={() => setFormData(p => ({ ...p, source: 'instagram' }))}
+                                    onClick={() => setFormData(p => ({
+                                        ...p,
+                                        source: 'instagram',
+                                        link: p.link.startsWith('https://wa.me/') ? '' : p.link
+                                    }))}
                                     className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${formData.source === 'instagram' ? 'bg-white dark:bg-[#333] text-pink-600 shadow-sm' : 'text-gray-500'}`}
                                 >
                                     <Instagram size={14} /> Instagram
                                 </button>
                                 <button
-                                    onClick={() => setFormData(p => ({ ...p, source: 'whatsapp' }))}
+                                    onClick={() => setFormData(p => ({
+                                        ...p,
+                                        source: 'whatsapp',
+                                        link: p.link.startsWith('https://instagram.com/') ? 'https://wa.me/' : (p.link || 'https://wa.me/')
+                                    }))}
                                     className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${formData.source === 'whatsapp' ? 'bg-white dark:bg-[#333] text-green-600 shadow-sm' : 'text-gray-500'}`}
                                 >
                                     <Phone size={14} /> WhatsApp
@@ -464,8 +472,8 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                             <div>
                                 <label className="text-xs font-bold text-gray-500 block mb-2 uppercase">Продукт</label>
 
-                                {/* Tab Toggle - Tarot tab only for SalesTaro and SeniorSales */}
-                                {['SalesTaro', 'SeniorSales'].includes(user?.role) ? (
+                                {/* Tab Toggle - Tarot tab for SalesTaro, SeniorSales, Sales, Consultant */}
+                                {['SalesTaro', 'SeniorSales', 'Sales', 'Consultant'].includes(user?.role) ? (
                                     <div className="grid grid-cols-2 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg mb-3">
                                         <button
                                             onClick={() => { setProductTab('general'); setFormData(p => ({ ...p, product: '' })); }}

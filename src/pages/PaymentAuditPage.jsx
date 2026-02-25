@@ -6,6 +6,21 @@ import {
     AlertTriangle, User, Package, CreditCard, Clock, Check, Globe, Eye, EyeOff, ChevronDown, ChevronUp
 } from 'lucide-react';
 
+// Helper to get role badge styles
+const getRoleBadge = (role) => {
+    const map = {
+        'Sales': { label: 'Sales', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+        'SeniorSales': { label: 'Sr.Sales', cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' },
+        'SalesTaro': { label: 'Taro', cls: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' },
+        'Consultant': { label: 'Consultant', cls: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' },
+        'SeniorSMM': { label: 'Sr.SMM', cls: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400' },
+        'SMM': { label: 'SMM', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' },
+        'Admin': { label: 'Admin', cls: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
+        'C-level': { label: 'C-level', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+    };
+    return map[role] || { label: role, cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400' };
+};
+
 // Helper to format date for display
 const formatDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -43,6 +58,7 @@ const PaymentRow = ({ payment, highlightField, managers, paymentOrder, onHide, o
     const manager = managers?.find(m => m.id === payment.manager_id);
     const managerName = manager?.name || payment.manager || 'Неизвестно';
     const managerTelegram = manager?.telegram_username || null;
+    const managerRole = manager?.role || null;
     const nickname = payment.crmLink || payment.crm_link || '-';
 
     const handleCopy = async () => {
@@ -110,6 +126,14 @@ const PaymentRow = ({ payment, highlightField, managers, paymentOrder, onHide, o
                         </button>
                     </>
                 )}
+                {managerRole && (() => {
+                    const badge = getRoleBadge(managerRole);
+                    return (
+                        <span className={`shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded ${badge.cls}`}>
+                            {badge.label}
+                        </span>
+                    );
+                })()}
             </div>
 
             {/* Product */}
@@ -288,8 +312,8 @@ const PaymentAuditPage = () => {
                 return false; // 2nd+ payment with discount = OK
             }
 
-            // Standard anomaly check: < 20 or > 190 EUR
-            return amount < 20 || amount > 190;
+            // Standard anomaly check: < 20 or > 200 EUR
+            return amount < 20 || amount > 200;
         });
     }, [visiblePayments, paymentOrderMap]);
 
@@ -390,7 +414,7 @@ const PaymentAuditPage = () => {
         const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
         const missing = [];
-        const requiredGeos = countries.filter(c => c.code).map(c => c.code);
+        const requiredGeos = countries.filter(c => c.code && c.is_active).map(c => c.code);
         // Add 'Таро' if it's considered a required role/geo for coverage
         // The user said: "случаи когда на каком либо Гео / таро нет никого"
         // So 'Таро' is treated as a GEO here.
