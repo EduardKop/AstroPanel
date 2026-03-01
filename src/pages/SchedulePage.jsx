@@ -34,9 +34,10 @@ const GEO_PALETTE = {
 const SchedulePage = () => {
     const navigate = useNavigate();
     const { user, managers, countries, schedules, fetchAllData, onlineUsers, logActivity, permissions, managerRates, kpiSettings } = useAppStore();
-    // isAdmin logic replaced with precise permission check
-    const canEdit = user?.role === 'C-level' || permissions?.[user?.role]?.['schedule_edit'];
-    const isAdmin = canEdit; // Keeping variable name for now to minimize refactor churn, but logic is new
+    // Edit access: C-level, Admin, SeniorSales only
+    const SCHEDULE_EDIT_ROLES = ['C-level', 'Admin', 'SeniorSales'];
+    const canEdit = SCHEDULE_EDIT_ROLES.includes(user?.role);
+    const isAdmin = canEdit; // Keeping variable name for compatibility
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [isEditing, setIsEditing] = useState(false); // Edit mode (single GEO)
@@ -731,13 +732,15 @@ const SchedulePage = () => {
                         </button>
                     )}
 
-                    <button
-                        onClick={() => setShowAdvancedModal(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
-                    >
-                        <Settings className="w-3.5 h-3.5" />
-                        Расширенное
-                    </button>
+                    {canEdit && (
+                        <button
+                            onClick={() => setShowAdvancedModal(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+                        >
+                            <Settings className="w-3.5 h-3.5" />
+                            Расширенное
+                        </button>
+                    )}
                 </div>
             </div>
 
