@@ -769,13 +769,37 @@ const SalesDashboardPage = () => {
           <ProductCard
             title="Отдел Продаж"
             subtitle="Первые продажи"
-            mainValue={filters.source === 'whatsapp' ? kpiData.whatsapp.sales : filters.source === 'comments' ? 0 : filters.source === 'all' ? (kpiData.direct.sales + kpiData.whatsapp.sales) : kpiData.direct.sales}
+            mainValue={
+              filters.source === 'all'
+                ? kpiData.direct.sales + kpiData.comments.sales + kpiData.whatsapp.sales
+                : filters.source === 'direct' ? kpiData.direct.sales
+                  : filters.source === 'comments' ? kpiData.comments.sales
+                    : kpiData.whatsapp.sales
+            }
             mainType="count"
-            data={[
-              { label: 'Активных менеджеров', val: filters.source === 'whatsapp' ? kpiData.whatsapp.active : filters.source === 'comments' ? 0 : filters.source === 'all' ? (kpiData.direct.active + kpiData.whatsapp.active) : kpiData.direct.active },
-              { label: 'Сумма депозитов', val: filters.source === 'whatsapp' ? `€${kpiData.whatsapp.depositSum}` : filters.source === 'comments' ? '€0.00' : filters.source === 'all' ? `€${(Number(kpiData.direct.depositSum) + Number(kpiData.whatsapp.depositSum)).toFixed(2)}` : `€${kpiData.direct.depositSum}` },
-              { label: 'Средний чек', val: filters.source === 'whatsapp' ? `€${kpiData.whatsapp.sales > 0 ? (Number(kpiData.whatsapp.depositSum) / kpiData.whatsapp.sales).toFixed(2) : '0.00'}` : filters.source === 'comments' ? '€0.00' : filters.source === 'all' ? `€${(kpiData.direct.sales + kpiData.whatsapp.sales) > 0 ? ((Number(kpiData.direct.depositSum) + Number(kpiData.whatsapp.depositSum)) / (kpiData.direct.sales + kpiData.whatsapp.sales)).toFixed(2) : '0.00'}` : `€${kpiData.direct.sales > 0 ? (Number(kpiData.direct.depositSum) / kpiData.direct.sales).toFixed(2) : '0.00'}` }
-            ]}
+            data={(() => {
+              const src = filters.source;
+              const isAll = src === 'all';
+              const sales = isAll ? kpiData.direct.sales + kpiData.comments.sales + kpiData.whatsapp.sales
+                : src === 'direct' ? kpiData.direct.sales
+                  : src === 'comments' ? kpiData.comments.sales
+                    : kpiData.whatsapp.sales;
+              const sum = isAll
+                ? Number(kpiData.direct.depositSum) + Number(kpiData.comments.depositSum) + Number(kpiData.whatsapp.depositSum)
+                : src === 'direct' ? Number(kpiData.direct.depositSum)
+                  : src === 'comments' ? Number(kpiData.comments.depositSum)
+                    : Number(kpiData.whatsapp.depositSum);
+              const active = isAll
+                ? kpiData.direct.active + kpiData.comments.active + kpiData.whatsapp.active
+                : src === 'direct' ? kpiData.direct.active
+                  : src === 'comments' ? kpiData.comments.active
+                    : kpiData.whatsapp.active;
+              return [
+                { label: '\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u043c\u0435\u043d\u0435\u0434\u0436\u0435\u0440\u043e\u0432', val: active },
+                { label: '\u0421\u0443\u043c\u043c\u0430 \u0434\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0432', val: `\u20ac${sum.toFixed(2)}` },
+                { label: '\u0421\u0440\u0435\u0434\u043d\u0438\u0439 \u0447\u0435\u043a', val: `\u20ac${sales > 0 ? (sum / sales).toFixed(2) : '0.00'}` }
+              ];
+            })()}
           />
 
         </div>
