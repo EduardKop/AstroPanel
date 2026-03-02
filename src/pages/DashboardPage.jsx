@@ -378,14 +378,14 @@ const DashboardPage = () => {
 
   const [filters, setFilters] = useState(() => {
     const savedSource = localStorage.getItem('dash_source_filter');
-    const savedDept = localStorage.getItem('dash_dept_filter');
+    const savedDept = localStorage.getItem('dash_dept_filter_v2');
     return {
       manager: [],
       country: [],
       product: [],
       type: [],
       source: savedSource || 'all',
-      department: savedDept || 'all',
+      department: savedDept ? JSON.parse(savedDept) : [], // [] = Все
       showMobileFilters: false
     };
   });
@@ -398,7 +398,7 @@ const DashboardPage = () => {
   // Save filters to LocalStorage
   useEffect(() => {
     localStorage.setItem('dash_source_filter', filters.source);
-    localStorage.setItem('dash_dept_filter', filters.department);
+    localStorage.setItem('dash_dept_filter_v2', JSON.stringify(filters.department));
   }, [filters.source, filters.department]);
 
   // 🔄 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ДАННЫХ ПРИ МОНТИРОВАНИИ
@@ -486,16 +486,15 @@ const DashboardPage = () => {
         if (item.source !== filters.source) return false;
       }
 
-      // Фильтр по отделу
-      if (filters.department !== 'all') {
-        if (filters.department === 'sales') {
-          if (item.managerRole !== 'Sales' && item.managerRole !== 'SeniorSales' && item.managerRole !== 'SalesTaro') return false;
-        } else if (filters.department === 'consultant') {
-          if (item.managerRole !== 'Consultant') return false;
-        } else if (filters.department === 'taro') {
-          // Показываем только Таро 2 / Таро 3 и т.д. (исключая первую продажу Таро)
-          if (!/(?:Taro|Таро)\s*[2-9]/.test(item.product)) return false;
-        }
+      // Фильтр по отделу (мультиселект, [] = все)
+      if (filters.department.length > 0) {
+        const matchesDept = filters.department.some(dept => {
+          if (dept === 'sales') return item.managerRole === 'Sales' || item.managerRole === 'SeniorSales';
+          if (dept === 'consultant') return item.managerRole === 'Consultant';
+          if (dept === 'taro') return item.managerRole === 'SalesTaro';
+          return false;
+        });
+        if (!matchesDept) return false;
       }
 
       return true;
@@ -511,7 +510,7 @@ const DashboardPage = () => {
 
     // New metrics
     let uniqueSales = 0;
-    let secondSales = 0;
+    let repeatSales = 0;
     const activeManagersSet = new Set();
 
     // Count ranks and managers from filtered Data
@@ -520,8 +519,8 @@ const DashboardPage = () => {
 
       // Use Global Rank
       const rank = paymentRanks.get(p.id);
-      if (rank === 1) uniqueSales++;
-      if (rank === 2) secondSales++;
+      if (rank === 1 || rank === undefined) uniqueSales++; // undefined = нет crm_link → считаем уникальной
+      if (rank >= 2) repeatSales++;
     });
 
     if (trafficStats && Object.keys(trafficStats).length > 0) {
@@ -566,7 +565,7 @@ const DashboardPage = () => {
       totalEur: totalEur.toFixed(2),
       count,
       uniqueSales,
-      secondSales,
+      repeatSales,
       conversionUnique,
       avgCheck,
       activeManagers: activeManagersSet.size
@@ -715,7 +714,7 @@ const DashboardPage = () => {
 
   const resetDateRange = () => setDateRange(getLastWeekRange());
   const resetFilters = () => {
-    setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all' });
+    setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: [] });
     setDateRange(getLastWeekRange());
   };
 
@@ -751,10 +750,10 @@ const DashboardPage = () => {
 
               {/* Кнопки Департаментов */}
               <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full md:w-auto justify-center">
-                <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
-                <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
-                <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
-                <button onClick={() => setFilters(prev => ({ ...prev, department: 'taro' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'taro' ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Таро</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: [] }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.length === 0 ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: prev.department.includes('sales') ? prev.department.filter(d => d !== 'sales') : [...prev.department, 'sales'] }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.includes('sales') ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: prev.department.includes('consultant') ? prev.department.filter(d => d !== 'consultant') : [...prev.department, 'consultant'] }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.includes('consultant') ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: prev.department.includes('taro') ? prev.department.filter(d => d !== 'taro') : [...prev.department, 'taro'] }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.includes('taro') ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Таро</button>
               </div>
             </div>
 
@@ -902,7 +901,7 @@ const DashboardPage = () => {
 
               {/* Row 2 */}
               <TechStatItem icon={Trophy} label="Уникальные" value={stats.uniqueSales} highlight />
-              <TechStatItem icon={Layers} label="Вторые продажи" value={stats.secondSales} />
+              <TechStatItem icon={Layers} label="Повторные" value={stats.repeatSales} />
               <TechStatItem icon={Activity} label="Конв. (Уник)" value={`${stats.conversionUnique}%`} valueColor={getCRColor(stats.conversionUnique)} />
 
               {/* Row 3 */}
