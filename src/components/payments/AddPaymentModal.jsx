@@ -109,7 +109,7 @@ const TAROT_PRODUCTS = [
 ];
 
 const PAYMENT_METHODS = [
-    'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты'
+    'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты', 'MyFatoorah'
 ];
 
 const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
