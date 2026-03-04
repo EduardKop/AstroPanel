@@ -4,11 +4,22 @@ import { useAppStore } from '../store/appStore';
 import { toggleManagerStatus } from '../services/dataService';
 import {
   Mail, Phone, Clock, Globe, Send, User,
-  Briefcase, Search, Filter, XCircle, Plus,
-  Pencil, Lock, Unlock, Ban, ShieldCheck, Copy, Check
+  Briefcase, Search, XCircle, Plus,
+  Pencil, Lock, Unlock, Ban, ShieldCheck, Copy, Check,
+  Sparkles, FlaskConical, BadgeCheck
 } from 'lucide-react';
 
 import { DenseSelect } from '../components/ui/FilterSelect';
+
+// ── Статус по стажу ───────────────────────────────────────────────────────────
+const getEmploymentStatus = (mgr) => {
+  const dateStr = mgr.started_at || mgr.created_at;
+  if (!dateStr) return null;
+  const days = Math.ceil(Math.abs(new Date() - new Date(dateStr)) / (1000 * 3600 * 24));
+  if (days <= 7) return { key: 'intern', label: 'Стажер', days, icon: Sparkles, bg: 'bg-violet-50 dark:bg-violet-900/10', text: 'text-violet-600 dark:text-violet-400', border: 'border-violet-200 dark:border-violet-700/40' };
+  if (days <= 30) return { key: 'probation', label: 'Исп. период', days, icon: FlaskConical, bg: 'bg-amber-50 dark:bg-amber-900/10', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-200 dark:border-amber-700/40' };
+  return { key: 'employee', label: 'Сотрудник', days, icon: BadgeCheck, bg: 'bg-emerald-50 dark:bg-emerald-900/10', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-700/40' };
+};
 
 // Component for displaying copyable telegram username
 const CopyableUsername = ({ username }) => {
@@ -132,11 +143,13 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
     return age;
   };
 
-  const calculateWorkDays = (createdAt) => {
-    if (!createdAt) return { dateStr: '-', days: 0 };
-    const diff = Math.abs(new Date() - new Date(createdAt));
+  const calculateWorkDays = (mgr) => {
+    // Используем started_at если задана, иначе — created_at (как на HR Dashboard)
+    const dateStr = mgr.started_at || mgr.created_at;
+    if (!dateStr) return { dateStr: '-', days: 0 };
+    const diff = Math.abs(new Date() - new Date(dateStr));
     return {
-      dateStr: new Date(createdAt).toLocaleDateString('ru-RU'),
+      dateStr: new Date(dateStr).toLocaleDateString('ru-RU'),
       days: Math.ceil(diff / (1000 * 3600 * 24))
     };
   };
@@ -209,7 +222,7 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {processedManagers.map((mgr) => {
           const age = calculateAge(mgr.birth_date);
-          const workStats = calculateWorkDays(mgr.created_at);
+          const workStats = calculateWorkDays(mgr);
           const isBlocked = mgr.status === 'blocked';
           const isOnline = onlineUsers?.includes(mgr.id);
 
@@ -261,12 +274,27 @@ const EmployeesPage = ({ pageTitle = "Сотрудники", targetRole, exclude
                   </div>
                 </div>
 
-                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-[4px] border text-[10px] font-bold uppercase tracking-wider ${isBlocked
-                  ? 'bg-red-50 dark:bg-red-900/10 text-red-600 border-red-100 dark:border-red-900/30'
-                  : 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 border-emerald-100 dark:border-emerald-900/30'
-                  }`}>
-                  {isBlocked ? <Ban size={10} /> : <ShieldCheck size={10} />}
-                  {isBlocked ? 'Blocked' : 'Active'}
+                <div className="flex flex-col items-end gap-1">
+                  {/* Active / Blocked */}
+                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded-[4px] border text-[10px] font-bold uppercase tracking-wider ${isBlocked
+                    ? 'bg-red-50 dark:bg-red-900/10 text-red-600 border-red-100 dark:border-red-900/30'
+                    : 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 border-emerald-100 dark:border-emerald-900/30'
+                    }`}>
+                    {isBlocked ? <Ban size={10} /> : <ShieldCheck size={10} />}
+                    {isBlocked ? 'Blocked' : 'Active'}
+                  </div>
+                  {/* Employment status */}
+                  {(() => {
+                    const st = getEmploymentStatus(mgr);
+                    if (!st) return null;
+                    const Icon = st.icon;
+                    return (
+                      <div className={`flex items-center gap-1 px-2 py-0.5 rounded-[4px] border text-[9px] font-bold uppercase tracking-wider ${st.bg} ${st.text} ${st.border}`}>
+                        <Icon size={9} />
+                        {st.label}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 

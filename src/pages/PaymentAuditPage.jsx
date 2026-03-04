@@ -480,8 +480,9 @@ const PaymentAuditPage = () => {
 
     const totalScheduleIssues = duplicateSchedules.length + missingCoverage.length + geosWithoutSchedule.length;
 
-    // Recalculate Total Issues including schedule
-    const totalIssues = futurePayments.length + duplicateGroups.reduce((acc, g) => acc + g.length, 0) + anomalousPayments.length + linksInNickname.length + totalScheduleIssues;
+    // Бейдж вкладки "Отдел продаж" — только проблемы Sales, без ошибок графика
+    // duplicateGroups.length — количество группы дубликатов, а не общее число строк
+    const totalIssues = futurePayments.length + duplicateGroups.length + anomalousPayments.length + linksInNickname.length;
 
     const { tab } = useParams();
     const navigate = useNavigate();

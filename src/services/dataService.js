@@ -102,12 +102,17 @@ export const fetchManagerById = async (id) => {
 
 // --- 4. ОБНОВИТЬ ДАННЫЕ МЕНЕДЖЕРА ---
 export const updateManagerProfile = async (id, updates) => {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('managers')
     .update(updates)
-    .eq('id', id);
+    .eq('id', id)
+    .select();
 
   if (error) throw error;
+  // Если data пустой массив — RLS заблокировал обновление
+  if (!data || data.length === 0) {
+    throw new Error('Обновление заблокировано: недостаточно прав (RLS) или запись не найдена');
+  }
   return true;
 };
 

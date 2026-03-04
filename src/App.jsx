@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp
 } from 'lucide-react'
 
 import ThemeToggle from './components/ThemeToggle';
@@ -37,6 +37,7 @@ import CLevelSettingsPage from './pages/CLevelSettingsPage';
 import ActivityLogsPage from './pages/ActivityLogsPage';
 import PaymentTimesPage from './pages/PaymentTimesPage';
 import HRDashboardPage from './pages/HRDashboardPage';
+import PnLPage from './pages/PnLPage';
 
 // Sales Department Pages
 import SalesDashboardPage from './pages/sales/SalesDashboardPage';
@@ -408,6 +409,7 @@ function App() {
                   {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
                   {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. Анализ" path="/quick-stats" />}
+                  {(hasAccess('pnl_report') || hasAccess('pnl_data')) && <SidebarItem icon={TrendingUp} label="P&L" path="/pnl" />}
                 </div>
               </>
             )}
@@ -644,6 +646,9 @@ function App() {
 
               {/* ✅ NOVELTY: PAYMENT TIMES */}
               <Route path="/payment-times" element={<ProtectedRoute resource="stats"><PaymentTimesPage /></ProtectedRoute>} />
+
+              {/* ✅ P&L */}
+              <Route path="/pnl" element={<ProtectedRoute resource="pnl"><PnLPage /></ProtectedRoute>} />
 
               {/* ✅ PUBLIC SHARED PAGES */}
               <Route path="/s/:slug" element={<PublicSharedPage />} />

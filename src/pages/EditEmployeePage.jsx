@@ -14,7 +14,7 @@ const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 const EditEmployeePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { logActivity, user: currentUser } = useAppStore();
+  const { logActivity, user: currentUser, fetchAllData } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -62,9 +62,14 @@ const EditEmployeePage = () => {
         // Б. Загружаем сотрудника
         const data = await fetchManagerById(id);
         if (data) {
+          // Нормализуем даты до формата YYYY-MM-DD для <input type="date">
+          // Supabase может вернуть ISO строку с временем, которую браузер не распознаёт
+          const toDateOnly = (val) => val ? val.slice(0, 10) : '';
           setFormData({
             ...data,
             geo: data.geo || [],
+            started_at: toDateOnly(data.started_at),
+            birth_date: toDateOnly(data.birth_date),
           });
           setPreviewUrl(data.avatar_url);
         } else {
@@ -146,6 +151,9 @@ const EditEmployeePage = () => {
         details: { changes: formData },
         importance: 'medium'
       });
+
+      // 🔄 Обновляем store, чтобы страница /all-employees показала актуальные данные
+      await fetchAllData(true);
 
       alert('Данные обновлены!');
       navigate(-1);

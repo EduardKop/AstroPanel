@@ -21,6 +21,8 @@ const AddEmployeePage = () => {
   // ✅ 1. Состояние для списка стран из БД
   const [availableCountries, setAvailableCountries] = useState([]);
 
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
   const [formData, setFormData] = useState({
     name: '',
     role: 'Sales',
@@ -29,6 +31,7 @@ const AddEmployeePage = () => {
     telegram_id: '',
     telegram_username: '',
     birth_date: '',
+    started_at: todayStr,
     geo: []
   });
 
@@ -130,6 +133,7 @@ const AddEmployeePage = () => {
           telegram_id: formData.telegram_id,
           telegram_username: formData.telegram_username,
           birth_date: formData.birth_date || null,
+          started_at: formData.started_at || null,
           geo: formData.geo,
           avatar_url: avatarUrl,
           status: 'active'
@@ -244,9 +248,12 @@ const AddEmployeePage = () => {
               </div>
             </div>
 
-            <div className="w-full md:w-1/2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full">
               <InputGroup label="Дата рождения" icon={Calendar}>
                 <input required type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
+              </InputGroup>
+              <InputGroup label="Дата начала работы" icon={Calendar}>
+                <input required type="date" name="started_at" value={formData.started_at} onChange={handleChange} className="w-full bg-transparent outline-none text-sm dark:text-white" />
               </InputGroup>
             </div>
 

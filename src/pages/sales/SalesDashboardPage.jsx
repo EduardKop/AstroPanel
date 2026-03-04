@@ -795,9 +795,9 @@ const SalesDashboardPage = () => {
                   : src === 'comments' ? kpiData.comments.active
                     : kpiData.whatsapp.active;
               return [
-                { label: '\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u043c\u0435\u043d\u0435\u0434\u0436\u0435\u0440\u043e\u0432', val: active },
-                { label: '\u0421\u0443\u043c\u043c\u0430 \u0434\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0432', val: `\u20ac${sum.toFixed(2)}` },
-                { label: '\u0421\u0440\u0435\u0434\u043d\u0438\u0439 \u0447\u0435\u043a', val: `\u20ac${sales > 0 ? (sum / sales).toFixed(2) : '0.00'}` }
+                { label: 'Активных менеджеров', val: active },
+                { label: 'Сумма депозитов', val: `€${sum.toFixed(2)}` },
+                { label: 'Средний чек', val: `€${sales > 0 ? (sum / sales).toFixed(2) : '0.00'}` }
               ];
             })()}
           />
