@@ -1,0 +1,24 @@
+{
+    "name": "astropanel-tg-bot",
+    "version": "1.0.0",
+    "description": "AstroPanel Telegram Analytics Bot — Read-only DB analysis via AI",
+    "type": "module",
+    "main": "src/bot.js",
+    "scripts": {
+        "start": "node src/bot.js",
+        "dev": "node --watch src/bot.js"
+    },
+    "dependencies": {
+        "@supabase/supabase-js": "^2.98.0",
+        "axios": "^1.7.9",
+        "dotenv": "^16.4.5",
+        "pg": "^8.13.1",
+        "telegraf": "^4.16.3"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.14"
+    }
+}

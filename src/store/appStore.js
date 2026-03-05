@@ -623,7 +623,7 @@ export const useAppStore = create((set, get) => ({
 
       // Process Managers
       const managersMap = {};
-      (managersData || []).forEach(m => managersMap[m.id] = { name: m.name, role: m.role });
+      (managersData || []).forEach(m => managersMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username });
 
       // Process KPI Settings
       const kpiSettingsMap = {};
@@ -711,6 +711,7 @@ export const useAppStore = create((set, get) => ({
           manager: managersMap[item.manager_id]?.name || 'Не назначен',
           managerId: item.manager_id,
           managerRole: managersMap[item.manager_id]?.role || null,
+          manager_tg: managersMap[item.manager_id]?.telegram_username || null,
           type: item.payment_type || 'Other',
           status: item.status || 'pending',
           source: source // 'direct', 'comments', 'whatsapp', 'unknown'

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { DollarSign, Coins, Copy, Check, Filter, ArrowUpDown, Save, X, Square, CheckSquare } from 'lucide-react';
 import Toast from './ui/Toast';
-import { formatKyivDate, formatKyivTime } from '../utils/kyivTime';
+import { formatUTCDate, formatUTCTime } from '../utils/kyivTime';
 
 const FLAGS = {
   UA: '🇺🇦', PL: '🇵🇱', IT: '🇮🇹', HR: '🇭🇷',
@@ -220,10 +220,10 @@ const PaymentsTable = ({
                         ) : (
                           <div className="flex flex-col">
                             <span className="font-medium text-gray-700 dark:text-gray-300">
-                              {formatKyivDate(p.transactionDate)}
+                              {formatUTCDate(p.transactionDate)}
                             </span>
                             <span className="text-[10px] text-gray-400">
-                              {formatKyivTime(p.transactionDate)}
+                              {formatUTCTime(p.transactionDate)}
                             </span>
                           </div>
                         )}

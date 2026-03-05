@@ -5,7 +5,7 @@ import { showToast } from '../utils/toastEvents';
 import {
     Calendar, Plus, X, Globe, LayoutGrid, AlertCircle, Trash2, Filter,
     ArrowDownWideNarrow, ArrowUpNarrowWide, List, DollarSign, User, Activity, Coins,
-    ChevronUp, ChevronDown, Pin, MessageCircle, MessageSquare, Phone
+    ChevronUp, ChevronDown, Pin, MessageCircle, MessageSquare, Phone, Copy, Check
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -1112,6 +1112,18 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
 
     // Менеджер
     const managerName = transactions.length > 0 ? (transactions[0].manager || 'Не назначен') : "Не назначен";
+    // Ищем tg юзернейм в базе (обычно пробрасывается через join или лежит в объекте транзакции, попробуем взять если есть)
+    const managerTg = transactions.length > 0 && transactions[0].manager_tg ? transactions[0].manager_tg : null;
+
+    // Вспомогательная функция для копирования
+    const [copiedBtn, setCopiedBtn] = useState(false);
+    const handleCopyTg = (e, tg) => {
+        e.stopPropagation();
+        if (!tg) return;
+        navigator.clipboard.writeText(tg);
+        setCopiedBtn(true);
+        setTimeout(() => setCopiedBtn(false), 2000);
+    };
 
     // Суммы
     const totalAmountEUR = transactions.reduce((sum, t) => sum + (Number(t.amountEUR) || 0), 0);
@@ -1154,7 +1166,18 @@ const DrillDownModal = ({ selectedCell, onClose }) => {
                         <div className="p-3 bg-purple-50 dark:bg-purple-900/10 rounded-lg border border-purple-100 dark:border-purple-900/20">
                             <div className="text-[10px] text-purple-500 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><User size={10} /> Менеджер</div>
                             <div className="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title={managerName}>{managerName}</div>
-                            <div className="text-[10px] text-gray-400 mt-1">Ответственный</div>
+                            {managerTg ? (
+                                <button
+                                    onClick={(e) => handleCopyTg(e, managerTg)}
+                                    className="mt-1.5 flex items-center gap-1 px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors text-[10px] font-bold w-fit"
+                                    title="Кликните, чтобы скопировать @username"
+                                >
+                                    <span>{managerTg}</span>
+                                    {copiedBtn ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
+                                </button>
+                            ) : (
+                                <div className="text-[10px] text-gray-400 mt-1">Ответственный</div>
+                            )}
                         </div>
                     </div>
                     <div className="p-4 bg-gray-50 dark:bg-[#1A1A1A] rounded-lg border border-gray-100 dark:border-[#222] flex items-center justify-between">
