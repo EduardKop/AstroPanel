@@ -671,7 +671,14 @@ export const useAppStore = create((set, get) => ({
       }
 
       // Е. Форматируем платежи и добавляем SOURCE
-      const formattedPayments = (paymentsData || []).map(item => {
+      const uniquePaymentsMap = new Map();
+      (paymentsData || []).forEach(item => {
+        if (item.id && !uniquePaymentsMap.has(item.id)) {
+          uniquePaymentsMap.set(item.id, item);
+        }
+      });
+
+      const formattedPayments = Array.from(uniquePaymentsMap.values()).map(item => {
         const rawDate = item.transaction_date || item.created_at;
 
         // Определяем источник из View
