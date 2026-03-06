@@ -1040,7 +1040,7 @@ const GeoMatrixPage = () => {
                             </thead>
                             <tbody>
                                 {sortedCountries.map(country => (
-                                    <tr key={country.code} className="group hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
+                                    <tr key={country.code} className="group hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors relative hover:z-50">
                                         <td className="px-3 py-1 border-b border-r border-gray-200 dark:border-[#333] bg-white dark:bg-[#111] group-hover:bg-gray-50 dark:group-hover:bg-[#1A1A1A] sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                             <div className="flex items-center justify-between h-full w-full gap-2">
                                                 <div className="flex items-center gap-2 min-w-0">
@@ -1051,8 +1051,14 @@ const GeoMatrixPage = () => {
                                                     >
                                                         <Pin size={10} className={pinnedGeos.includes(country.code) ? "fill-blue-500 text-blue-500" : "text-gray-300 dark:text-gray-600"} />
                                                     </button>
-                                                    <span className="text-xl leading-none shrink-0">{country.emoji}</span>
-                                                    <span className="font-bold text-gray-900 dark:text-gray-200 text-xs truncate">{country.code}</span>
+                                                    <div className="group/tooltip relative flex items-center gap-1.5 cursor-help">
+                                                        <span className="text-xl leading-none shrink-0">{country.emoji}</span>
+                                                        <span className="font-bold text-gray-900 dark:text-gray-200 text-xs truncate">{country.code}</span>
+                                                        
+                                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-[110%] opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none bg-gray-900 dark:bg-gray-100 text-white dark:text-black text-xs font-bold py-1 px-2 rounded-md whitespace-nowrap z-50 shadow-lg border border-gray-700 dark:border-gray-200">
+                                                            {country.name}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                                 <div className="px-1.5 py-0.5 bg-gray-50 dark:bg-[#222] rounded text-[10px] font-bold text-gray-900 dark:text-white border border-gray-100 dark:border-[#333] shrink-0">{totalsByCountry[country.code]}</div>
                                             </div>

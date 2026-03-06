@@ -17,7 +17,16 @@ const FLAGS = {
     KZ: '🇰🇿', UZ: '🇺🇿', MD: '🇲🇩'
 };
 
+const GEO_NAMES = {
+    UA: 'Украина', PL: 'Польша', IT: 'Италия', HR: 'Хорватия',
+    BG: 'Болгария', CZ: 'Чехия', RO: 'Румыния', LT: 'Литва',
+    TR: 'Турция', FR: 'Франция', PT: 'Португалия', DE: 'Германия',
+    US: 'США', ES: 'Испания', SK: 'Словакия', HU: 'Венгрия',
+    KZ: 'Казахстан', UZ: 'Узбекистан', MD: 'Молдова'
+};
+
 const getFlag = (code) => FLAGS[code] || '🏳️';
+const getGeoName = (code) => GEO_NAMES[code] || code;
 
 // Helper to format date dd.mm
 const toDateStr = (date) => {
@@ -532,6 +541,7 @@ const SalesQuickStatsPage = () => {
             return {
                 geo,
                 flag: getFlag(geo),
+                name: getGeoName(geo),
                 currentManagerName,
                 previousManagerName,
                 current,
@@ -802,9 +812,12 @@ const SalesQuickStatsPage = () => {
 
                             return (
                                 <tr key={geo.geo} className={`border-b border-gray-100 dark:border-[#222] hover:bg-gray-50 dark:hover:bg-[#1A1A1A] ${idx % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-[#0A0A0A]'}`}>
-                                    <td className="px-3 py-2 font-bold text-gray-900 dark:text-white sticky left-0 bg-inherit z-10">
-                                        <span className="mr-1">{geo.flag}</span>
-                                        {geo.geo}
+                                    <td className="px-3 py-2 font-bold text-gray-900 dark:text-white sticky left-0 bg-inherit z-10 flex items-center gap-2">
+                                        <span className="text-base">{geo.flag}</span>
+                                        <div className="flex flex-col">
+                                            <span>{geo.name}</span>
+                                            <span className="text-[10px] text-gray-400 font-normal leading-tight">{geo.geo}</span>
+                                        </div>
                                     </td>
                                     {/* Period 1 data */}
                                     <td className="px-2 py-2 text-center text-blue-600 dark:text-blue-400 font-medium border-l border-gray-100 dark:border-[#222]">{geo.current.traffic}</td>

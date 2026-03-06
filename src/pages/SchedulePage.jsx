@@ -229,7 +229,8 @@ const SchedulePage = () => {
                 nickname: manager.telegram_username,
                 geo: primaryGeo,        // For compatibility with toggleShift
                 geos: managerGeos,      // All manager GEOs
-                shifts
+                shifts,
+                rawManager: manager     // Pass the whole object for status check
             };
         }).sort((a, b) => {
             // Grouping Sort: Create canonical string of sorted GEOs (e.g. "BG,KZ")
@@ -794,20 +795,35 @@ const SchedulePage = () => {
                                         <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-10 bg-white dark:bg-[#111] cursor-grab active:cursor-grabbing">
                                             {/* Name part - DRAG HANDLE */}
                                             <div className="flex-1 px-2 py-1.5 text-xs font-normal text-gray-700 dark:text-gray-300 flex flex-col justify-center overflow-hidden cursor-grab active:cursor-grabbing hover:bg-gray-100 dark:hover:bg-[#222] transition-colors">
-                                                <span
-                                                    className={`truncate font-medium transition-colors ${(isEditing || isMultiGeoEditing) ? 'text-blue-600 dark:text-blue-400 cursor-pointer hover:underline' : ''}`}
+                                                <div className="flex items-center gap-1.5">
+                                                    {(() => {
+                                                        const getEmploymentStatus = (mgr) => {
+                                                            const dateStr = mgr.started_at || mgr.created_at;
+                                                            if (!dateStr) return null;
+                                                            const days = Math.ceil(Math.abs(new Date() - new Date(dateStr)) / (1000 * 3600 * 24));
+                                                            if (days <= 7) return { color: 'bg-violet-500', label: 'Стажер' };
+                                                            if (days <= 30) return { color: 'bg-amber-500', label: 'Исп. период' };
+                                                            return { color: 'bg-emerald-500', label: 'Сотрудник' };
+                                                        };
+                                                        const st = getEmploymentStatus(row.rawManager);
+                                                        if (!st) return null;
+                                                        return <div className={`w-1.5 h-1.5 rounded-full ${st.color} shrink-0`} title={st.label} />;
+                                                    })()}
+                                                    <span
+                                                        className={`truncate font-medium transition-colors ${(isEditing || isMultiGeoEditing) ? 'text-blue-600 dark:text-blue-400 cursor-pointer hover:underline' : ''}`}
 
-                                                    onClick={(e) => {
-                                                        if (isEditing || isMultiGeoEditing) {
-                                                            e.stopPropagation(); // Prevent drag start? 
-                                                            setSelectedManagerForAutoFill(row.id);
-                                                            setShowAutoFillModal(true);
-                                                        }
-                                                    }}
-                                                    title={isEditing || isMultiGeoEditing ? "Нажмите для автозаполнения графика" : "Зажмите чтобы перетащить"}
-                                                >
-                                                    {row.name}
-                                                </span>
+                                                        onClick={(e) => {
+                                                            if (isEditing || isMultiGeoEditing) {
+                                                                e.stopPropagation(); // Prevent drag start? 
+                                                                setSelectedManagerForAutoFill(row.id);
+                                                                setShowAutoFillModal(true);
+                                                            }
+                                                        }}
+                                                        title={isEditing || isMultiGeoEditing ? "Нажмите для автозаполнения графика" : "Зажмите чтобы перетащить"}
+                                                    >
+                                                        {row.name}
+                                                    </span>
+                                                </div>
                                                 {/* Nickname (Clickable & Copyable) */}
                                                 {row.nickname && (
                                                     <span
@@ -826,10 +842,19 @@ const SchedulePage = () => {
                                             </div>
 
                                             {/* All Manager GEO Flags */}
-                                            <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 flex flex-col items-center justify-center border-l border-gray-200 dark:border-[#333] gap-0.5">
+                                            <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 flex flex-col items-center justify-center border-l border-gray-200 dark:border-[#333] gap-1 relative overflow-visible">
                                                 {row.geos && row.geos.length > 0 ? (
                                                     row.geos.slice(0, 3).map((geo, idx) => (
-                                                        <span key={idx} className="text-xs leading-none" title={geo}>{countryMap[geo]?.emoji || '🌍'}</span>
+                                                        <div key={idx} className="relative group/flag flex items-center justify-center">
+                                                            <span className="text-xs leading-none cursor-help">{countryMap[geo]?.emoji || '🌍'}</span>
+                                                            {/* Custom Tooltip */}
+                                                            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 hidden group-hover/flag:flex items-center z-[9999] bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-[10px] font-bold px-2 py-1 rounded shadow-xl whitespace-nowrap pointer-events-none">
+                                                                <span className="mr-1.5">{countryMap[geo]?.emoji || '🌍'}</span>
+                                                                {countryMap[geo]?.name || geo}
+                                                                {/* Tooltip triangle */}
+                                                                <div className="absolute top-1/2 -left-1 -translate-y-1/2 border-y-4 border-y-transparent border-r-4 border-r-gray-900 dark:border-r-white w-0 h-0"></div>
+                                                            </div>
+                                                        </div>
                                                     ))
                                                 ) : (
                                                     <span className="text-gray-400 text-xs">—</span>
