@@ -9,6 +9,8 @@ import {
 
 import ThemeToggle from './components/ThemeToggle';
 import Toast from './components/ui/Toast';
+import logoLight from './assets/logo.png';
+import logoDark from './assets/logo2.png';
 
 import { supabase } from './services/supabaseClient';
 import { useAppStore } from './store/appStore';
@@ -357,8 +359,8 @@ function App() {
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           <div className="flex items-center gap-2">
-            <img src="/src/assets/logo.png" alt="AP" className="w-5 h-5 object-contain rounded dark:hidden" />
-            <img src="/src/assets/logo2.png" alt="AP" className="w-5 h-5 object-contain rounded hidden dark:block" />
+            <img src={logoLight} alt="AP" className="w-5 h-5 object-contain rounded dark:hidden" />
+            <img src={logoDark} alt="AP" className="w-5 h-5 object-contain rounded hidden dark:block" />
             <span className="font-bold text-lg tracking-tight bg-gradient-to-b from-gray-700 via-gray-900 to-black dark:from-[#FFFFFF] dark:via-[#E2E2E2] dark:to-[#999999] text-transparent bg-clip-text">Panel</span>
           </div>
           <div className="w-10" /> {/* Spacer for centering */}
@@ -368,8 +370,8 @@ function App() {
 
           {/* HEADER */}
           <div className="h-12 flex items-center px-4 border-b border-gray-100 dark:border-[#222]">
-            <img src="/src/assets/logo.png" alt="AP" className="w-5 h-5 object-contain rounded mr-2 dark:hidden" />
-            <img src="/src/assets/logo2.png" alt="AP" className="w-5 h-5 object-contain rounded mr-2 hidden dark:block" />
+            <img src={logoLight} alt="AP" className="w-5 h-5 object-contain rounded mr-2 dark:hidden" />
+            <img src={logoDark} alt="AP" className="w-5 h-5 object-contain rounded mr-2 hidden dark:block" />
             <span className="font-bold text-lg tracking-tight bg-gradient-to-b from-gray-700 via-gray-900 to-black dark:from-[#FFFFFF] dark:via-[#E2E2E2] dark:to-[#999999] text-transparent bg-clip-text">Panel</span>
           </div>
 
