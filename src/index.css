@@ -31,42 +31,74 @@ body {
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.1);
-    /* Цвет ползунка (почти прозрачный черный) */
+    background-color: rgba(0, 0, 0, 0.2);
     border-radius: 20px;
-    /* Круглые края */
     border: 2px solid transparent;
-    /* Отступ внутри, чтобы казался еще тоньше */
     background-clip: content-box;
   }
 
   .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.2);
-    /* Чуть темнее при наведении на контейнер */
+    background-color: rgba(0, 0, 0, 0.35);
   }
 
   /* Для темной темы */
   .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.1);
-    /* Почти прозрачный белый */
+    background-color: rgba(255, 255, 255, 0.2);
   }
 
   .dark .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.35);
   }
 }
 
 /* Для Firefox (у него свой синтаксис) */
 .custom-scrollbar {
   scrollbar-width: thin;
-  /* Тонкий скролл */
-  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
-  /* Ползунок / Фон */
+  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
 }
 
 .dark .custom-scrollbar {
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
+
+
+/* --- Schedule Grid: DOM-based crosshair column highlight --- */
+/* Applied via JS: el.classList.add('sch-col-hl') — zero React re-renders */
+.sch-col-hl {
+  background-color: rgba(99, 102, 241, 0.06) !important;
+}
+.dark .sch-col-hl {
+  background-color: rgba(99, 102, 241, 0.10) !important;
+}
+
+/* --- Schedule grid scrollbar: always-visible horizontal bar --- */
+/* -webkit-appearance: none disables macOS overlay mode → shows classic scrollbar */
+.schedule-scroll::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 6px;
+  height: 8px;
+}
+.schedule-scroll::-webkit-scrollbar-track:horizontal {
+  background: rgba(0,0,0,0.04);
+  border-radius: 4px;
+}
+.dark .schedule-scroll::-webkit-scrollbar-track:horizontal {
+  background: rgba(255,255,255,0.04);
+}
+.schedule-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.25);
+  border-radius: 4px;
+}
+.dark .schedule-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.25);
+}
+.schedule-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.45);
+}
+.dark .schedule-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.45);
+}
+
 
 /* --- Custom DatePicker Styles --- */
 .custom-datepicker {

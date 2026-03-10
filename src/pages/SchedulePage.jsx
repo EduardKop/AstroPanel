@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
 import { showToast } from '../utils/toastEvents';
-import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, Users2, GripVertical, Globe } from 'lucide-react';
-import { Reorder } from "framer-motion";
+import { Calendar, Settings, Edit, ChevronLeft, ChevronRight, ChevronDown, Users2, Globe, LayoutGrid } from 'lucide-react';
+import ManagerRow from '../components/ManagerRow';
 import AdvancedScheduleModal from '../components/AdvancedScheduleModal';
 import MultiGeoModal from '../components/MultiGeoModal';
 import ScheduleStats from '../components/ScheduleStats';
@@ -51,9 +51,38 @@ const SchedulePage = () => {
     const [selectedCell, setSelectedCell] = useState(null); // { managerId, date, currentGeos, assignedGeos }
     const [scheduleState, setScheduleState] = useState(schedules || []); // Local state for optimistic UI
     const [refreshKey, setRefreshKey] = useState(0); // Force refresh trigger
+    const [adjustments, setAdjustments] = useState({}); // managerId -> extraShifts
 
-    // --- REORDERING STATE ---
+    // --- VIEW MODE ---
+    const [viewMode, setViewMode] = useState(() => localStorage.getItem('schedule_view_mode') || 'standard');
+    const [cellStyle, setCellStyle] = useState(() => localStorage.getItem('schedule_cell_style') || 'standard');
+    const [showViewMenu, setShowViewMenu] = useState(false);
+    const viewMenuRef = useRef(null);
+    const toggleViewMode = () => {
+        const next = viewMode === 'standard' ? 'compact' : 'standard';
+        setViewMode(next);
+        localStorage.setItem('schedule_view_mode', next);
+    };
+    const selectViewMode = (mode) => {
+        setViewMode(mode);
+        localStorage.setItem('schedule_view_mode', mode);
+    };
+    const selectCellStyle = (style) => {
+        setCellStyle(style);
+        localStorage.setItem('schedule_cell_style', style);
+    };
+
+    // Close view menu on click outside
+    useEffect(() => {
+        if (!showViewMenu) return;
+        const handler = (e) => { if (viewMenuRef.current && !viewMenuRef.current.contains(e.target)) setShowViewMenu(false); };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showViewMenu]);
+
+    // --- REORDERING (HTML5 native DnD) ---
     const [orderedManagers, setOrderedManagers] = useState([]);
+    const [draggedId, setDraggedId] = useState(null);
 
     // Load saved order from localStorage on mount
     useEffect(() => {
@@ -82,8 +111,6 @@ const SchedulePage = () => {
             days.push(new Date(year, month, day));
         }
 
-        console.log(`Generated ${days.length} days for ${year}-${month + 1}:`, days.map(d => d.getDate()));
-
         return days;
     }, [currentDate]);
 
@@ -98,25 +125,13 @@ const SchedulePage = () => {
         return map;
     }, [countries]);
 
-    // Get GEO config (color/label) with dynamic fallback
-    const getGeoConfig = (code) => {
+    const getGeoConfig = useCallback((code) => {
         if (!code) return null;
-        // Check static palette first
         if (GEO_PALETTE[code]) return GEO_PALETTE[code];
-
-        // Generate consistent dynamic color from code
         let hash = 0;
-        for (let i = 0; i < code.length; i++) {
-            hash = code.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const hue = Math.abs(hash % 360);
-        const color = `hsl(${hue}, 70%, 50%)`;
-
-        return {
-            color,
-            label: code.substring(0, 3)
-        };
-    };
+        for (let i = 0; i < code.length; i++) hash = code.charCodeAt(i) + ((hash << 5) - hash);
+        return { color: `hsl(${Math.abs(hash % 360)}, 65%, 48%)`, label: code.substring(0, 3) };
+    }, []);
 
     // Create schedule map: manager_id -> date -> geo_code (for real data)
     const scheduleMap = useMemo(() => {
@@ -172,6 +187,18 @@ const SchedulePage = () => {
 
                 console.log(`Loaded ${allSchedules.length} schedules for ${startDate} to ${endDateStr}`);
                 setScheduleState(allSchedules);
+
+                // Load adjustments for this month
+                const monthDate = `${year}-${String(month).padStart(2, '0')}-01`;
+                const { data: adjData } = await supabase
+                    .from('schedule_adjustments')
+                    .select('manager_id, extra_shifts')
+                    .eq('month_date', monthDate);
+                if (adjData) {
+                    const adjMap = {};
+                    adjData.forEach(a => { adjMap[a.manager_id] = a.extra_shifts || 0; });
+                    setAdjustments(adjMap);
+                }
             } catch (error) {
                 console.error('Failed to load schedules:', error);
             }
@@ -233,27 +260,36 @@ const SchedulePage = () => {
                 rawManager: manager     // Pass the whole object for status check
             };
         }).sort((a, b) => {
-            // Grouping Sort: Create canonical string of sorted GEOs (e.g. "BG,KZ")
-            // This ensures managers with the same set of GEOs are grouped together
-            // and partial overlaps starting with the same GEO are adjacent
-            const keyA = [...(a.geos || [])].sort().join(',').toLowerCase();
-            const keyB = [...(b.geos || [])].sort().join(',').toLowerCase();
+            const shiftsA = Object.values(a.shifts || {}).filter(Boolean).length;
+            const shiftsB = Object.values(b.shifts || {}).filter(Boolean).length;
 
-            if (keyA < keyB) return -1;
-            if (keyA > keyB) return 1;
+            // 0-shift managers always go to the bottom
+            const hasA = shiftsA > 0 ? 0 : 1;
+            const hasB = shiftsB > 0 ? 0 : 1;
+            if (hasA !== hasB) return hasA - hasB;
 
-            // Secondary Sort: Manager Name
+            const geosA = a.geos || [];
+            const geosB = b.geos || [];
+
+            // Primary: first GEO
+            const g1A = (geosA[0] || '').toLowerCase();
+            const g1B = (geosB[0] || '').toLowerCase();
+            if (g1A < g1B) return -1;
+            if (g1A > g1B) return 1;
+
+            // Secondary: second GEO (if any)
+            const g2A = (geosA[1] || '').toLowerCase();
+            const g2B = (geosB[1] || '').toLowerCase();
+            if (g2A < g2B) return -1;
+            if (g2A > g2B) return 1;
+
+            // Tertiary: name
             return a.name.localeCompare(b.name);
         });
     }, [managers, scheduleMap, daysInMonth, refreshKey]);
 
-    const prevMonth = () => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-    };
-
-    const nextMonth = () => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-    };
+    const prevMonth = useCallback(() => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)), []);
+    const nextMonth = useCallback(() => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)), []);
 
     // Toggle shift in edit mode (simple add/remove)
     const toggleShift = async (managerId, dateKey, managerGeo) => {
@@ -592,6 +628,27 @@ const SchedulePage = () => {
         }
     };
 
+    // Save extra shifts (Доп смены) for a manager to schedule_adjustments
+    const handleExtraShiftsSave = useCallback(async (managerId, value) => {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth() + 1;
+        const monthDate = `${year}-${String(month).padStart(2, '0')}-01`;
+
+        // Optimistic update
+        setAdjustments(prev => ({ ...prev, [managerId]: value }));
+
+        try {
+            const { error } = await supabase
+                .from('schedule_adjustments')
+                .upsert({ manager_id: managerId, month_date: monthDate, extra_shifts: value }, { onConflict: 'manager_id,month_date' });
+            if (error) throw error;
+            showToast(`Доп. смены сохранены: ${value}`, 'success');
+        } catch (err) {
+            console.error('Error saving extra shifts:', err);
+            showToast('Ошибка сохранения доп. смен', 'error');
+        }
+    }, [currentDate]);
+
 
     // --- FINAL SORTED DATA ---
     const sortedScheduleData = useMemo(() => {
@@ -618,12 +675,28 @@ const SchedulePage = () => {
     }, [scheduleData, orderedManagers]);
 
     // Update order when drag ends
-    const handleReorder = (newOrder) => {
-        // newOrder is array of items, but we just need IDs
-        const newIds = newOrder.map(item => item.id);
+    const handleReorder = useCallback((newIds) => {
         setOrderedManagers(newIds);
         localStorage.setItem('schedule_manager_order', JSON.stringify(newIds));
-    };
+    }, []);
+
+    // HTML5 DnD handlers
+    const handleDragStart = useCallback((id) => setDraggedId(id), []);
+    const handleDragOver = useCallback((e) => e.preventDefault(), []);
+    const handleDrop = useCallback((e, targetId) => {
+        e.preventDefault();
+        if (!draggedId || draggedId === targetId) return;
+        const ids = sortedScheduleData.map(r => r.id);
+        const from = ids.indexOf(draggedId);
+        const to = ids.indexOf(targetId);
+        if (from === -1 || to === -1) return;
+        const next = [...ids];
+        next.splice(from, 1);
+        next.splice(to, 0, draggedId);
+        handleReorder(next);
+        setDraggedId(null);
+    }, [draggedId, sortedScheduleData, handleReorder]);
+    const handleDragEnd = useCallback(() => setDraggedId(null), []);
 
     // Initialize orderedManagers on first load if empty but data exists
     useEffect(() => {
@@ -742,18 +815,91 @@ const SchedulePage = () => {
                             Расширенное
                         </button>
                     )}
+
+                    {/* Вид — dropdown, available to ALL roles */}
+                    <div ref={viewMenuRef} className="relative ml-auto">
+                        <button
+                            onClick={() => setShowViewMenu(v => !v)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                viewMode === 'compact'
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-gray-50 dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#222]'
+                            }`}
+                        >
+                            <LayoutGrid className="w-3.5 h-3.5" />
+                            Вид
+                            <ChevronDown className={`w-3 h-3 transition-transform ${showViewMenu ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {showViewMenu && (
+                            <div className="absolute right-0 top-full mt-1 z-[100] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-xl py-1 min-w-[170px]">
+
+                                {/* Section: Размер */}
+                                <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Размер</div>
+                                {[['standard', 'Стандартный'], ['compact', 'Компактный']].map(([mode, label]) => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => selectViewMode(mode)}
+                                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors ${
+                                            viewMode === mode
+                                                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 font-semibold'
+                                                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                                        }`}
+                                    >
+                                        <LayoutGrid className="w-3 h-3 flex-shrink-0" />
+                                        {label}
+                                        {viewMode === mode && <span className="ml-auto text-indigo-500">✓</span>}
+                                    </button>
+                                ))}
+
+                                {/* Divider */}
+                                <div className="my-1 border-t border-gray-100 dark:border-zinc-800" />
+
+                                {/* Section: Стиль */}
+                                <div className="px-3 pt-1 pb-1 text-[9px] font-bold uppercase tracking-widest text-gray-400 dark:text-zinc-500">Стиль</div>
+                                {[['standard', 'Стандартный'], ['contrast', 'Контрастный']].map(([style, label]) => (
+                                    <button
+                                        key={style}
+                                        onClick={() => selectCellStyle(style)}
+                                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors ${
+                                            cellStyle === style
+                                                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 font-semibold'
+                                                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                                        }`}
+                                    >
+                                        <span className={`w-3 h-3 flex-shrink-0 rounded-sm border ${style === 'contrast' ? 'bg-emerald-500 border-emerald-600' : 'bg-gray-200 border-gray-300 dark:bg-zinc-700 dark:border-zinc-600'}`} />
+                                        {label}
+                                        {cellStyle === style && <span className="ml-auto text-indigo-500">✓</span>}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
             {/* CUSTOM GRID */}
-            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl shadow-sm flex flex-col h-[calc(100vh-140px)]">
-                {/* Scrollable Container */}
-                <div className="flex-1 overflow-auto custom-scrollbar">
+            <div className="bg-white dark:bg-[#121212] border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm flex flex-col h-[calc(100vh-140px)]">
+                {/* Scrollable Container — crosshair hover via DOM (no React state) */}
+                <div
+                    className="flex-1 overflow-x-scroll overflow-y-auto schedule-scroll"
+                    onMouseLeave={() => {
+                        document.querySelectorAll('.sch-col-hl').forEach(el => el.classList.remove('sch-col-hl'));
+                    }}
+                    onMouseOver={(e) => {
+                        const cell = e.target.closest('[data-day-idx]');
+                        document.querySelectorAll('.sch-col-hl').forEach(el => el.classList.remove('sch-col-hl'));
+                        if (cell) {
+                            const idx = cell.getAttribute('data-day-idx');
+                            document.querySelectorAll(`[data-day-idx="${idx}"]`).forEach(el => el.classList.add('sch-col-hl'));
+                        }
+                    }}
+                >
                     <div className="inline-block min-w-full">
                         {/* HEADER ROW */}
-                        <div className="flex border-b border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#0A0A0A] sticky top-0 z-30 shadow-sm">
+                        <div className="flex border-b border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-[#0A0A0A] sticky top-0 z-40 shadow-sm">
                             {/* Header: Manager Name */}
-                            <div className="w-[160px] flex-shrink-0 p-2 text-xs font-semibold text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#0A0A0A] sticky left-0 z-20 flex items-center justify-between">
+                            <div className={`${viewMode === 'compact' ? 'w-[120px]' : 'w-[152px]'} flex-shrink-0 px-2 py-1.5 text-[10px] font-semibold text-gray-500 dark:text-zinc-500 uppercase tracking-wide border-r border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-[#0A0A0A] sticky left-0 z-50 flex items-center`}>
                                 <span>Менеджер</span>
                             </div>
 
@@ -762,200 +908,70 @@ const SchedulePage = () => {
                                 {daysInMonth.map((day, idx) => {
                                     const isToday = day.toDateString() === new Date().toDateString();
                                     const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-
                                     return (
                                         <div
                                             key={idx}
-                                            className={`min-w-[32px] flex-1 py-1.5 flex flex-col items-center justify-center text-[10px] border-r border-gray-100 dark:border-[#333]/50 last:border-0 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''
-                                                } ${isWeekend ? 'bg-gray-50/50 dark:bg-[#111]/50 text-red-400 dark:text-red-500' : 'text-gray-600 dark:text-gray-400'}`}
+                                            data-day-idx={idx}
+                                            className={[
+                                                'min-w-[30px] flex-1 py-1 flex flex-col items-center justify-center',
+                                                'border-r border-gray-100 dark:border-zinc-800/50 last:border-0',
+                                                isToday  ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 font-bold' : '',
+                                                isWeekend && !isToday ? 'bg-blue-50/40 dark:bg-blue-900/10 text-blue-500 dark:text-blue-500' : '',
+                                                !isToday && !isWeekend ? 'text-gray-500 dark:text-zinc-500' : '',
+                                            ].filter(Boolean).join(' ')}
                                         >
-                                            <span className="opacity-70">{day.toLocaleDateString('ru-RU', { weekday: 'short' })}</span>
-                                            <span className="font-medium">{day.getDate()}</span>
+                                            <span className="text-[9px] opacity-70 leading-tight">{day.toLocaleDateString('ru-RU', { weekday: 'short' })}</span>
+                                            <span className="text-[10px] leading-tight">{day.getDate()}</span>
                                         </div>
                                     );
                                 })}
                             </div>
+
+                            {/* Summary column headers */}
+                            <div className="flex flex-shrink-0 border-l border-gray-200 dark:border-zinc-800">
+                                {[['Смены','w-[48px]'],['Доп','w-[40px]'],['2ГЕО','w-[44px]']].map(([label, w]) => (
+                                    <div key={label} className={`${w} py-1 flex items-center justify-center text-[9px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wide border-r border-gray-200 dark:border-zinc-800 last:border-r-0`}>
+                                        {label}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
 
-                        {/* MANAGER ROWS - DRAGGABLE */}
-                        <Reorder.Group axis="y" values={sortedScheduleData} onReorder={handleReorder}>
-                            {sortedScheduleData.map((row) => {
-                                const managerGeo = row.geo;
-                                const geoInfo = countryMap[managerGeo];
-
-                                return (
-                                    <Reorder.Item
-                                        key={row.id}
-                                        value={row}
-                                        as="div"
-                                        className="flex border-b border-gray-100 dark:border-[#1A1A1A] hover:bg-gray-50 dark:hover:bg-[#0A0A0A] transition-colors bg-white dark:bg-[#111]"
-                                        whileDrag={{ scale: 1.02, boxShadow: "0 5px 15px rgba(0,0,0,0.1)", zIndex: 50 }}
-                                    >
-                                        {/* Manager Name + Geo */}
-                                        <div className="w-[160px] flex-shrink-0 border-r border-gray-200 dark:border-[#333] flex sticky left-0 z-10 bg-white dark:bg-[#111] cursor-grab active:cursor-grabbing">
-                                            {/* Name part - DRAG HANDLE */}
-                                            <div className="flex-1 px-2 py-1.5 text-xs font-normal text-gray-700 dark:text-gray-300 flex flex-col justify-center overflow-hidden cursor-grab active:cursor-grabbing hover:bg-gray-100 dark:hover:bg-[#222] transition-colors">
-                                                <div className="flex items-center gap-1.5">
-                                                    {(() => {
-                                                        const getEmploymentStatus = (mgr) => {
-                                                            const dateStr = mgr.started_at || mgr.created_at;
-                                                            if (!dateStr) return null;
-                                                            const days = Math.ceil(Math.abs(new Date() - new Date(dateStr)) / (1000 * 3600 * 24));
-                                                            if (days <= 7) return { color: 'bg-violet-500', label: 'Стажер' };
-                                                            if (days <= 30) return { color: 'bg-amber-500', label: 'Исп. период' };
-                                                            return { color: 'bg-emerald-500', label: 'Сотрудник' };
-                                                        };
-                                                        const st = getEmploymentStatus(row.rawManager);
-                                                        if (!st) return null;
-                                                        return <div className={`w-1.5 h-1.5 rounded-full ${st.color} shrink-0`} title={st.label} />;
-                                                    })()}
-                                                    <span
-                                                        className={`truncate font-medium transition-colors ${(isEditing || isMultiGeoEditing) ? 'text-blue-600 dark:text-blue-400 cursor-pointer hover:underline' : ''}`}
-
-                                                        onClick={(e) => {
-                                                            if (isEditing || isMultiGeoEditing) {
-                                                                e.stopPropagation(); // Prevent drag start? 
-                                                                setSelectedManagerForAutoFill(row.id);
-                                                                setShowAutoFillModal(true);
-                                                            }
-                                                        }}
-                                                        title={isEditing || isMultiGeoEditing ? "Нажмите для автозаполнения графика" : "Зажмите чтобы перетащить"}
-                                                    >
-                                                        {row.name}
-                                                    </span>
-                                                </div>
-                                                {/* Nickname (Clickable & Copyable) */}
-                                                {row.nickname && (
-                                                    <span
-                                                        className="text-[10px] text-gray-400 dark:text-gray-500 truncate cursor-pointer hover:text-blue-500 dark:hover:text-blue-400 transition-colors max-w-[120px]"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            navigator.clipboard.writeText(row.nickname);
-                                                            showToast(`Скопировано: ${row.nickname}`, 'success');
-                                                        }}
-                                                        title={`Скопировать: ${row.nickname}`}
-                                                        onPointerDown={(e) => e.stopPropagation()} // Prevent drag
-                                                    >
-                                                        {row.nickname}
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* All Manager GEO Flags */}
-                                            <div className="w-[24px] flex-shrink-0 px-0.5 py-1.5 flex flex-col items-center justify-center border-l border-gray-200 dark:border-[#333] gap-1 relative overflow-visible">
-                                                {row.geos && row.geos.length > 0 ? (
-                                                    row.geos.slice(0, 3).map((geo, idx) => (
-                                                        <div key={idx} className="relative group/flag flex items-center justify-center">
-                                                            <span className="text-xs leading-none cursor-help">{countryMap[geo]?.emoji || '🌍'}</span>
-                                                            {/* Custom Tooltip */}
-                                                            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 hidden group-hover/flag:flex items-center z-[9999] bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-[10px] font-bold px-2 py-1 rounded shadow-xl whitespace-nowrap pointer-events-none">
-                                                                <span className="mr-1.5">{countryMap[geo]?.emoji || '🌍'}</span>
-                                                                {countryMap[geo]?.name || geo}
-                                                                {/* Tooltip triangle */}
-                                                                <div className="absolute top-1/2 -left-1 -translate-y-1/2 border-y-4 border-y-transparent border-r-4 border-r-gray-900 dark:border-r-white w-0 h-0"></div>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                ) : (
-                                                    <span className="text-gray-400 text-xs">—</span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Day Cells - stretch on 2xl+ */}
-                                        <div className="flex flex-1" onPointerDown={(e) => e.stopPropagation()}>
-                                            {daysInMonth.map((day, dayIdx) => {
-                                                // Use local date format to avoid timezone issues
-                                                const year = day.getFullYear();
-                                                const month = String(day.getMonth() + 1).padStart(2, '0');
-                                                const dayNum = String(day.getDate()).padStart(2, '0');
-                                                const dateKey = `${year}-${month}-${dayNum}`;
-
-                                                const geo = row.shifts[dateKey];
-
-                                                // Parse multi-GEO format ("RO" or "RO,BG")
-                                                const geos = geo ? geo.split(',').map(g => g.trim()) : [];
-                                                const geoConfigs = geos.map(g => getGeoConfig(g)).filter(Boolean);
-
-                                                const canEdit = isEditing;
-                                                const canMultiGeoEdit = isMultiGeoEditing;
-                                                const isInteractive = canEdit || canMultiGeoEdit;
-
-                                                return (
-                                                    <div
-                                                        key={dayIdx}
-                                                        className={`min-w-[32px] flex-1 p-0.5 flex items-center justify-center ${isInteractive || isAdditionalEditing ? 'cursor-pointer' : ''
-                                                            } ${!isEditing && !isMultiGeoEditing && !isAdditionalEditing ? 'border-r border-gray-100 dark:border-[#222] last:border-0' : ''}`}
-                                                        style={{ containerType: 'inline-size' }}
-                                                        onClick={() => {
-                                                            if (canEdit && isEditing) {
-                                                                toggleShift(row.id, dateKey, row.geo);
-                                                            } else if (canMultiGeoEdit) {
-                                                                handleMultiGeoClick(row.id, dateKey, geos);
-                                                            } else if (isAdditionalEditing) {
-                                                                // Always show selection modal in "Edit Additional" mode
-                                                                // so user can select "Таро" or "Доп смена" even if manager has 1 GEO
-                                                                setSelectedCell({
-                                                                    managerId: row.id,
-                                                                    dateKey,
-                                                                    managerName: row.name,
-                                                                    assignedGeos: row.geos
-                                                                });
-                                                                setShowSingleGeoModal(true);
-                                                            }
-                                                        }}
-                                                    >
-                                                        {geoConfigs.length === 2 ? (
-                                                            /* Dual GEO - Split Color Cell */
-                                                            <div className={`w-full h-[32px] rounded overflow-hidden flex flex-col shadow-sm transition-all ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : 'hover:opacity-80'
-                                                                }`}>
-                                                                {/* Top GEO */}
-                                                                <div
-                                                                    className="flex-1 flex items-center justify-center text-white text-[8px] font-bold leading-none gap-1"
-                                                                    style={{ backgroundColor: geoConfigs[0].color }}
-                                                                >
-                                                                    <span className="text-[9px]">{countryMap[geos[0]]?.emoji}</span>
-                                                                    <span>{geoConfigs[0].label}</span>
-                                                                </div>
-                                                                {/* Bottom GEO */}
-                                                                <div
-                                                                    className="flex-1 flex items-center justify-center text-white text-[8px] font-bold border-t border-white/30 leading-none gap-1"
-                                                                    style={{ backgroundColor: geoConfigs[1].color }}
-                                                                >
-                                                                    <span className="text-[9px]">{countryMap[geos[1]]?.emoji}</span>
-                                                                    <span>{geoConfigs[1].label}</span>
-                                                                </div>
-                                                            </div>
-                                                        ) : geoConfigs.length === 1 ? (
-                                                            /* Single GEO */
-                                                            <div
-                                                                className={`w-full h-[32px] rounded flex flex-row items-center justify-center gap-1 font-bold shadow-sm transition-all text-white leading-none ${canEdit ? 'hover:opacity-80' : ''
-                                                                    } ${canMultiGeoEdit ? 'ring-2 ring-purple-300 dark:ring-purple-600 hover:ring-purple-400' : ''
-                                                                    }`}
-                                                                style={{ backgroundColor: geoConfigs[0].color }}
-                                                            >
-                                                                <span className="filter drop-shadow-sm" style={{ fontSize: 'clamp(8px, 30cqw, 14px)' }}>{countryMap[geos[0]]?.emoji}</span>
-                                                                <span className="uppercase tracking-wide" style={{ fontSize: 'clamp(7px, 20cqw, 10px)' }}>{geoConfigs[0].label}</span>
-                                                            </div>
-                                                        ) : (
-                                                            /* Empty Cell */
-                                                            <div
-                                                                className={`w-full h-[32px] rounded flex items-center justify-center text-[9px] font-semibold shadow-sm transition-all ${canEdit
-                                                                    ? 'border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-green-400 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
-                                                                    : canMultiGeoEdit
-                                                                        ? 'border-2 border-dashed border-purple-300 dark:border-purple-600 hover:border-purple-400 dark:hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20'
-                                                                        : ''
-                                                                    }`}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </Reorder.Item>
-                                );
-                            })}
-                        </Reorder.Group>
+                        {/* MANAGER ROWS — plain divs, HTML5 DnD */}
+                        <div>
+                            {sortedScheduleData.map((row) => (
+                                <ManagerRow
+                                    key={row.id}
+                                    row={row}
+                                    countryMap={countryMap}
+                                    daysInMonth={daysInMonth}
+                                    isEditing={isEditing}
+                                    isMultiGeoEditing={isMultiGeoEditing}
+                                    isAdditionalEditing={isAdditionalEditing}
+                                    canEdit={canEdit}
+                                    onAutoFillClick={(managerId) => { setSelectedManagerForAutoFill(managerId); setShowAutoFillModal(true); }}
+                                    onCellClick={(row, dateKey, geos) => {
+                                        if (canEdit && isEditing) toggleShift(row.id, dateKey, row.geo);
+                                        else if (isMultiGeoEditing) handleMultiGeoClick(row.id, dateKey, geos);
+                                        else if (isAdditionalEditing) {
+                                            setSelectedCell({ managerId: row.id, dateKey, managerName: row.name, assignedGeos: row.geos });
+                                            setShowSingleGeoModal(true);
+                                        }
+                                    }}
+                                    onNicknameCopy={(nick) => { navigator.clipboard.writeText(nick); showToast(`Скопировано: ${nick}`, 'success'); }}
+                                    getGeoConfig={getGeoConfig}
+                                    extraShifts={adjustments[row.id] || 0}
+                                    onExtraShiftsSave={handleExtraShiftsSave}
+                                    viewMode={viewMode}
+                                    cellStyle={cellStyle}
+                                    isDragging={draggedId === row.id}
+                                    onDragStart={() => handleDragStart(row.id)}
+                                    onDragOver={handleDragOver}
+                                    onDrop={(e) => handleDrop(e, row.id)}
+                                    onDragEnd={handleDragEnd}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
