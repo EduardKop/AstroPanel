@@ -357,8 +357,9 @@ function App() {
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-black dark:bg-white rounded flex items-center justify-center text-white dark:text-black font-bold text-[10px]">AP</div>
-            <span className="font-bold text-gray-900 dark:text-white tracking-tight">AstroPanel</span>
+            <img src="/src/assets/logo.png" alt="AP" className="w-5 h-5 object-contain rounded dark:hidden" />
+            <img src="/src/assets/logo2.png" alt="AP" className="w-5 h-5 object-contain rounded hidden dark:block" />
+            <span className="font-bold text-lg tracking-tight bg-gradient-to-b from-gray-700 via-gray-900 to-black dark:from-[#FFFFFF] dark:via-[#E2E2E2] dark:to-[#999999] text-transparent bg-clip-text">Panel</span>
           </div>
           <div className="w-10" /> {/* Spacer for centering */}
         </div>
@@ -367,11 +368,9 @@ function App() {
 
           {/* HEADER */}
           <div className="h-12 flex items-center px-4 border-b border-gray-100 dark:border-[#222]">
-            <div className="w-5 h-5 bg-black dark:bg-white rounded flex items-center justify-center text-white dark:text-black font-bold text-[10px] mr-2">AP</div>
-            <span className="font-bold text-gray-900 dark:text-white tracking-tight">AstroPanel</span>
-            <span className="ml-2 px-1.5 py-0.5 rounded-[4px] bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-500 text-[9px] font-bold uppercase tracking-wider">
-              Beta
-            </span>
+            <img src="/src/assets/logo.png" alt="AP" className="w-5 h-5 object-contain rounded mr-2 dark:hidden" />
+            <img src="/src/assets/logo2.png" alt="AP" className="w-5 h-5 object-contain rounded mr-2 hidden dark:block" />
+            <span className="font-bold text-lg tracking-tight bg-gradient-to-b from-gray-700 via-gray-900 to-black dark:from-[#FFFFFF] dark:via-[#E2E2E2] dark:to-[#999999] text-transparent bg-clip-text">Panel</span>
           </div>
 
           <div className="p-3">
