@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     TrendingUp, ClipboardList, ChevronDown, ChevronRight,
     Plus, Save, X, Clipboard, Edit3, Trash2, Check, RefreshCw,
-    Calendar as CalendarIcon, RotateCcw
+    Calendar as CalendarIcon, RotateCcw, ArrowUpAZ, ArrowDownUp
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
@@ -230,10 +230,17 @@ const PnLDataTab = () => {
     const { countries } = useAppStore();
     const [search, setSearch] = useState('');
     const [showInactive, setShowInactive] = useState(false);
+    const [geoSort, setGeoSort] = useState(() => localStorage.getItem('pnl_data_sort') || 'standard');
+    const toggleGeoSort = () => {
+        const next = geoSort === 'standard' ? 'alpha' : 'standard';
+        setGeoSort(next);
+        localStorage.setItem('pnl_data_sort', next);
+    };
 
     const filtered = (countries || [])
         .filter(c => showInactive || c.is_active)
-        .filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.code.toLowerCase().includes(search.toLowerCase()));
+        .filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.code.toLowerCase().includes(search.toLowerCase()))
+        .sort((a, b) => geoSort === 'alpha' ? a.name.localeCompare(b.name) : 0);
 
     return (
         <div className="space-y-4">
@@ -244,6 +251,17 @@ const PnLDataTab = () => {
                 <button onClick={() => setShowInactive(p => !p)}
                     className={`px-3 py-2 text-xs font-bold rounded-lg border transition-all ${showInactive ? 'bg-gray-700 text-white border-gray-700' : 'bg-white dark:bg-[#111] border-gray-200 dark:border-[#333] text-gray-500 dark:text-gray-400 hover:border-gray-400'}`}>
                     {showInactive ? 'Скрыть неактивные' : 'Показать неактивные'}
+                </button>
+                <button
+                    onClick={toggleGeoSort}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-all ${
+                        geoSort === 'alpha'
+                            ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800'
+                            : 'bg-white dark:bg-[#111] border-gray-200 dark:border-[#333] text-gray-500 dark:text-gray-400 hover:border-gray-400'
+                    }`}
+                >
+                    {geoSort === 'alpha' ? <ArrowUpAZ size={13} /> : <ArrowDownUp size={13} />}
+                    {geoSort === 'alpha' ? 'А→Я' : 'Стандарт'}
                 </button>
                 <span className="text-xs text-gray-400">{filtered.length} стран</span>
             </div>
@@ -435,22 +453,28 @@ const PnLReportTab = ({ startDate, endDate }) => {
         });
 
         const sortedDates = [...dates].sort((a, b) => b.localeCompare(a));
-        const sortedGeos = [...geoCodes].sort();
 
-        // Per-GEO totals (right column)
+        // Build interim geos list with totals for sorting
+        const allGeoCodes = [...geoCodes];
+
+        // Compute geo totals first, then sort
         const geoTotals = {};
-        sortedGeos.forEach(code => {
+        allGeoCodes.forEach(code => {
             const cells = Object.values(map[code] || {});
+            const spent = cells.reduce((s, c) => s + c.spent, 0);
+            const profit = cells.reduce((s, c) => s + c.profit, 0);
             geoTotals[code] = {
-                spent: cells.reduce((s, c) => s + c.spent, 0),
+                spent,
                 clicks: cells.reduce((s, c) => s + c.clicks, 0),
                 salesCount: cells.reduce((s, c) => s + c.salesCount, 0),
                 revenueUsd: cells.reduce((s, c) => s + c.revenueUsd, 0),
-                profit: cells.reduce((s, c) => s + c.profit, 0),
+                profit,
                 get cpc() { return this.clicks > 0 ? this.spent / this.clicks : 0; },
                 get roi() { return this.spent > 0 ? (this.profit / this.spent) * 100 : 0; },
             };
         });
+
+        const sortedGeos = [...allGeoCodes].sort((a, b) => a.localeCompare(b));
 
         // Per-date totals (bottom row)
         const dateTotals = {};
