@@ -5,7 +5,7 @@ import { showToast } from '../utils/toastEvents';
 import {
     Calendar, Plus, X, Globe, LayoutGrid, AlertCircle, Trash2, Filter,
     ArrowDownWideNarrow, ArrowUpNarrowWide, List, DollarSign, User, Activity, Coins,
-    ChevronUp, ChevronDown, Pin, MessageCircle, MessageSquare, Phone, Copy, Check
+    ChevronUp, ChevronDown, Pin, MessageCircle, MessageSquare, Phone, Copy, Check, RefreshCw
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -318,11 +318,13 @@ const MobileDateRangePicker = ({ startDate, endDate, onChange }) => {
 
 const GeoMatrixPage = () => {
     // ✅ Достаем trafficStats и метод обновления
-    const { payments, trafficStats, fetchTrafficStats } = useAppStore();
+    const { payments, trafficStats, fetchTrafficStats, isLoading: storeLoading, user } = useAppStore();
 
+    const isAdminOrCLevel = user?.role === 'Admin' || user?.role === 'C-Level';
 
     const [countriesList, setCountriesList] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [localLoading, setLocalLoading] = useState(true);
+    const loading = localLoading || storeLoading;
     const [isDemoMode, setIsDemoMode] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCell, setSelectedCell] = useState(null);
@@ -356,11 +358,11 @@ const GeoMatrixPage = () => {
     // Загрузка стран (справочник)
     const fetchCountries = async () => {
         try {
-            setLoading(true);
+            setLocalLoading(true);
             const { data, error } = await supabase.from('countries').select('*').order('code', { ascending: true }).range(0, 9999);
             if (error) throw error;
             setCountriesList(data || []);
-        } catch (error) { console.error(error); } finally { setLoading(false); }
+        } catch (error) { console.error(error); } finally { setLocalLoading(false); }
     };
 
     useEffect(() => { fetchCountries(); }, []);
@@ -796,6 +798,15 @@ const GeoMatrixPage = () => {
         );
     };
 
+    if (loading) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
+                <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
+                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка матрицы...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="animate-in fade-in zoom-in duration-300 pb-10 min-h-screen">
             <style>{`
@@ -853,8 +864,12 @@ const GeoMatrixPage = () => {
                                     <button onClick={() => setMetricMode('sales')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Продажи</button>
                                     <button onClick={() => setMetricMode('traffic')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'traffic' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Трафик</button>
                                     <button onClick={() => setMetricMode('conversion')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'conversion' ? 'bg-white dark:bg-[#333] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конв.%</button>
-                                    <button onClick={() => setMetricMode('revenue')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'revenue' ? 'bg-white dark:bg-[#333] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Фин $</button>
-                                    <button onClick={() => setMetricMode('revenue-local')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'revenue-local' ? 'bg-white dark:bg-[#333] text-pink-600 dark:text-pink-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Фин Loc</button>
+                                    {isAdminOrCLevel && (
+                                        <>
+                                            <button onClick={() => setMetricMode('revenue')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'revenue' ? 'bg-white dark:bg-[#333] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Фин $</button>
+                                            <button onClick={() => setMetricMode('revenue-local')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'revenue-local' ? 'bg-white dark:bg-[#333] text-pink-600 dark:text-pink-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Фин Loc</button>
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Traffic Source Toggle */}
