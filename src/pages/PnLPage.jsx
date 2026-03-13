@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     TrendingUp, ClipboardList, ChevronDown, ChevronRight,
     Plus, Save, X, Clipboard, Edit3, Trash2, Check, RefreshCw,
-    Calendar as CalendarIcon, RotateCcw, ArrowUpAZ, ArrowDownUp
+    Calendar as CalendarIcon, RotateCcw, ArrowUpAZ, ArrowDownUp,
+    MessageCircle, MessageSquare
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
@@ -396,33 +397,59 @@ const METRICS = [
 ];
 
 const PnLReportTab = ({ startDate, endDate }) => {
-    const { countries } = useAppStore();
+    const { countries, payments: storePayments, isLoading: storeLoading } = useAppStore();
     const [entries, setEntries] = useState([]);
-    const [payments, setPayments] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [localLoading, setLocalLoading] = useState(true);
+    const loading = localLoading || storeLoading;
     const eurToUsd = getEurToUsd();
     const [metric, setMetric] = useState('profit');
+    const [trafficSource, setTrafficSource] = useState('all'); // 'all', 'direct', 'comments'
+    const [deptFilter, setDeptFilter] = useState(['sales']); // ['sales'] = ОП by default
+
+    const toggleDept = (key) => setDeptFilter(prev =>
+        prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]
+    );
 
     const toYMD = (d) => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
     const dateFrom = toYMD(startDate);
     const dateTo = toYMD(endDate);
 
-    // Load pnl_entries
+    // Load pnl_entries only
     useEffect(() => {
         if (!dateFrom || !dateTo) return;
         const load = async () => {
-            setLoading(true);
-            const [{ data: ents }, { data: pays }] = await Promise.all([
-                supabase.from('pnl_entries').select('*').gte('date', dateFrom).lte('date', dateTo),
-                supabase.from('payments').select('country, amount_eur, transaction_date').eq('status', 'completed')
-                    .gte('transaction_date', `${dateFrom}T00:00:00`).lte('transaction_date', `${dateTo}T23:59:59`),
-            ]);
+            setLocalLoading(true);
+            const { data: ents } = await supabase.from('pnl_entries').select('*').gte('date', dateFrom).lte('date', dateTo);
             setEntries(ents || []);
-            setPayments(pays || []);
-            setLoading(false);
+            setLocalLoading(false);
         };
         load();
     }, [dateFrom, dateTo]);
+
+    // Filter store payments by date range, trafficSource, and department
+    const payments = useMemo(() => {
+        if (!dateFrom || !dateTo) return [];
+        return (storePayments || []).filter(p => {
+            if (!p.transactionDate) return false;
+            const d = p.transactionDate.slice(0, 10);
+            if (d < dateFrom || d > dateTo) return false;
+            if (p.status !== 'completed') return false;
+            // Traffic source filter
+            if (trafficSource !== 'all' && p.source !== trafficSource) return false;
+            // Department filter (multi-select; empty = all)
+            if (deptFilter.length > 0) {
+                const role = p.managerRole || '';
+                const match = deptFilter.some(dept => {
+                    if (dept === 'sales') return role === 'Sales' || role === 'SeniorSales';
+                    if (dept === 'consultant') return role === 'Consultant';
+                    if (dept === 'taro') return role === 'SalesTaro';
+                    return false;
+                });
+                if (!match) return false;
+            }
+            return true;
+        });
+    }, [storePayments, dateFrom, dateTo, trafficSource, deptFilter]);
 
     // Build cell data: map[countryCode][date] = metrics object
     const { cellMap, sortedGeos, sortedDates, geoTotals, dateTotals, grandTotal } = useMemo(() => {
@@ -437,10 +464,10 @@ const PnLReportTab = ({ startDate, endDate }) => {
             dates.add(date);
 
             const dayPayments = payments.filter(p =>
-                p.country === code && p.transaction_date?.slice(0, 10) === date
+                p.country === code && (p.transactionDate || '').slice(0, 10) === date
             );
             const salesCount = dayPayments.length;
-            const revenueEur = dayPayments.reduce((s, p) => s + parseFloat(p.amount_eur || 0), 0);
+            const revenueEur = dayPayments.reduce((s, p) => s + parseFloat(p.amountEUR || p.amount_eur || 0), 0);
             const revenueUsd = revenueEur * eurToUsd;
             const spent = parseFloat(entry.spent) || 0;
             const clicks = parseInt(entry.clicks) || 0;
@@ -506,7 +533,7 @@ const PnLReportTab = ({ startDate, endDate }) => {
         };
 
         return { cellMap: map, sortedGeos, sortedDates, geoTotals, dateTotals, grandTotal };
-    }, [entries, payments, eurToUsd]);
+    }, [entries, payments, eurToUsd, trafficSource, deptFilter]);
 
     // Get metric value from a cell
     const getVal = (cell, m) => cell ? cell[m] ?? 0 : null;
@@ -532,12 +559,21 @@ const PnLReportTab = ({ startDate, endDate }) => {
         return `${fmt(val)}${unit}`;
     };
 
+    if (loading) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
+                <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
+                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка данных P&L...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-5">
-            {/* Controls: metric switcher only (calendar is in the tab header) */}
-            <div className="flex flex-wrap items-center gap-3">
-                {loading && <RefreshCw size={14} className="text-gray-400 animate-spin" />}
+            {/* Controls: metric switcher + filter buttons */}
+            <div className="flex flex-wrap items-center gap-2">
 
+                {/* Metric switcher */}
                 <div className="flex flex-wrap gap-1 bg-gray-100 dark:bg-[#1a1a1a] p-0.5 rounded-lg">
                     {METRICS.map(m => (
                         <button key={m.key} onClick={() => setMetric(m.key)}
@@ -547,6 +583,42 @@ const PnLReportTab = ({ startDate, endDate }) => {
                             {m.label}
                         </button>
                     ))}
+                </div>
+
+                {/* Traffic Source Toggle: Все / Direct / Comm */}
+                <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-lg h-[30px] items-center">
+                    <button onClick={() => setTrafficSource('all')}
+                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                            trafficSource === 'all' ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}>Все</button>
+                    <button onClick={() => setTrafficSource('direct')}
+                        className={`px-2 h-full rounded-md text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${
+                            trafficSource === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}><MessageCircle size={10} />Direct</button>
+                    <button onClick={() => setTrafficSource('comments')}
+                        className={`px-2 h-full rounded-md text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${
+                            trafficSource === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}><MessageSquare size={10} />Comm</button>
+                </div>
+
+                {/* Department Toggle: Все / on / Конс. / Таро — multi-select */}
+                <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-lg h-[30px] items-center">
+                    <button onClick={() => setDeptFilter([])}
+                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                            deptFilter.length === 0 ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}>Все</button>
+                    <button onClick={() => toggleDept('sales')}
+                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                            deptFilter.includes('sales') ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}>on</button>
+                    <button onClick={() => toggleDept('consultant')}
+                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                            deptFilter.includes('consultant') ? 'bg-white dark:bg-[#333] text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}>Конс.</button>
+                    <button onClick={() => toggleDept('taro')}
+                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                            deptFilter.includes('taro') ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                        }`}>Таро</button>
                 </div>
             </div>
 

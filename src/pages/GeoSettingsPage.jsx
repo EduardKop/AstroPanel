@@ -5,32 +5,33 @@ import { Globe, Plus, Trash2, Search, X, AlertCircle, Save, Info, Clock, Flag } 
 
 // Common flags for the dropdown — includes default currency
 const COMMON_FLAGS = [
-    { code: 'KZ', emoji: '🇰🇿', name: 'Казахстан', currency: 'KZT' },
-    { code: 'UA', emoji: '🇺🇦', name: 'Украина', currency: 'UAH' },
-    { code: 'PL', emoji: '🇵🇱', name: 'Польша', currency: 'PLN' },
-    { code: 'UZ', emoji: '🇺🇿', name: 'Узбекистан', currency: 'UZS' },
-    { code: 'TR', emoji: '🇹🇷', name: 'Турция', currency: 'TRY' },
-    { code: 'CZ', emoji: '🇨🇿', name: 'Чехия', currency: 'CZK' },
-    { code: 'RO', emoji: '🇷🇴', name: 'Румыния', currency: 'RON' },
-    { code: 'DE', emoji: '🇩🇪', name: 'Германия', currency: 'EUR' },
-    { code: 'US', emoji: '🇺🇸', name: 'США', currency: 'USD' },
-    { code: 'GB', emoji: '🇬🇧', name: 'Великобритания', currency: 'GBP' },
-    { code: 'FR', emoji: '🇫🇷', name: 'Франция', currency: 'EUR' },
-    { code: 'NL', emoji: '🇳🇱', name: 'Нидерланды', currency: 'EUR' },
-    { code: 'ES', emoji: '🇪🇸', name: 'Испания', currency: 'EUR' },
-    { code: 'IT', emoji: '🇮🇹', name: 'Италия', currency: 'EUR' },
-    { code: 'BG', emoji: '🇧🇬', name: 'Болгария', currency: 'BGN' },
-    { code: 'HU', emoji: '🇭🇺', name: 'Венгрия', currency: 'HUF' },
-    { code: 'CH', emoji: '🇨🇭', name: 'Швейцария', currency: 'CHF' },
-    { code: 'SE', emoji: '🇸🇪', name: 'Швеция', currency: 'SEK' },
-    { code: 'NO', emoji: '🇳🇴', name: 'Норвегия', currency: 'NOK' },
+    { code: 'KZ', emoji: '🇰🇿', name: 'Казахстан', currency: 'KZT', lang: 'Казахский' },
+    { code: 'UA', emoji: '🇺🇦', name: 'Украина', currency: 'UAH', lang: 'Украинский' },
+    { code: 'PL', emoji: '🇵🇱', name: 'Польша', currency: 'PLN', lang: 'Польский' },
+    { code: 'UZ', emoji: '🇺🇿', name: 'Узбекистан', currency: 'UZS', lang: 'Узбекский' },
+    { code: 'TR', emoji: '🇹🇷', name: 'Турция', currency: 'TRY', lang: 'Турецкий' },
+    { code: 'CZ', emoji: '🇨🇿', name: 'Чехия', currency: 'CZK', lang: 'Чешский' },
+    { code: 'RO', emoji: '🇷🇴', name: 'Румыния', currency: 'RON', lang: 'Румынский' },
+    { code: 'DE', emoji: '🇩🇪', name: 'Германия', currency: 'EUR', lang: 'Немецкий' },
+    { code: 'US', emoji: '🇺🇸', name: 'США', currency: 'USD', lang: 'Английский' },
+    { code: 'GB', emoji: '🇬🇧', name: 'Великобритания', currency: 'GBP', lang: 'Английский' },
+    { code: 'FR', emoji: '🇫🇷', name: 'Франция', currency: 'EUR', lang: 'Французский' },
+    { code: 'NL', emoji: '🇳🇱', name: 'Нидерланды', currency: 'EUR', lang: 'Нидерландский' },
+    { code: 'ES', emoji: '🇪🇸', name: 'Испания', currency: 'EUR', lang: 'Испанский' },
+    { code: 'IT', emoji: '🇮🇹', name: 'Италия', currency: 'EUR', lang: 'Итальянский' },
+    { code: 'BG', emoji: '🇧🇬', name: 'Болгария', currency: 'BGN', lang: 'Болгарский' },
+    { code: 'HU', emoji: '🇭🇺', name: 'Венгрия', currency: 'HUF', lang: 'Венгерский' },
+    { code: 'CH', emoji: '🇨🇭', name: 'Швейцария', currency: 'CHF', lang: 'Немецкий' },
+    { code: 'SE', emoji: '🇸🇪', name: 'Швеция', currency: 'SEK', lang: 'Шведский' },
+    { code: 'NO', emoji: '🇳🇴', name: 'Норвегия', currency: 'NOK', lang: 'Норвежский' },
+    { code: 'EG', emoji: '🇪🇬', name: 'Египет', currency: 'EGP', lang: 'Арабский' },
 ];
 
 // Popular currency codes for the select dropdown
 const CURRENCY_OPTIONS = [
     'EUR', 'USD', 'GBP', 'UAH', 'PLN', 'CZK', 'RON', 'KZT', 'TRY',
     'UZS', 'BGN', 'HUF', 'CHF', 'SEK', 'NOK', 'DKK', 'GEL', 'AMD',
-    'AZN', 'BYN', 'MDL', 'RSD',
+    'AZN', 'BYN', 'MDL', 'RSD', 'EGP',
 ];
 
 const GeoSettingsPage = () => {
@@ -45,6 +46,7 @@ const GeoSettingsPage = () => {
         code: '',
         name: '',
         emoji: '',
+        lang: '',
         currency_code: 'EUR',
         shift_start: '09:00',
         shift_end: '18:00'
@@ -64,6 +66,7 @@ const GeoSettingsPage = () => {
             emoji: flagObj.emoji,
             code: flagObj.code,
             name: flagObj.name,
+            lang: flagObj.lang || '',
             currency_code: flagObj.currency || 'EUR',
         }));
     };
@@ -80,13 +83,14 @@ const GeoSettingsPage = () => {
                 code: formData.code.toUpperCase(),
                 name: formData.name,
                 emoji: formData.emoji,
+                lang: formData.lang,
                 currency_code: formData.currency_code.toUpperCase() || 'EUR',
                 shift_start: formData.shift_start,
                 shift_end: formData.shift_end
             });
             await fetchAllData(true);
             setIsAddModalOpen(false);
-            setFormData({ code: '', name: '', emoji: '', currency_code: 'EUR', shift_start: '09:00', shift_end: '18:00' });
+            setFormData({ code: '', name: '', emoji: '', lang: '', currency_code: 'EUR', shift_start: '09:00', shift_end: '18:00' });
         } catch (error) {
             alert('Ошибка при добавлении: ' + error.message);
         } finally {
@@ -181,6 +185,11 @@ const GeoSettingsPage = () => {
                                         {country.currency_code}
                                     </span>
                                 )}
+                                {country.lang && (
+                                    <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 px-1">
+                                        • {country.lang}
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -240,20 +249,27 @@ const GeoSettingsPage = () => {
                                 <p className="text-[10px] text-gray-400">Отображаемое название (на Русском)</p>
                             </div>
 
-                            {/* Currency */}
-                            <div className="space-y-1">
-                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400">💱 Валюта</label>
-                                <select
-                                    name="currency_code"
-                                    value={formData.currency_code}
-                                    onChange={handleChange}
-                                    className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm dark:text-white font-mono"
-                                >
-                                    {CURRENCY_OPTIONS.map(c => (
-                                        <option key={c} value={c}>{c}</option>
-                                    ))}
-                                </select>
-                                <p className="text-[10px] text-gray-400">Автоматически подставляется при выборе флага</p>
+                            {/* Currency and Language */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400">💱 Валюта</label>
+                                    <select
+                                        name="currency_code"
+                                        value={formData.currency_code}
+                                        onChange={handleChange}
+                                        className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm dark:text-white font-mono"
+                                    >
+                                        {CURRENCY_OPTIONS.map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-gray-400">Автопостановка из флага</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1">🗣 Язык</label>
+                                    <input required name="lang" value={formData.lang} onChange={handleChange} placeholder="Польский" className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm dark:text-white" />
+                                    <p className="text-[10px] text-gray-400">Язык ГЕО</p>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

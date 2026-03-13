@@ -72,6 +72,19 @@ const getLocalDateKey = (date) => {
     return `${year}-${month}-${day}`;
 };
 
+// --- Добавлена вытяжка курса из кэша для точного совпадения с PnL ---
+const RATE_CACHE_KEY = 'exchange_rates_cache';
+const getEurToUsd = () => {
+    try {
+        const cached = localStorage.getItem(RATE_CACHE_KEY);
+        if (cached) {
+            const { rates } = JSON.parse(cached);
+            return rates?.usd || 1.08;
+        }
+    } catch (_) { }
+    return 1.08;
+};
+
 import { DenseSelect } from '../components/ui/FilterSelect';
 
 // Custom Desktop Date Range Picker
@@ -316,7 +329,7 @@ const GeoMatrixPage = () => {
     const [dateRange, setDateRange] = useState(getCurrentMonthRange());
     const [startDate, endDate] = dateRange;
     // New states for Metric Mode and Traffic Source
-    const [metricMode, setMetricMode] = useState('sales'); // 'sales', 'traffic', 'conversion'
+    const [metricMode, setMetricMode] = useState('sales'); // 'sales', 'traffic', 'conversion', 'revenue', 'revenue-local'
     const [trafficSource, setTrafficSource] = useState('all'); // 'all', 'direct', 'comments', 'whatsapp'
 
     const [filters, setFilters] = useState({ product: [], type: [], department: ['sales', 'taro'], showMobileFilters: false });
@@ -403,11 +416,14 @@ const GeoMatrixPage = () => {
 
 
         if (!isDemoMode) {
-            // 1. Calculate SALES counts first (needed for both 'sales' and 'conversion' modes)
+            // 1. Calculate SALES counts and REVENUE first
             const salesCounts = {}; // { dateKey: { geoCode: count } }
+            const revenueSums = {}; // { dateKey: { geoCode: revenue_usd } }
+            const localRevenueSums = {}; // { dateKey: { geoCode: revenue_local } }
+            const eurToUsd = getEurToUsd(); // Используем динамический курс
 
             payments.forEach(p => {
-                if (!p.transactionDate) return;
+                if (!p.transactionDate || p.status !== 'completed') return; // Только completed как в PnL
                 // Фильтры
                 if (filters.product.length > 0 && !filters.product.includes(p.product)) return;
                 if (filters.type.length > 0 && !filters.type.includes(p.type)) return;
@@ -438,7 +454,14 @@ const GeoMatrixPage = () => {
 
                 if (isTracked) {
                     if (!salesCounts[pDate]) salesCounts[pDate] = {};
+                    if (!revenueSums[pDate]) revenueSums[pDate] = {};
+                    if (!localRevenueSums[pDate]) localRevenueSums[pDate] = {};
                     salesCounts[pDate][geo] = (salesCounts[pDate][geo] || 0) + 1;
+                    
+                    const amountUsd = parseFloat(p.amountEUR || p.amount_eur || 0) * eurToUsd;
+                    const amountLocal = parseFloat(p.amountLocal || p.amount_local || 0);
+                    revenueSums[pDate][geo] = (revenueSums[pDate][geo] || 0) + amountUsd;
+                    localRevenueSums[pDate][geo] = (localRevenueSums[pDate][geo] || 0) + amountLocal;
                 }
             });
 
@@ -456,6 +479,10 @@ const GeoMatrixPage = () => {
                         const s = salesCounts[dateKey]?.[geo] || 0;
                         const t = getTrafficCount(geo, dateKey);
                         data[dateKey][geo] = t > 0 ? ((s / t) * 100).toFixed(0) : 0;
+                    } else if (metricMode === 'revenue') {
+                        data[dateKey][geo] = revenueSums[dateKey]?.[geo] || 0;
+                    } else if (metricMode === 'revenue-local') {
+                        data[dateKey][geo] = localRevenueSums[dateKey]?.[geo] || 0;
                     }
                 });
             });
@@ -826,6 +853,8 @@ const GeoMatrixPage = () => {
                                     <button onClick={() => setMetricMode('sales')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Продажи</button>
                                     <button onClick={() => setMetricMode('traffic')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'traffic' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Трафик</button>
                                     <button onClick={() => setMetricMode('conversion')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'conversion' ? 'bg-white dark:bg-[#333] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конв.%</button>
+                                    <button onClick={() => setMetricMode('revenue')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'revenue' ? 'bg-white dark:bg-[#333] text-amber-600 dark:text-amber-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Фин $</button>
+                                    <button onClick={() => setMetricMode('revenue-local')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'revenue-local' ? 'bg-white dark:bg-[#333] text-pink-600 dark:text-pink-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Фин Loc</button>
                                 </div>
 
                                 {/* Traffic Source Toggle */}
@@ -1060,7 +1089,7 @@ const GeoMatrixPage = () => {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="px-1.5 py-0.5 bg-gray-50 dark:bg-[#222] rounded text-[10px] font-bold text-gray-900 dark:text-white border border-gray-100 dark:border-[#333] shrink-0">{totalsByCountry[country.code]}</div>
+                                                <div className="px-1.5 py-0.5 bg-gray-50 dark:bg-[#222] rounded text-[10px] font-bold text-gray-900 dark:text-white border border-gray-100 dark:border-[#333] shrink-0">{metricMode === 'revenue' ? '$' : ''}{(metricMode === 'revenue' || metricMode === 'revenue-local') ? Number(totalsByCountry[country.code]).toFixed(2) : totalsByCountry[country.code]}</div>
                                             </div>
                                         </td>
                                         {dateList.map(date => {
@@ -1068,8 +1097,8 @@ const GeoMatrixPage = () => {
                                             const count = matrixData[dateKey]?.[country.code] || 0;
                                             return (
                                                 <td key={`${country.code}-${dateKey}`} onClick={() => handleCellClick(country.code, dateKey, count)} className="p-0 border-b border-r border-gray-100 dark:border-[#222] text-center relative h-8 matrix-cell cursor-pointer-cell">
-                                                    <div className={`w-full h-full flex items-center justify-center transition-all duration-300 text-[11px] font-medium rounded-none relative z-0 ${getHeatColor(count)}`}>
-                                                        {count > 0 && <span className="hidden xl:inline">{count}{metricMode === 'conversion' ? '%' : ''}</span>}
+                                                    <div className={`w-full h-full flex items-center justify-center transition-all duration-300 text-[11px] font-medium rounded-none relative z-0 ${metricMode === 'revenue' || metricMode === 'revenue-local' ? '' : getHeatColor(count)} ${metricMode === 'revenue' && count > 0 ? 'text-amber-600 dark:text-amber-400 font-bold' : ''} ${metricMode === 'revenue-local' && count > 0 ? 'text-pink-600 dark:text-pink-400 font-bold' : ''}`}>
+                                                        {count > 0 && <span className="hidden xl:inline">{metricMode === 'revenue' ? '$' : ''}{(metricMode === 'revenue' || metricMode === 'revenue-local') ? Number(count).toFixed(2) : count}{metricMode === 'conversion' ? '%' : ''}</span>}
                                                         {count > 0 && <span className="xl:hidden w-1.5 h-1.5 bg-black/30 dark:bg-white/30 rounded-full"></span>}
                                                     </div>
                                                 </td>
@@ -1081,7 +1110,7 @@ const GeoMatrixPage = () => {
                                     <td className="px-3 py-1 border-t border-r border-gray-200 dark:border-[#333] bg-gray-100 dark:bg-[#222] sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                         <div className="flex items-center justify-between h-full">
                                             <span className="font-black text-gray-900 dark:text-white text-[10px] uppercase tracking-wider">Всего</span>
-                                            <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">{grandTotal}</span>
+                                            <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">{metricMode === 'revenue' ? '$' : ''}{(metricMode === 'revenue' || metricMode === 'revenue-local') ? Number(grandTotal).toFixed(2) : grandTotal}</span>
                                         </div>
                                     </td>
                                     {dateList.map(date => {
@@ -1089,7 +1118,7 @@ const GeoMatrixPage = () => {
                                         const count = totalsByDate[dateKey] || 0;
                                         return (
                                             <td key={`total-${dateKey}`} className="p-0 border-t border-r border-gray-200 dark:border-[#333] text-center relative h-8 bg-gray-50 dark:bg-[#1c1c1c]">
-                                                <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-gray-700 dark:text-gray-300">{count}</div>
+                                                <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-gray-700 dark:text-gray-300">{metricMode === 'revenue' ? '$' : ''}{(metricMode === 'revenue' || metricMode === 'revenue-local') ? Number(count).toFixed(2) : count}</div>
                                             </td>
                                         )
                                     })}
