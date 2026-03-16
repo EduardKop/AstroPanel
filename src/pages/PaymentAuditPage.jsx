@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
+import { supabase } from '../services/supabaseClient';
 import {
     ShieldAlert, Calendar, Copy, DollarSign, ExternalLink,
-    AlertTriangle, User, Package, CreditCard, Clock, Check, Globe, Eye, EyeOff, ChevronDown, ChevronUp
+    AlertTriangle, User, Package, CreditCard, Clock, Check, Globe, Eye, EyeOff, ChevronDown, ChevronUp, Key
 } from 'lucide-react';
 
 // Helper to get role badge styles
@@ -488,6 +489,102 @@ const PaymentAuditPage = () => {
     const navigate = useNavigate();
     const activeTab = tab || 'sales';
 
+    // --- Payments Tab Logic ---
+    const [apiKeysInfo, setApiKeysInfo] = useState([]);
+    const [totalLeft, setTotalLeft] = useState(null);
+    const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+
+    useEffect(() => {
+        const fetchApiKeys = async () => {
+            setIsLoadingKeys(true);
+            try {
+                const { data, error } = await supabase.from('api_keys').select('*');
+                if (error) {
+                    console.error('Error fetching api_keys:', error);
+                    setIsLoadingKeys(false);
+                    return;
+                }
+                
+                let keysWithStats = [];
+                let uniqueBalances = new Map();
+                
+                if (data && data.length > 0) {
+                    keysWithStats = await Promise.all(data.map(async (key) => {
+                        if (key.Service?.toLowerCase() === 'openrouter') {
+                            try {
+                                const [keyRes, creditRes] = await Promise.all([
+                                    fetch('https://openrouter.ai/api/v1/auth/key', { headers: { 'Authorization': `Bearer ${key.api_key}` } }),
+                                    fetch('https://openrouter.ai/api/v1/credits', { headers: { 'Authorization': `Bearer ${key.api_key}` } })
+                                ]);
+                                
+                                const keyData = await keyRes.json();
+                                const creditData = await creditRes.json();
+                                
+                                if (creditData.data) {
+                                    const { total_credits, total_usage } = creditData.data;
+                                    const left = total_credits - total_usage;
+                                    // Use total_credits + total_usage as a unique fingerprint for an account
+                                    const accountKey = `${total_credits}_${total_usage}`;
+                                    uniqueBalances.set(accountKey, left);
+                                }
+                                
+                                return {
+                                    ...key,
+                                    keyStats: keyData.data,
+                                    creditStats: creditData.data
+                                };
+                            } catch (err) {
+                                console.error('Error fetching openrouter stats for key:', key.name, err);
+                                return key;
+                            }
+                        }
+                        return key;
+                    }));
+                }
+                
+                setApiKeysInfo(keysWithStats);
+                
+                if (uniqueBalances.size > 0) {
+                    let sumLeft = 0;
+                    for (const left of uniqueBalances.values()) {
+                        sumLeft += left;
+                    }
+                    setTotalLeft(sumLeft);
+                }
+            } catch (err) {
+                console.error('Error in fetchApiKeys:', err);
+            } finally {
+                setIsLoadingKeys(false);
+            }
+        };
+
+        fetchApiKeys();
+    }, []);
+
+    // Helper for payment tab color
+    const getPaymentsTabStyle = (isActive) => {
+        if (totalLeft === null) {
+            return isActive 
+                ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300';
+        }
+        
+        if (totalLeft > 15) {
+            return isActive
+                ? 'bg-green-500 text-white shadow-sm'
+                : 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20';
+        }
+        if (totalLeft >= 10 && totalLeft <= 15) {
+            return isActive
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20';
+        }
+        // < 10
+        return isActive
+            ? 'bg-red-500 text-white shadow-sm'
+            : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20';
+    };
+
     return (
         <div className="p-4 max-w-[1600px] mx-auto font-sans text-gray-900 dark:text-gray-100">
             {/* Header */}
@@ -544,6 +641,23 @@ const PaymentAuditPage = () => {
                     {totalScheduleIssues > 0 && (
                         <span className="px-1.5 py-0.5 rounded rounded-[4px] text-[9px] bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
                             {totalScheduleIssues}
+                        </span>
+                    )}
+                </button>
+                <button
+                    onClick={() => navigate('/error-check/payments')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${getPaymentsTabStyle(activeTab === 'payments')}`}
+                >
+                    Оплаты
+                    {totalLeft !== null && (
+                        <span className={`px-1.5 py-0.5 rounded rounded-[4px] text-[10px] ${
+                            activeTab === 'payments' 
+                                ? 'bg-white/20 text-white' 
+                                : totalLeft > 15 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                                : totalLeft >= 10 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                        }`}>
+                            ${Math.floor(totalLeft)}
                         </span>
                     )}
                 </button>
@@ -876,6 +990,100 @@ const PaymentAuditPage = () => {
                                 <div className="p-4 text-center text-xs text-gray-400">Все ГЕО имеют график</div>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Tab: Оплаты */}
+            {activeTab === 'payments' && (
+                <div className="animate-in fade-in duration-300">
+                    <div className="mb-6 flex items-center justify-between bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg p-5">
+                        <div>
+                            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Баланс аккаунта OpenRouter</h2>
+                            <div className="text-3xl font-mono font-bold text-gray-900 dark:text-white flex items-baseline gap-2">
+                                {isLoadingKeys ? '...' : (totalLeft !== null ? `$${totalLeft.toFixed(2)}` : 'N/A')}
+                                <span className="text-sm font-normal text-gray-400">осталось</span>
+                            </div>
+                        </div>
+                        <div className="text-right text-xs text-gray-500 flex flex-col gap-1">
+                            {isLoadingKeys ? (
+                                <span>Загрузка данных...</span>
+                            ) : (
+                                <>
+                                    <div className="flex justify-end gap-2">
+                                        <span>Лимит:</span>
+                                        <span className="font-mono text-gray-700 dark:text-gray-300">
+                                            ${apiKeysInfo.length > 0 && apiKeysInfo[0].creditStats ? apiKeysInfo[0].creditStats.total_credits.toFixed(2) : '0.00'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                        <span>Потрачено:</span>
+                                        <span className="font-mono text-gray-700 dark:text-gray-300">
+                                            ${apiKeysInfo.length > 0 && apiKeysInfo[0].creditStats ? apiKeysInfo[0].creditStats.total_usage.toFixed(2) : '0.00'}
+                                        </span>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {isLoadingKeys ? (
+                            <div className="col-span-full text-center py-10 text-gray-400 text-sm">
+                                <Clock className="w-6 h-6 animate-spin mx-auto mb-2 opacity-50" />
+                                Получение информации о ключах...
+                            </div>
+                        ) : apiKeysInfo.length > 0 ? (
+                            apiKeysInfo.map((key) => (
+                                <div key={key.id} className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg p-4 flex flex-col">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                            <Key size={14} className="text-gray-400" />
+                                            {key.name}
+                                        </h3>
+                                        <span className="px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 dark:bg-[#222] text-gray-500 rounded uppercase tracking-wider">
+                                            {key.Service}
+                                        </span>
+                                    </div>
+                                    
+                                    <p className="text-xs text-gray-500 mb-4 flex-1">{key.description}</p>
+                                    
+                                    <div className="bg-gray-50 dark:bg-[#161616] rounded-md p-3 grid grid-cols-2 gap-3 text-xs border border-gray-100 dark:border-[#222]">
+                                        <div className="col-span-2">
+                                            <div className="text-gray-400 mb-1 text-[10px] uppercase">API Key</div>
+                                            <div className="font-mono text-gray-600 dark:text-gray-300 bg-white dark:bg-black px-2 py-1 rounded border border-gray-200 dark:border-[#333] truncate">
+                                                {key.api_key.substring(0, 12)}...{key.api_key.substring(key.api_key.length - 4)}
+                                            </div>
+                                        </div>
+                                        
+                                        {key.keyStats ? (
+                                            <>
+                                                <div>
+                                                    <div className="text-gray-400 mb-0.5 text-[10px] uppercase">Расход ключа</div>
+                                                    <div className="font-mono font-bold text-gray-700 dark:text-gray-200">
+                                                        ${key.keyStats.usage ? key.keyStats.usage.toFixed(4) : '0.0000'}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-gray-400 mb-0.5 text-[10px] uppercase">Лимит ключа</div>
+                                                    <div className="font-mono font-bold text-gray-700 dark:text-gray-200">
+                                                        {key.keyStats.limit ? `$${key.keyStats.limit}` : 'Безлимит'}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="col-span-2 text-gray-400 italic text-[10px]">
+                                                Нет статистики для этого ключа
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="col-span-full text-center py-10 text-gray-400 text-sm">
+                                Нет данных об API ключах
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
