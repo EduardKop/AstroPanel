@@ -97,7 +97,7 @@ const SECTIONS = [
         icon: ShieldAlert,
         items: [
             { key: 'activity_logs', label: 'Логирование', icon: Activity },
-            { key: 'payment_audit', label: 'Проверка ошибок', icon: ShieldAlert },
+            { key: 'payment_audit', label: 'Мониторинг системы', icon: ShieldAlert },
         ]
     }
 ];

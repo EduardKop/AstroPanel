@@ -542,7 +542,7 @@ function App() {
                 </button>
                 <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.admin ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
                   {hasAccess('activity_logs') && <SidebarItem icon={Activity} label="Логирование" path="/activity-logs" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />}
-                  {hasAccess('payment_audit') && <SidebarItem icon={ShieldAlert} label="Проверка ошибок" path="/error-check/sales" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />}
+                  {hasAccess('payment_audit') && <SidebarItem icon={ShieldAlert} label="Мониторинг системы" path="/error-check/sales" className="text-cyan-600 dark:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10" />}
                 </div>
               </>
             )}

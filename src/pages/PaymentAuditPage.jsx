@@ -594,7 +594,7 @@ const PaymentAuditPage = () => {
                         <ShieldAlert size={16} className="text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold leading-tight">Проверка ошибок</h1>
+                        <h1 className="text-lg font-bold leading-tight">Мониторинг системы</h1>
                         <p className="text-xs text-gray-500">Административный контроль данных</p>
                     </div>
                 </div>
