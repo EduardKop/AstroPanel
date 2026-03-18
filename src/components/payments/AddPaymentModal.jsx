@@ -93,7 +93,7 @@ const triggerConfetti = (todayPaymentsCount) => {
     }
 };
 
-const REQUIRED_ROLES = ['Owner', 'Admin', 'Sales', 'SalesTaro', 'Retention', 'Consultant'];
+const REQUIRED_ROLES = ['Owner', 'Admin', 'Sales', 'SalesTaro', 'SalesTaroNew', 'Retention', 'Consultant'];
 
 const PRODUCTS = [
     'Лич5', 'Лич1',
@@ -108,6 +108,10 @@ const TAROT_PRODUCTS = [
     'ТАРО', 'Таро2', 'Таро3', 'Таро4', 'Таро5', 'Таро6', 'Таро7', 'Таро8', 'Таро9', 'Таро10', 'Таро11', 'Таро12'
 ];
 
+const TARO_NEW_PRODUCTS = [
+    'TaroNew', 'TaroNew2', 'TaroNew3', 'TaroNew4', 'TaroNew5', 'TaroNew6'
+];
+
 const PAYMENT_METHODS = [
     'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты', 'MyFatoorah'
 ];
@@ -118,14 +122,15 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isConvertingRate, setIsConvertingRate] = useState(false);
     const [rateInfo, setRateInfo] = useState(null); // { rate, fromCache }
-    const [productTab, setProductTab] = useState('general');
+    const isSalesTaroNew = user?.role === 'SalesTaroNew';
+    const [productTab, setProductTab] = useState(isSalesTaroNew ? 'taroNew' : 'general');
 
-    // Check if user is SalesTaro (sees all countries) or has multiple geos
-    const isSalesTaro = user?.role === 'SalesTaro';
+    // Check if user is SalesTaro/SalesTaroNew (sees all countries) or has multiple geos
+    const isSalesTaro = user?.role === 'SalesTaro' || user?.role === 'SalesTaroNew';
     const userGeoCount = user?.geo?.length || 0;
     const showGeoSelector = isSalesTaro || userGeoCount > 1;
 
-    // Get available countries: SalesTaro sees all, others see only their assigned
+    // Get available countries: SalesTaro/SalesTaroNew sees all, others see only their assigned
     const availableCountries = isSalesTaro
         ? countries
         : countries.filter(c => user?.geo?.includes(c.code));
@@ -472,27 +477,36 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
                             <div>
                                 <label className="text-xs font-bold text-gray-500 block mb-2 uppercase">Продукт</label>
 
-                                {/* Tab Toggle - Tarot tab for SalesTaro, SeniorSales, Sales, Consultant */}
-                                {['SalesTaro', 'SeniorSales', 'Sales', 'Consultant'].includes(user?.role) ? (
-                                    <div className="grid grid-cols-2 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg mb-3">
-                                        <button
-                                            onClick={() => { setProductTab('general'); setFormData(p => ({ ...p, product: '' })); }}
-                                            className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'general' ? 'bg-white dark:bg-[#333] text-blue-600 shadow-sm' : 'text-gray-500'}`}
-                                        >
-                                            🛒 Общие
-                                        </button>
-                                        <button
-                                            onClick={() => { setProductTab('tarot'); setFormData(p => ({ ...p, product: '' })); }}
-                                            className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'tarot' ? 'bg-white dark:bg-[#333] text-purple-600 shadow-sm' : 'text-gray-500'}`}
-                                        >
-                                            🔮 Таро
-                                        </button>
-                                    </div>
-                                ) : null}
+                                {/* SalesTaroNew: Only TaroNew products, no tab switcher */}
+                                {isSalesTaroNew ? null : (
+                                    /* Tab Toggle - for SalesTaro, SeniorSales, Sales, Consultant */
+                                    ['SalesTaro', 'SeniorSales', 'Sales', 'Consultant'].includes(user?.role) ? (
+                                        <div className="grid grid-cols-3 bg-gray-100 dark:bg-[#1A1A1A] p-1 rounded-lg mb-3">
+                                            <button
+                                                onClick={() => { setProductTab('general'); setFormData(p => ({ ...p, product: '' })); }}
+                                                className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'general' ? 'bg-white dark:bg-[#333] text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                                            >
+                                                🛒 Общие
+                                            </button>
+                                            <button
+                                                onClick={() => { setProductTab('tarot'); setFormData(p => ({ ...p, product: '' })); }}
+                                                className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'tarot' ? 'bg-white dark:bg-[#333] text-purple-600 shadow-sm' : 'text-gray-500'}`}
+                                            >
+                                                🔮 Таро
+                                            </button>
+                                            <button
+                                                onClick={() => { setProductTab('taroNew'); setFormData(p => ({ ...p, product: '' })); }}
+                                                className={`py-2 rounded-md text-xs font-bold flex items-center justify-center gap-2 transition-all ${productTab === 'taroNew' ? 'bg-white dark:bg-[#333] text-fuchsia-600 shadow-sm' : 'text-gray-500'}`}
+                                            >
+                                                ✨ TaroNew
+                                            </button>
+                                        </div>
+                                    ) : null
+                                )}
 
                                 {/* Product Grid */}
                                 <div className="grid grid-cols-3 gap-2">
-                                    {(productTab === 'tarot' ? TAROT_PRODUCTS : PRODUCTS).map(prod => (
+                                    {(productTab === 'taroNew' ? TARO_NEW_PRODUCTS : productTab === 'tarot' ? TAROT_PRODUCTS : PRODUCTS).map(prod => (
                                         <button
                                             key={prod}
                                             onClick={() => setFormData(p => ({ ...p, product: prod }))}

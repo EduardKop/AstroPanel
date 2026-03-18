@@ -8,7 +8,7 @@ import {
   UploadCloud, ArrowLeft, Send, Calendar, Save, Loader2, ChevronDown, Sparkles
 } from 'lucide-react';
 
-const ROLES = ['Sales', 'SalesTaro', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
+const ROLES = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
 const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 
 const EditEmployeePage = () => {

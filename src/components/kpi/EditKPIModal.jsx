@@ -69,7 +69,7 @@ const EditKPIModal = ({ onClose, onUpdate, kpiRates, kpiSettings, managers, mana
 
     // ── Manager rates ──
     const salesManagers = managers.filter(m =>
-        ['Sales', 'SeniorSales', 'SalesTaro', 'Retention'].includes(m.role) && m.status === 'active'
+        ['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew', 'Retention'].includes(m.role) && m.status === 'active'
     );
     const [mRates, setMRates] = useState(() =>
         salesManagers.map(m => {

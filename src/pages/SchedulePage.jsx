@@ -229,7 +229,7 @@ const SchedulePage = () => {
         // Filter managers by show_in_schedule field
         const visibleManagers = (managers || []).filter(m =>
             m.show_in_schedule !== false &&
-            ['Sales', 'SalesTaro', 'SeniorSales'].includes(m.role)
+            ['Sales', 'SalesTaro', 'SalesTaroNew', 'SeniorSales'].includes(m.role)
         );
 
         return visibleManagers.map(manager => {

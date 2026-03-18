@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 
-const ROLES = ['Sales', 'SalesTaro', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
+const ROLES = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
 const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 
 const AddEmployeePage = () => {
@@ -55,7 +55,7 @@ const AddEmployeePage = () => {
 
     // Admin OR employees_manage permission
     if (currentUser.role === 'Admin' || permissions?.[currentUser.role]?.employees_manage) {
-      return ['Sales', 'SalesTaro', 'Consultant', 'Manager', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR'];
+      return ['Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'Manager', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR'];
     }
 
     // Остальные (на всякий случай, хотя у них нет доступа к этой странице)

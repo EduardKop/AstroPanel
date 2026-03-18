@@ -173,7 +173,7 @@ const SalesPaymentsPage = () => {
 
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
-    return ['Sales', 'SalesTaro', 'Consultant', 'Retention'].includes(currentUser.role);
+    return ['Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'Retention'].includes(currentUser.role);
   }, [currentUser]);
 
   const uniqueValues = useMemo(() => {

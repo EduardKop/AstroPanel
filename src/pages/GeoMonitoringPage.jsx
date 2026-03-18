@@ -447,7 +447,7 @@ const GeoMonitoringPage = () => {
         });
 
         // Sort each GEO's staff by role priority
-        const rolePriority = { SeniorSales: 0, Sales: 1, SalesTaro: 2, Consultant: 3, SMM: 4 };
+        const rolePriority = { SeniorSales: 0, Sales: 1, SalesTaro: 2, SalesTaroNew: 2, Consultant: 3, SMM: 4 };
         Object.values(result).forEach(staff => {
             staff.sort((a, b) => (rolePriority[a.role] ?? 99) - (rolePriority[b.role] ?? 99));
         });
@@ -751,15 +751,16 @@ const GeoMonitoringPage = () => {
 
                                     {/* Sales */}
                                     <div className="flex flex-wrap gap-1 min-w-0">
-                                        {geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro'].includes(s.role)).length > 0 ? (
-                                            geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro'].includes(s.role)).map(s => {
+                                        {geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(s.role)).length > 0 ? (
+                                            geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(s.role)).map(s => {
                                                 const roleColors = {
                                                     SeniorSales: 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400',
                                                     Sales: 'bg-sky-100 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400',
                                                     SalesTaro: 'bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400',
+                                                    SalesTaroNew: 'bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400',
                                                 };
                                                 const color = roleColors[s.role] || 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400';
-                                                const roleShort = { SeniorSales: 'Sr', Sales: 'S', SalesTaro: 'T' };
+                                                const roleShort = { SeniorSales: 'Sr', Sales: 'S', SalesTaro: 'T', SalesTaroNew: 'TN' };
                                                 return (
                                                     <span key={s.id} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`} title={`${s.name} (${s.role})`}>
                                                         <span className="font-bold text-[8px] opacity-60">{roleShort[s.role] || s.role}</span>

@@ -167,7 +167,7 @@ const SalariesPage = () => {
   const options = useMemo(() => {
     const allGeos = new Set();
     const allNames = new Set();
-    managers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro'].includes(m.role)).forEach(m => {
+    managers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(m.role)).forEach(m => {
       allNames.add(m.name);
       const geo = Array.isArray(m.geo) ? m.geo[0] : (m.geo || 'N/A');
       allGeos.add(geo);
@@ -218,7 +218,7 @@ const SalariesPage = () => {
     startOfMonth.setHours(0, 0, 0, 0);
     endOfMonth.setHours(23, 59, 59, 999);
 
-    const salesManagers = managers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro'].includes(m.role));
+    const salesManagers = managers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(m.role));
 
     // ШАГ 1: Предварительный расчет
     const preCalcManagers = salesManagers.map(mgr => {

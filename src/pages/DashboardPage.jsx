@@ -418,7 +418,7 @@ const DashboardPage = () => {
 
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
-    const restrictedRoles = ['Sales', 'SalesTaro', 'Retention', 'Consultant'];
+    const restrictedRoles = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Retention', 'Consultant'];
     return restrictedRoles.includes(currentUser.role);
   }, [currentUser]);
 
@@ -491,7 +491,7 @@ const DashboardPage = () => {
         const matchesDept = filters.department.some(dept => {
           if (dept === 'sales') return item.managerRole === 'Sales' || item.managerRole === 'SeniorSales';
           if (dept === 'consultant') return item.managerRole === 'Consultant';
-          if (dept === 'taro') return item.managerRole === 'SalesTaro';
+          if (dept === 'taro') return item.managerRole === 'SalesTaro' || item.managerRole === 'SalesTaroNew';
           return false;
         });
         if (!matchesDept) return false;
@@ -644,9 +644,9 @@ const DashboardPage = () => {
   // --- STATIC EMPLOYEE COUNTS ---
   const employeeCounts = useMemo(() => {
     const allManagers = useAppStore.getState().managers || [];
-    const salesCount = allManagers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro'].includes(m.role)).length;
+    const salesCount = allManagers.filter(m => ['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(m.role)).length;
     const consCount = allManagers.filter(m => m.role === 'Consultant').length;
-    const totalCount = allManagers.filter(m => ['Sales', 'Consultant', 'SeniorSales', 'SalesTaro'].includes(m.role)).length;
+    const totalCount = allManagers.filter(m => ['Sales', 'Consultant', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(m.role)).length;
     return { sales: salesCount, consultants: consCount, total: totalCount };
   }, [useAppStore.getState().managers]);
 

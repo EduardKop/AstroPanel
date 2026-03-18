@@ -178,8 +178,8 @@ const TimerWidget = () => {
 
     if (!user) return null;
 
-    // Only show timer for Sales and SeniorSales roles
-    if (!['Sales', 'SeniorSales'].includes(user.role)) return null;
+    // Only show timer for Sales, SeniorSales, SalesTaro, and SalesTaroNew roles
+    if (!['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(user.role)) return null;
 
     return (
         <div className="w-full flex flex-col gap-2">

@@ -13,6 +13,7 @@ const getRoleBadge = (role) => {
         'Sales': { label: 'Sales', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
         'SeniorSales': { label: 'Sr.Sales', cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' },
         'SalesTaro': { label: 'Taro', cls: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' },
+        'SalesTaroNew': { label: 'SalesTaroNew', cls: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400' },
         'Consultant': { label: 'Consultant', cls: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' },
         'SeniorSMM': { label: 'Sr.SMM', cls: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400' },
         'SMM': { label: 'SMM', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' },
@@ -372,7 +373,7 @@ const PaymentAuditPage = () => {
             const manager = managers.find(m => m.id === s.manager_id);
             if (!manager) return;
 
-            const allowedRoles = ['Sales', 'SalesTaro', 'SeniorSales'];
+            const allowedRoles = ['Sales', 'SalesTaro', 'SalesTaroNew', 'SeniorSales'];
             if (!allowedRoles.includes(manager.role)) return;
 
             const date = s.date;

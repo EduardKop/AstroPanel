@@ -435,7 +435,7 @@ const GeoMatrixPage = () => {
                     const matchesDept = filters.department.some(dept => {
                         if (dept === 'sales') return p.managerRole === 'Sales' || p.managerRole === 'SeniorSales';
                         if (dept === 'consultant') return p.managerRole === 'Consultant';
-                        if (dept === 'taro') return p.managerRole === 'SalesTaro';
+                        if (dept === 'taro') return p.managerRole === 'SalesTaro' || p.managerRole === 'SalesTaroNew';
                         return false;
                     });
                     if (!matchesDept) return;
@@ -598,7 +598,7 @@ const GeoMatrixPage = () => {
                 const matchesDept = filters.department.some(dept => {
                     if (dept === 'sales') return p.managerRole === 'Sales' || p.managerRole === 'SeniorSales';
                     if (dept === 'consultant') return p.managerRole === 'Consultant';
-                    if (dept === 'taro') return p.managerRole === 'SalesTaro';
+                    if (dept === 'taro') return p.managerRole === 'SalesTaro' || p.managerRole === 'SalesTaroNew';
                     return false;
                 });
                 if (!matchesDept) return false;
@@ -670,7 +670,7 @@ const GeoMatrixPage = () => {
                             const matchesDept = filters.department.some(dept => {
                                 if (dept === 'sales') return p.managerRole === 'Sales' || p.managerRole === 'SeniorSales';
                                 if (dept === 'consultant') return p.managerRole === 'Consultant';
-                                if (dept === 'taro') return p.managerRole === 'SalesTaro';
+                                if (dept === 'taro') return p.managerRole === 'SalesTaro' || p.managerRole === 'SalesTaroNew';
                                 return false;
                             });
                             if (!matchesDept) return;

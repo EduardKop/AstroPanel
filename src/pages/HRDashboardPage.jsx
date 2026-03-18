@@ -177,6 +177,7 @@ const EmployeeCard = ({ employee, sector, formattedTenure, daysUntilBirthday }) 
             {/* Role */}
             <div className="flex justify-start">
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${employee.role === 'SalesTaro' ? 'bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400' :
+                    employee.role === 'SalesTaroNew' ? 'bg-fuchsia-100 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400' :
                     employee.role === 'Consultant' ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400' :
                         employee.role === 'SeniorSales' ? 'bg-sky-100 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400' :
                             (employee.role === 'SMM' || employee.role === 'SeniorSMM') ? 'bg-pink-100 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400' :
@@ -233,7 +234,7 @@ const SectorHeader = ({ sector, count }) => {
 };
 
 // Roles shown in HR Dashboard
-const HR_ROLES = ['Sales', 'SalesTaro', 'SeniorSales', 'Consultant', 'SMM'];
+const HR_ROLES = ['Sales', 'SalesTaro', 'SalesTaroNew', 'SeniorSales', 'Consultant', 'SMM'];
 
 const HRDashboardPage = () => {
     const { managers } = useAppStore();
@@ -305,7 +306,7 @@ const HRDashboardPage = () => {
                         HR Дашборд
                     </h2>
                     <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 font-medium">
-                        Sales, SalesTaro, SeniorSales, Consultant, SMM — обзор сотрудников по стажу
+                        Sales, SalesTaro, SalesTaroNew, SeniorSales, Consultant, SMM — обзор сотрудников по стажу
                     </p>
                 </div>
 
@@ -331,6 +332,7 @@ const HRDashboardPage = () => {
                             <option value="all">Все роли</option>
                             <option value="Sales">Sales</option>
                             <option value="SalesTaro">SalesTaro</option>
+                            <option value="SalesTaroNew">SalesTaroNew</option>
                             <option value="SeniorSales">SeniorSales</option>
                             <option value="Consultant">Consultant</option>
                             <option value="SMM">SMM</option>

@@ -442,7 +442,7 @@ const PnLReportTab = ({ startDate, endDate }) => {
                 const match = deptFilter.some(dept => {
                     if (dept === 'sales') return role === 'Sales' || role === 'SeniorSales';
                     if (dept === 'consultant') return role === 'Consultant';
-                    if (dept === 'taro') return role === 'SalesTaro';
+                    if (dept === 'taro') return role === 'SalesTaro' || role === 'SalesTaroNew';
                     return false;
                 });
                 if (!match) return false;
