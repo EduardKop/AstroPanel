@@ -9,4 +9,13 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      '/novalumen-api': {
+        target: 'https://api.novalumen.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/novalumen-api/, ''),
+      },
+    },
+  },
 })

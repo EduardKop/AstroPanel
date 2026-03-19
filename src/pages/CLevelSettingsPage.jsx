@@ -26,6 +26,7 @@ const SECTIONS = [
             { key: 'transactions_view', editKey: 'transactions_edit', label: 'Транзакции', icon: CreditCard },
             { key: 'pnl_report', label: 'P&L — Отчёт', icon: TrendingUp },
             { key: 'pnl_data', label: 'P&L — Заполнение данных', icon: ClipboardList },
+            { key: 'manager_activity', label: 'Активность Менеджеров', icon: Activity },
         ]
     },
     {

@@ -61,6 +61,7 @@ import ConsConversionsPage from './pages/consultations/ConsConversionsPage';
 import GeoSettingsPage from './pages/GeoSettingsPage';
 import GeoMonitoringPage from './pages/GeoMonitoringPage';
 import PaymentAuditPage from './pages/PaymentAuditPage';
+import ManagerActivityPage from './pages/ManagerActivityPage';
 import AddPaymentButton from './components/payments/AddPaymentButton';
 import PublicSharedPage from './pages/public/PublicSharedPage';
 
@@ -311,7 +312,7 @@ function App() {
   const closeToast = () => setToast(prev => ({ ...prev, visible: false }));
 
   // --- SECTION VISIBILITY LOGIC ---
-  const showDashboardsSection = hasAccess('dashboard_view') || hasAccess('stats') || hasAccess('geo') || hasAccess('geo_matrix') || hasAccess('transactions_view') || hasAccess('geo_monitoring');
+  const showDashboardsSection = hasAccess('dashboard_view') || hasAccess('stats') || hasAccess('geo') || hasAccess('geo_matrix') || hasAccess('transactions_view') || hasAccess('geo_monitoring') || hasAccess('manager_activity');
 
   const showSalesSection = hasAccess('sales_dashboard') || hasAccess('sales_payments') || hasAccess('sales_quick_stats') || hasAccess('sales_matrix') || hasAccess('sales_geo') || hasAccess('sales_stats');
 
@@ -411,6 +412,7 @@ function App() {
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
                   {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. Анализ" path="/quick-stats" />}
                   {(hasAccess('pnl_report') || hasAccess('pnl_data')) && <SidebarItem icon={TrendingUp} label="P&L" path="/pnl" />}
+                  {hasAccess('manager_activity') && <SidebarItem icon={Activity} label="Активность" path="/manager-activity" />}
                 </div>
               </>
             )}
@@ -650,6 +652,9 @@ function App() {
 
               {/* ✅ P&L */}
               <Route path="/pnl" element={<ProtectedRoute resource="pnl"><PnLPage /></ProtectedRoute>} />
+
+              {/* ✅ АКТИВНОСТЬ МЕНЕДЖЕРОВ */}
+              <Route path="/manager-activity" element={<ProtectedRoute resource="manager_activity"><ManagerActivityPage /></ProtectedRoute>} />
 
               {/* ✅ PUBLIC SHARED PAGES */}
               <Route path="/s/:slug" element={<PublicSharedPage />} />
