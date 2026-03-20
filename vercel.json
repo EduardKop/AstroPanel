@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/novalumen-api/:path*",
+      "destination": "https://api.novalumen.org/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/"
     }

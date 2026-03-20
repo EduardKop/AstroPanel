@@ -5,8 +5,8 @@ import {
     ChevronDown, ChevronUp, ArrowUpDown, Filter, RefreshCw, Users
 } from 'lucide-react';
 
-// In dev, use Vite proxy to avoid CORS. In prod, call API directly.
-const API_BASE = import.meta.env.DEV ? '/novalumen-api/v1' : 'https://api.novalumen.org/v1';
+// Use proxy path both in dev (Vite proxy) and prod (Vercel rewrite) to avoid CORS
+const API_BASE = '/novalumen-api/v1';
 
 // Format minutes to human-readable
 const formatMinutes = (mins) => {
