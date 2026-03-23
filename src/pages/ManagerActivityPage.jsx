@@ -20,10 +20,9 @@ const formatMinutes = (mins) => {
 };
 
 // API offset: the `offset=2` param means API returns times in UTC+2 (Kyiv).
-// We need to convert to UTC for comparison with shift_start (stored in UTC).
 const API_OFFSET_HOURS = 2;
 
-// Convert API time (UTC+2) to UTC: subtract offset
+// Convert API time (UTC+2) to UTC hours/minutes
 const apiTimeToUTC = (iso) => {
     if (!iso) return null;
     const match = iso.match(/T(\d{2}):(\d{2})/);
@@ -31,16 +30,37 @@ const apiTimeToUTC = (iso) => {
     let hours = parseInt(match[1], 10) - API_OFFSET_HOURS;
     const minutes = parseInt(match[2], 10);
     if (hours < 0) hours += 24;
-    return { hours, minutes, str: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}` };
+    return { hours, minutes };
 };
 
-// Format start time from ISO (display in UTC).
-// Skip if before 06:00 UTC (night leftover from previous shift).
-const formatTime = (iso) => {
+// Format HH:MM with optional display offset (0 = UTC, 2 = UTC+2)
+const fmtHM = (hours, minutes) => `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+
+// Add display offset to UTC hours
+const applyDisplayOffset = (utcHours, utcMinutes, displayOffset) => {
+    let h = utcHours + displayOffset;
+    if (h >= 24) h -= 24;
+    if (h < 0) h += 24;
+    return { hours: h, minutes: utcMinutes };
+};
+
+// Format API first_message_time for display.
+// Converts to UTC first, then applies displayOffset for presentation.
+// Skip if before 06:00 UTC (night leftover).
+const formatTime = (iso, displayOffset = 0) => {
     const utc = apiTimeToUTC(iso);
     if (!utc) return '—';
     if (utc.hours < 6) return '—';
-    return utc.str;
+    const disp = applyDisplayOffset(utc.hours, utc.minutes, displayOffset);
+    return fmtHM(disp.hours, disp.minutes);
+};
+
+// Format a shift time string from DB (stored as UTC "HH:MM:SS") for display
+const formatShiftForDisplay = (shiftTime, displayOffset = 0) => {
+    if (!shiftTime) return null;
+    const [h, m] = shiftTime.slice(0, 5).split(':').map(Number);
+    const disp = applyDisplayOffset(h, m, displayOffset);
+    return fmtHM(disp.hours, disp.minutes);
 };
 
 // Get color for response time
@@ -110,6 +130,7 @@ const ManagerActivityPage = () => {
     const [hideInactive, setHideInactive] = useState(true);
     const [workdayFrom, setWorkdayFrom] = useState('08:00');
     const [workdayTo, setWorkdayTo] = useState('19:00');
+    const [displayOffset, setDisplayOffset] = useState(0); // 0 = UTC, 2 = UTC+2
     const [sortField, setSortField] = useState('total_messages_count');
     const [sortDir, setSortDir] = useState('desc');
 
@@ -361,6 +382,18 @@ const ManagerActivityPage = () => {
                     <span className="text-[10px] text-gray-400">UTC</span>
                 </div>
 
+                <button
+                    onClick={() => setDisplayOffset(prev => prev === 0 ? 2 : 0)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                        displayOffset === 0
+                            ? 'bg-gray-100 dark:bg-[#1A1A1A] border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-400'
+                            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400'
+                    }`}
+                    title="Переключить отображение времени"
+                >
+                    {displayOffset === 0 ? 'UTC+0' : 'UTC+2'}
+                </button>
+
                 <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
                     <input
                         type="checkbox"
@@ -519,12 +552,12 @@ const ManagerActivityPage = () => {
                                                                         ? 'bg-gray-100 dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-300'
                                                                         : 'bg-red-50 dark:bg-red-900/10 text-red-400 line-through'
                                                                     }`}
-                                                                    title={`${g.name}: ${g.shift_start || '?'} – ${g.shift_end || '?'} UTC`}
+                                                                    title={`${g.name}: ${formatShiftForDisplay(g.shift_start, displayOffset) || '?'} – ${formatShiftForDisplay(g.shift_end, displayOffset) || '?'} ${displayOffset === 0 ? 'UTC' : 'UTC+2'}`}
                                                                 >
                                                                     <span>{g.emoji}</span>
                                                                     <span>{g.code}</span>
                                                                     {g.shift_start && (
-                                                                        <span className="text-[8px] text-gray-400 ml-0.5">{g.shift_start}</span>
+                                                                        <span className="text-[8px] text-gray-400 ml-0.5">{formatShiftForDisplay(g.shift_start, displayOffset)}</span>
                                                                     )}
                                                                 </span>
                                                             ))}
@@ -614,9 +647,9 @@ const ManagerActivityPage = () => {
                                                                         <div className="flex items-center gap-1.5 min-w-[100px]">
                                                                             <Clock size={11} className="text-gray-400" />
                                                                             <span className="text-[10px] text-gray-500">старт</span>
-                                                                            <span className="font-bold text-gray-700 dark:text-gray-300">{formatTime(ds.first_message_time)}</span>
+                                                                            <span className="font-bold text-gray-700 dark:text-gray-300">{formatTime(ds.first_message_time, displayOffset)}</span>
                                                                             {item.earliestShift && (
-                                                                                <span className="text-[9px] text-gray-400">/ {item.earliestShift}</span>
+                                                                                <span className="text-[9px] text-gray-400">/ {formatShiftForDisplay(item.earliestShift + ':00', displayOffset)}</span>
                                                                             )}
                                                                         </div>
                                                                         {/* Per-day lateness */}
