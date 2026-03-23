@@ -6,7 +6,7 @@ import {
     Globe, Power, PowerOff, Calendar as CalendarIcon, Search,
     TrendingUp, X, Clock, Activity, History, Users, MessageSquare, Send, LayoutGrid, List
 } from 'lucide-react';
-import { fetchGeoNotes, addGeoNote } from '../services/dataService';
+import { fetchGeoNotes, addGeoNote, updateGeoShift } from '../services/dataService';
 import GeoCalendarView from '../components/GeoCalendarView';
 
 // --- HELPER ---
@@ -575,6 +575,22 @@ const GeoMonitoringPage = () => {
         finally { setToggling(null); }
     };
 
+    // --- Shift editing ---
+    const [editingShift, setEditingShift] = useState(null); // { code, start, end }
+
+    const handleShiftSave = async (code) => {
+        if (!editingShift) return;
+        try {
+            await updateGeoShift(code, editingShift.start + ':00', editingShift.end + ':00');
+            showToast('Время смены обновлено', 'success');
+            setEditingShift(null);
+            fetchAllData(true);
+        } catch (e) {
+            console.error('Error saving shift:', e);
+            showToast('Ошибка сохранения: ' + e.message, 'error');
+        }
+    };
+
     // --- Summary ---
     const activeCount = geoData.filter(g => g.isActive).length;
     const inactiveCount = geoData.filter(g => !g.isActive).length;
@@ -642,9 +658,10 @@ const GeoMonitoringPage = () => {
                 /* Table */
                 <div className="border border-gray-200 dark:border-[#333] rounded-lg overflow-hidden">
                     {/* Table Header */}
-                    <div className="grid grid-cols-[1.5fr_0.7fr_1.2fr_0.6fr_1fr_0.9fr_1.2fr_1.2fr_1.2fr_auto] gap-3 px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333]">
+                    <div className="grid grid-cols-[1.5fr_0.7fr_0.9fr_1.2fr_0.6fr_1fr_0.9fr_1.2fr_1.2fr_1.2fr_auto] gap-3 px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333]">
                         <span>ГЕО</span>
                         <span>Статус</span>
+                        <span>Смена (UTC)</span>
                         <span>Заметки</span>
                         <span>Трафик</span>
                         <span>Трафик был (дата)</span>
@@ -663,7 +680,7 @@ const GeoMonitoringPage = () => {
                             return (
                                 <div
                                     key={geo.code}
-                                    className={`grid grid-cols-[1.5fr_0.7fr_1.2fr_0.6fr_1fr_0.9fr_1.2fr_1.2fr_1.2fr_auto] gap-3 px-4 py-2.5 items-center text-xs transition-colors ${geo.isActive
+                                    className={`grid grid-cols-[1.5fr_0.7fr_0.9fr_1.2fr_0.6fr_1fr_0.9fr_1.2fr_1.2fr_1.2fr_auto] gap-3 px-4 py-2.5 items-center text-xs transition-colors ${geo.isActive
                                         ? 'hover:bg-gray-50 dark:hover:bg-[#1A1A1A]'
                                         : 'opacity-60 hover:opacity-90 hover:bg-red-50/30 dark:hover:bg-red-900/5'
                                         }`}
@@ -687,6 +704,50 @@ const GeoMonitoringPage = () => {
                                             {geo.isActive ? 'Активно' : 'Не активно'}
                                         </span>
 
+                                    </div>
+
+                                    {/* Shift Times */}
+                                    <div>
+                                        {editingShift?.code === geo.code ? (
+                                            <div className="flex items-center gap-1">
+                                                <input
+                                                    type="time"
+                                                    value={editingShift.start}
+                                                    onChange={e => setEditingShift(prev => ({ ...prev, start: e.target.value }))}
+                                                    className="bg-white dark:bg-[#0A0A0A] border border-blue-400 rounded px-1 py-0.5 text-[10px] font-mono w-[62px] focus:outline-none"
+                                                />
+                                                <span className="text-gray-400 text-[9px]">—</span>
+                                                <input
+                                                    type="time"
+                                                    value={editingShift.end}
+                                                    onChange={e => setEditingShift(prev => ({ ...prev, end: e.target.value }))}
+                                                    className="bg-white dark:bg-[#0A0A0A] border border-blue-400 rounded px-1 py-0.5 text-[10px] font-mono w-[62px] focus:outline-none"
+                                                />
+                                                <button
+                                                    onClick={() => handleShiftSave(geo.code)}
+                                                    className="text-blue-500 hover:text-blue-700 text-[10px] font-bold ml-0.5"
+                                                    title="Сохранить"
+                                                >✓</button>
+                                                <button
+                                                    onClick={() => setEditingShift(null)}
+                                                    className="text-gray-400 hover:text-red-500 text-[10px] font-bold"
+                                                    title="Отмена"
+                                                >✕</button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => canToggleGeo && setEditingShift({
+                                                    code: geo.code,
+                                                    start: geo.shift_start?.slice(0, 5) || '09:00',
+                                                    end: geo.shift_end?.slice(0, 5) || '18:00'
+                                                })}
+                                                className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${canToggleGeo ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer' : 'cursor-default'} text-gray-600 dark:text-gray-400 transition-colors`}
+                                                title={canToggleGeo ? 'Нажмите чтобы изменить' : ''}
+                                            >
+                                                <Clock size={9} className="inline mr-1 opacity-50" />
+                                                {geo.shift_start?.slice(0, 5) || '—'} – {geo.shift_end?.slice(0, 5) || '—'}
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* Notes Summary */}

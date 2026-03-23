@@ -216,6 +216,19 @@ export const toggleGeoStatus = async (code, newIsActive, userName) => {
   return true;
 };
 
+// --- 8b. UPDATE GEO SHIFT TIMES ---
+export const updateGeoShift = async (code, shiftStart, shiftEnd) => {
+  const { data, error } = await supabase
+    .from('countries')
+    .update({ shift_start: shiftStart, shift_end: shiftEnd })
+    .eq('code', code)
+    .select();
+
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Update blocked by RLS or row not found');
+  return true;
+};
+
 // --- 9. GEO NOTES ---
 export const fetchGeoNotes = async (geoCode) => {
   const { data, error } = await supabase
