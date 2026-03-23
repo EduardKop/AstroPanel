@@ -293,8 +293,10 @@ const PaymentAuditPage = () => {
         return orderMap;
     }, [visiblePayments]);
 
-    // 3. Anomalous Amounts (< 20 or > 190 EUR)
-    // Exception: "Календарь" at €14-15 is OK if it's NOT the first payment (50% discount for returning clients)
+    // 3. Anomalous Amounts
+    // Upper threshold: > 230 EUR for all products
+    // Lower threshold: < 8 EUR for TaroNew products, < 20 EUR for all other products
+    // Exception: "Календарь" at €14-16 is OK if it's NOT the first payment (50% discount for returning clients)
     const anomalousPayments = useMemo(() => {
         return visiblePayments.filter(p => {
             const amount = p.amountEUR || p.amount_eur || 0;
@@ -305,17 +307,20 @@ const PaymentAuditPage = () => {
             const isDiscountedCalendar = isCalendar && amount >= 14 && amount <= 16;
 
             if (isDiscountedCalendar) {
-                // Get the payment order for this payment
                 const paymentOrder = paymentOrderMap.get(p.id) || 1;
-                // Only flag as suspicious if it's the FIRST payment (should not get discount)
                 if (paymentOrder === 1) {
                     return true; // First payment with discount = suspicious
                 }
                 return false; // 2nd+ payment with discount = OK
             }
 
-            // Standard anomaly check: < 20 or > 200 EUR
-            return amount < 20 || amount > 200;
+            // Upper threshold: 230 EUR for all products
+            if (amount > 230) return true;
+
+            // Lower threshold: 8 EUR for TaroNew products, 20 EUR for others
+            const isTaroNew = product.startsWith('taronew');
+            const lowerThreshold = isTaroNew ? 8 : 20;
+            return amount < lowerThreshold;
         });
     }, [visiblePayments, paymentOrderMap]);
 

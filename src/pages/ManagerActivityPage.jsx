@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
+import { supabase } from '../services/supabaseClient';
 import {
     Activity, Calendar, Clock, MessageSquare, AlertTriangle,
-    ChevronDown, ChevronUp, ArrowUpDown, Filter, RefreshCw, Users
+    ChevronDown, ChevronUp, ArrowUpDown, Filter, RefreshCw, Users, Globe, Timer
 } from 'lucide-react';
 
 // Use proxy path both in dev (Vite proxy) and prod (Vercel rewrite) to avoid CORS
@@ -18,18 +19,28 @@ const formatMinutes = (mins) => {
     return `${h}ч ${m}м`;
 };
 
-// Format start time from ISO.
-// API returns first_message_time which may be a late-night leftover from prev shift.
-// We treat anything before 06:00 UTC as "not a real shift start" and display accordingly.
-const formatTime = (iso) => {
-    if (!iso) return '—';
-    // Parse as UTC directly from the ISO string (API gives naive UTC timestamps)
+// API offset: the `offset=2` param means API returns times in UTC+2 (Kyiv).
+// We need to convert to UTC for comparison with shift_start (stored in UTC).
+const API_OFFSET_HOURS = 2;
+
+// Convert API time (UTC+2) to UTC: subtract offset
+const apiTimeToUTC = (iso) => {
+    if (!iso) return null;
     const match = iso.match(/T(\d{2}):(\d{2})/);
-    if (!match) return '—';
-    const hours = parseInt(match[1], 10);
+    if (!match) return null;
+    let hours = parseInt(match[1], 10) - API_OFFSET_HOURS;
     const minutes = parseInt(match[2], 10);
-    if (hours < 6) return '—';
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    if (hours < 0) hours += 24;
+    return { hours, minutes, str: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}` };
+};
+
+// Format start time from ISO (display in UTC).
+// Skip if before 06:00 UTC (night leftover from previous shift).
+const formatTime = (iso) => {
+    const utc = apiTimeToUTC(iso);
+    if (!utc) return '—';
+    if (utc.hours < 6) return '—';
+    return utc.str;
 };
 
 // Get color for response time
@@ -68,7 +79,28 @@ const getRoleBadge = (role) => {
 const FILTER_ROLES = ['Sales', 'SalesTaro', 'SalesTaroNew', 'SeniorSales', 'Consultant', 'SMM', 'SeniorSMM', 'Admin', 'C-level', 'HR'];
 
 const ManagerActivityPage = () => {
-    const { managers } = useAppStore();
+    const { managers: storeManagers, countries: storeCountries } = useAppStore();
+
+    // Local fast-loaded data (independent from store's full fetchAll)
+    const [localManagers, setLocalManagers] = useState(null);
+    const [localCountries, setLocalCountries] = useState(null);
+
+    useEffect(() => {
+        // Fetch managers & countries directly — don't wait for the full store load
+        const fetchLocal = async () => {
+            const [mRes, cRes] = await Promise.all([
+                supabase.from('managers').select('*'),
+                supabase.from('countries').select('*'),
+            ]);
+            if (mRes.data) setLocalManagers(mRes.data);
+            if (cRes.data) setLocalCountries(cRes.data);
+        };
+        fetchLocal();
+    }, []);
+
+    // Use local data if available, otherwise fall back to store
+    const managers = localManagers || storeManagers || [];
+    const countries = localCountries || storeCountries || [];
 
     // Date filters — default: today
     const today = new Date().toISOString().split('T')[0];
@@ -128,21 +160,78 @@ const ManagerActivityPage = () => {
         return map;
     }, [managers]);
 
+    // Build country lookup by code
+    const countryMap = useMemo(() => {
+        const map = {};
+        (countries || []).forEach(c => { map[c.code] = c; });
+        return map;
+    }, [countries]);
+
+    // Get earliest shift_start from manager's active GEOs (HH:MM string, UTC)
+    const getEarliestShift = (geoArr) => {
+        if (!geoArr || geoArr.length === 0) return null;
+        let earliest = null;
+        for (const code of geoArr) {
+            const c = countryMap[code];
+            if (!c || !c.shift_start) continue;
+            const t = c.shift_start.slice(0, 5); // "09:00"
+            if (!earliest || t < earliest) earliest = t;
+        }
+        return earliest;
+    };
+
+    // Get active geo details for a manager
+    const getGeoDetails = (geoArr) => {
+        if (!geoArr || geoArr.length === 0) return [];
+        return geoArr.map(code => {
+            const c = countryMap[code];
+            return c ? { code: c.code, emoji: c.emoji, name: c.name, shift_start: c.shift_start?.slice(0, 5), shift_end: c.shift_end?.slice(0, 5), is_active: c.is_active } : { code, emoji: '', name: code, shift_start: null, shift_end: null, is_active: false };
+        });
+    };
+
+    // Calculate lateness in minutes: first_message_time (UTC+2 from API) vs shift_start (UTC from DB)
+    // Returns { late: true/false, minutes: number } or null
+    const calcLateness = (firstMessageTime, shiftStart) => {
+        if (!firstMessageTime || !shiftStart) return null;
+
+        // Convert API time (UTC+2) to UTC
+        const utc = apiTimeToUTC(firstMessageTime);
+        if (!utc) return null;
+
+        const msgTotalMin = utc.hours * 60 + utc.minutes;
+
+        // Parse shiftStart "09:00" (already UTC)
+        const [shH, shM] = shiftStart.split(':').map(Number);
+        const shiftTotalMin = shH * 60 + shM;
+
+        // If msg before 06:00 UTC — ignore (night leftover)
+        if (utc.hours < 6) return null;
+
+        const diff = msgTotalMin - shiftTotalMin;
+        if (diff <= 0) return { late: false, minutes: 0 };
+        return { late: true, minutes: diff };
+    };
+
     // Merge API data with managers
     const mergedData = useMemo(() => {
         return apiData.map(item => {
             const manager = item.telegram_id ? managerMap[String(item.telegram_id)] : null;
+            const geoArr = manager?.geo || [];
+            const geoDetails = getGeoDetails(geoArr);
+            const earliestShift = getEarliestShift(geoArr);
             return {
                 ...item,
                 manager,
                 role: manager?.role || 'Unknown',
                 avatar_url: manager?.avatar_url || null,
                 managerName: manager?.name || [item.name, item.last_name].filter(Boolean).join(' '),
-                geo: manager?.geo || [],
+                geo: geoArr,
+                geoDetails,
+                earliestShift,
                 status: manager?.status || 'unknown',
             };
         });
-    }, [apiData, managerMap]);
+    }, [apiData, managerMap, countryMap]);
 
     // Apply filters & sorting
     const filteredData = useMemo(() => {
@@ -197,6 +286,18 @@ const ManagerActivityPage = () => {
     const SortIcon = ({ field }) => (
         <ArrowUpDown size={10} className={`inline ml-1 ${sortField === field ? 'text-blue-500' : 'text-gray-400'}`} />
     );
+
+    // Loading guard: wait only for managers & countries (fetched independently)
+    const dataReady = managers.length > 0 && countries.length > 0;
+
+    if (!dataReady) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
+                <RefreshCw size={28} className="text-violet-500 animate-spin mb-3" />
+                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка данных...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="p-4 max-w-[1600px] mx-auto font-sans text-gray-900 dark:text-gray-100">
@@ -339,6 +440,8 @@ const ManagerActivityPage = () => {
                                 <tr className="border-b border-gray-100 dark:border-[#222] bg-gray-50 dark:bg-[#0A0A0A]">
                                     <th className="text-left py-3 px-4 font-bold text-gray-500 uppercase text-[10px] tracking-wider">Менеджер</th>
                                     <th className="text-left py-3 px-3 font-bold text-gray-500 uppercase text-[10px] tracking-wider">Роль</th>
+                                    <th className="text-left py-3 px-3 font-bold text-gray-500 uppercase text-[10px] tracking-wider">ГЕО / Смена</th>
+                                    <th className="text-center py-3 px-3 font-bold text-gray-500 uppercase text-[10px] tracking-wider">Опоздание</th>
                                     <th
                                         className="text-center py-3 px-3 font-bold text-gray-500 uppercase text-[10px] tracking-wider cursor-pointer hover:text-gray-700 select-none"
                                         onClick={() => handleSort('total_messages_count')}
@@ -363,6 +466,19 @@ const ManagerActivityPage = () => {
                                     const isExpanded = expandedRows.has(item.user_id);
                                     const hasDailyStats = item.daily_stats && item.daily_stats.length > 0;
 
+                                    // Calculate worst lateness across all days
+                                    let worstLateness = null;
+                                    if (hasDailyStats && item.earliestShift) {
+                                        for (const ds of item.daily_stats) {
+                                            const l = calcLateness(ds.first_message_time, item.earliestShift);
+                                            if (l && l.late) {
+                                                if (!worstLateness || l.minutes > worstLateness.minutes) {
+                                                    worstLateness = l;
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     return (
                                         <React.Fragment key={item.user_id}>
                                             <tr
@@ -381,9 +497,6 @@ const ManagerActivityPage = () => {
                                                         )}
                                                         <div>
                                                             <div className="font-bold text-gray-900 dark:text-white text-[11px]">{item.managerName}</div>
-                                                            {item.geo && item.geo.length > 0 && (
-                                                                <div className="text-[9px] text-gray-400 mt-0.5">{item.geo.join(', ')}</div>
-                                                            )}
                                                         </div>
                                                     </div>
                                                 </td>
@@ -393,6 +506,51 @@ const ManagerActivityPage = () => {
                                                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${getRoleBadge(item.role)}`}>
                                                         {item.role}
                                                     </span>
+                                                </td>
+
+                                                {/* GEO + Shift */}
+                                                <td className="py-2.5 px-3">
+                                                    {item.geoDetails && item.geoDetails.length > 0 ? (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {item.geoDetails.map(g => (
+                                                                <span
+                                                                    key={g.code}
+                                                                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${g.is_active !== false
+                                                                        ? 'bg-gray-100 dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-300'
+                                                                        : 'bg-red-50 dark:bg-red-900/10 text-red-400 line-through'
+                                                                    }`}
+                                                                    title={`${g.name}: ${g.shift_start || '?'} – ${g.shift_end || '?'} UTC`}
+                                                                >
+                                                                    <span>{g.emoji}</span>
+                                                                    <span>{g.code}</span>
+                                                                    {g.shift_start && (
+                                                                        <span className="text-[8px] text-gray-400 ml-0.5">{g.shift_start}</span>
+                                                                    )}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-300 text-[10px]">—</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Lateness */}
+                                                <td className="py-2.5 px-3 text-center">
+                                                    {worstLateness ? (
+                                                        <span className={`font-bold text-[10px] px-1.5 py-0.5 rounded ${
+                                                            worstLateness.minutes <= 15
+                                                                ? 'bg-yellow-50 dark:bg-yellow-900/10 text-yellow-600 dark:text-yellow-400'
+                                                                : worstLateness.minutes <= 60
+                                                                    ? 'bg-orange-50 dark:bg-orange-900/10 text-orange-600 dark:text-orange-400'
+                                                                    : 'bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400'
+                                                        }`}>
+                                                            +{formatMinutes(worstLateness.minutes)}
+                                                        </span>
+                                                    ) : item.earliestShift && hasDailyStats ? (
+                                                        <span className="text-[10px] text-green-600 dark:text-green-400 font-bold">В норме</span>
+                                                    ) : (
+                                                        <span className="text-gray-300 text-[10px]">—</span>
+                                                    )}
                                                 </td>
 
                                                 {/* Messages */}
@@ -436,49 +594,69 @@ const ManagerActivityPage = () => {
                                             {/* Expanded: Daily Stats */}
                                             {isExpanded && hasDailyStats && (
                                                 <tr>
-                                                    <td colSpan={7} className="bg-gray-50/50 dark:bg-[#0D0D0D] px-4 py-2">
+                                                    <td colSpan={9} className="bg-gray-50/50 dark:bg-[#0D0D0D] px-4 py-2">
                                                         <div className="grid gap-2">
-                                                            {item.daily_stats.map(ds => (
-                                                                <div key={ds.date} className="flex items-center gap-4 bg-white dark:bg-[#151515] border border-gray-100 dark:border-[#222] rounded-lg px-4 py-2.5">
-                                                                    <div className="flex items-center gap-1.5 min-w-[90px]">
-                                                                        <Calendar size={11} className="text-gray-400" />
-                                                                        <span className="font-bold text-gray-700 dark:text-gray-300 text-[11px]">
-                                                                            {new Date(ds.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1.5 min-w-[80px]">
-                                                                        <MessageSquare size={11} className="text-blue-400" />
-                                                                        <span className="font-bold text-gray-900 dark:text-white">{ds.messages_count}</span>
-                                                                        <span className="text-gray-400 text-[9px]">сооб.</span>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1.5 min-w-[80px]">
-                                                                        <Clock size={11} className="text-gray-400" />
-                                                                        <span className="text-[10px] text-gray-500">старт</span>
-                                                                        <span className="font-bold text-gray-700 dark:text-gray-300">{formatTime(ds.first_message_time)}</span>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1.5 min-w-[80px]">
-                                                                        <Clock size={11} className={getResponseColor(ds.avg_response_time_minutes)} />
-                                                                        <span className="text-[10px] text-gray-500">ответ</span>
-                                                                        <span className={`font-bold ${getResponseColor(ds.avg_response_time_minutes)}`}>
-                                                                            {formatMinutes(ds.avg_response_time_minutes)}
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="flex items-center gap-1">
-                                                                            <AlertTriangle size={10} className={getUnansweredColor(ds.unanswered_gt_10_min_count)} />
-                                                                            <span className={`font-bold text-[10px] ${getUnansweredColor(ds.unanswered_gt_10_min_count)}`}>
-                                                                                {ds.unanswered_gt_10_min_count}&gt;10м
+                                                            {item.daily_stats.map(ds => {
+                                                                const dayLateness = item.earliestShift ? calcLateness(ds.first_message_time, item.earliestShift) : null;
+                                                                return (
+                                                                    <div key={ds.date} className="flex items-center gap-4 bg-white dark:bg-[#151515] border border-gray-100 dark:border-[#222] rounded-lg px-4 py-2.5">
+                                                                        <div className="flex items-center gap-1.5 min-w-[70px]">
+                                                                            <Calendar size={11} className="text-gray-400" />
+                                                                            <span className="font-bold text-gray-700 dark:text-gray-300 text-[11px]">
+                                                                                {new Date(ds.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
                                                                             </span>
                                                                         </div>
-                                                                        <div className="flex items-center gap-1">
-                                                                            <AlertTriangle size={10} className={getUnansweredColor(ds.unanswered_gt_30_min_count)} />
-                                                                            <span className={`font-bold text-[10px] ${getUnansweredColor(ds.unanswered_gt_30_min_count)}`}>
-                                                                                {ds.unanswered_gt_30_min_count}&gt;30м
+                                                                        <div className="flex items-center gap-1.5 min-w-[80px]">
+                                                                            <MessageSquare size={11} className="text-blue-400" />
+                                                                            <span className="font-bold text-gray-900 dark:text-white">{ds.messages_count}</span>
+                                                                            <span className="text-gray-400 text-[9px]">сооб.</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5 min-w-[100px]">
+                                                                            <Clock size={11} className="text-gray-400" />
+                                                                            <span className="text-[10px] text-gray-500">старт</span>
+                                                                            <span className="font-bold text-gray-700 dark:text-gray-300">{formatTime(ds.first_message_time)}</span>
+                                                                            {item.earliestShift && (
+                                                                                <span className="text-[9px] text-gray-400">/ {item.earliestShift}</span>
+                                                                            )}
+                                                                        </div>
+                                                                        {/* Per-day lateness */}
+                                                                        <div className="flex items-center gap-1.5 min-w-[70px]">
+                                                                            {dayLateness && dayLateness.late ? (
+                                                                                <span className={`font-bold text-[10px] px-1 py-0.5 rounded ${
+                                                                                    dayLateness.minutes <= 15 ? 'text-yellow-600 bg-yellow-50 dark:bg-yellow-900/10 dark:text-yellow-400'
+                                                                                    : dayLateness.minutes <= 60 ? 'text-orange-600 bg-orange-50 dark:bg-orange-900/10 dark:text-orange-400'
+                                                                                    : 'text-red-600 bg-red-50 dark:bg-red-900/10 dark:text-red-400'
+                                                                                }`}>
+                                                                                    +{formatMinutes(dayLateness.minutes)}
+                                                                                </span>
+                                                                            ) : dayLateness ? (
+                                                                                <span className="text-[10px] text-green-600 dark:text-green-400 font-bold">ОК</span>
+                                                                            ) : null}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1.5 min-w-[80px]">
+                                                                            <Clock size={11} className={getResponseColor(ds.avg_response_time_minutes)} />
+                                                                            <span className="text-[10px] text-gray-500">ответ</span>
+                                                                            <span className={`font-bold ${getResponseColor(ds.avg_response_time_minutes)}`}>
+                                                                                {formatMinutes(ds.avg_response_time_minutes)}
                                                                             </span>
                                                                         </div>
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <AlertTriangle size={10} className={getUnansweredColor(ds.unanswered_gt_10_min_count)} />
+                                                                                <span className={`font-bold text-[10px] ${getUnansweredColor(ds.unanswered_gt_10_min_count)}`}>
+                                                                                    {ds.unanswered_gt_10_min_count}&gt;10м
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1">
+                                                                                <AlertTriangle size={10} className={getUnansweredColor(ds.unanswered_gt_30_min_count)} />
+                                                                                <span className={`font-bold text-[10px] ${getUnansweredColor(ds.unanswered_gt_30_min_count)}`}>
+                                                                                    {ds.unanswered_gt_30_min_count}&gt;30м
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                         </div>
                                                     </td>
                                                 </tr>
