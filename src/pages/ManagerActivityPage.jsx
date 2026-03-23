@@ -76,6 +76,8 @@ const ManagerActivityPage = () => {
     const [toDate, setToDate] = useState(today);
     const [roleFilter, setRoleFilter] = useState('all');
     const [hideInactive, setHideInactive] = useState(true);
+    const [workdayFrom, setWorkdayFrom] = useState('08:00');
+    const [workdayTo, setWorkdayTo] = useState('19:00');
     const [sortField, setSortField] = useState('total_messages_count');
     const [sortDir, setSortDir] = useState('desc');
 
@@ -100,7 +102,7 @@ const ManagerActivityPage = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const url = `${API_BASE}/users/statistics?from_dt=${fromDate}T01:00:00Z&to_dt=${toDate}T22:00:00Z&offset=2`;
+            const url = `${API_BASE}/users/statistics?from_dt=${fromDate}T01:00:00Z&to_dt=${toDate}T22:00:00Z&offset=2&workday_from=${workdayFrom}&workday_to=${workdayTo}`;
             const res = await fetch(url);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
@@ -115,7 +117,7 @@ const ManagerActivityPage = () => {
 
     useEffect(() => {
         fetchData();
-    }, [fromDate, toDate]);
+    }, [fromDate, toDate, workdayFrom, workdayTo]);
 
     // Build manager lookup by telegram_id
     const managerMap = useMemo(() => {
@@ -238,6 +240,24 @@ const ManagerActivityPage = () => {
                         {FILTER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                     <ChevronDown size={10} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                    <Clock size={14} className="text-gray-400" />
+                    <input
+                        type="time"
+                        value={workdayFrom}
+                        onChange={e => setWorkdayFrom(e.target.value)}
+                        className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:border-blue-400 w-[80px]"
+                    />
+                    <span className="text-xs text-gray-400">—</span>
+                    <input
+                        type="time"
+                        value={workdayTo}
+                        onChange={e => setWorkdayTo(e.target.value)}
+                        className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:border-blue-400 w-[80px]"
+                    />
+                    <span className="text-[10px] text-gray-400">UTC</span>
                 </div>
 
                 <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
