@@ -113,7 +113,7 @@ const TARO_NEW_PRODUCTS = [
 ];
 
 const PAYMENT_METHODS = [
-    'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты', 'MyFatoorah'
+    'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты', 'MyFatoorah', 'INSTAPAY'
 ];
 
 const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
