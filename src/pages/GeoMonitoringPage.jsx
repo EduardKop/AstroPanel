@@ -360,6 +360,21 @@ const ConfirmDeactivationModal = ({ country, onClose, onConfirm }) => {
     );
 };
 
+export const getPaymentColorClass = (method) => {
+    if (method.toLowerCase().includes('дроп')) {
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800/50";
+    }
+    switch (method) {
+        case 'Lava': return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800/50";
+        case 'JETFEX': return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800/50";
+        case 'IBAN': return "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400 border-sky-200 dark:border-sky-800/50";
+        case 'Прямые реквизиты': return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50";
+        case 'MyFatoorah': return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800/50";
+        case 'INSTAPAY': return "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-400 border-pink-200 dark:border-pink-800/50";
+        default: return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-700/50";
+    }
+};
+
 // --- PAYMENT CONFIG MODAL ---
 const PaymentConfigModal = ({ country, onClose, onSave }) => {
     const [selectedPayments, setSelectedPayments] = useState([]);
@@ -412,28 +427,31 @@ const PaymentConfigModal = ({ country, onClose, onSave }) => {
                 <div className="p-5 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-3">
                     {PAYMENT_METHODS.map(method => {
                         const current = selectedPayments.find(p => p.method === method);
+                        const methodColorClass = getPaymentColorClass(method);
                         return (
-                            <div key={method} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-[#222] bg-gray-50/50 dark:bg-[#151515] hover:border-blue-200 dark:hover:border-blue-900/30 transition-colors">
-                                <span className="text-sm font-bold text-gray-800 dark:text-gray-200">{method}</span>
+                            <div key={method} className={`flex items-center justify-between p-2.5 rounded-lg border transition-all ${methodColorClass} ${current ? 'ring-1 ring-current shadow-sm' : 'border-dashed opacity-50 hover:opacity-80 hover:border-solid grayscale-[20%] hover:grayscale-0'}`}>
+                                <span className="text-xs font-medium flex items-center gap-2 text-inherit">
+                                    {method}
+                                </span>
                                 <div className="flex items-center gap-3">
-                                    <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <label className="flex items-center gap-1.5 cursor-pointer group">
                                         <input
                                             type="checkbox"
                                             checked={current?.type === 'main'}
                                             onChange={() => handleToggle(method, true)}
-                                            className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                            className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer bg-white dark:bg-black/20 border-transparent transition-all group-hover:scale-110"
                                         />
-                                        <span className="text-[10px] uppercase font-bold text-gray-500 relative top-px">Осн.</span>
+                                        <span className={`text-[10px] uppercase font-bold relative top-px ${current?.type === 'main' ? 'opacity-100' : 'opacity-40'}`}>Осн.</span>
                                     </label>
-                                    <div className="w-px h-6 bg-gray-200 dark:bg-[#333]"></div>
-                                    <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <div className="w-px h-6 bg-current opacity-20"></div>
+                                    <label className="flex items-center gap-1.5 cursor-pointer group">
                                         <input
                                             type="checkbox"
                                             checked={current?.type === 'additional'}
                                             onChange={() => handleToggle(method, false)}
-                                            className="w-3.5 h-3.5 rounded text-fuchsia-600 focus:ring-fuchsia-500 cursor-pointer"
+                                            className="w-3.5 h-3.5 rounded text-fuchsia-600 focus:ring-fuchsia-500 cursor-pointer bg-white dark:bg-black/20 border-transparent transition-all group-hover:scale-110"
                                         />
-                                        <span className="text-[10px] uppercase font-bold text-gray-500 relative top-px">Доп.</span>
+                                        <span className={`text-[10px] uppercase font-bold relative top-px ${current?.type === 'additional' ? 'opacity-100' : 'opacity-40'}`}>Доп.</span>
                                     </label>
                                 </div>
                             </div>
@@ -908,15 +926,7 @@ const GeoMonitoringPage = () => {
                                             {geo.payment && Array.isArray(geo.payment) && geo.payment.length > 0 ? (
                                                 [...geo.payment].sort((a, b) => (a.type === 'main' ? -1 : 1)).map((p, idx) => {
                                                     const isMain = p.type === 'main';
-                                                    let colorClass = "";
-                                                    switch (p.method) {
-                                                        case 'Lava': colorClass = "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800/50"; break;
-                                                        case 'JETFEX': colorClass = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800/50"; break;
-                                                        case 'IBAN': colorClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50"; break;
-                                                        case 'MyFatoorah': colorClass = "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800/50"; break;
-                                                        case 'INSTAPAY': colorClass = "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-400 border-pink-200 dark:border-pink-800/50"; break;
-                                                        default: colorClass = "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-700/50"; break;
-                                                    }
+                                                    const colorClass = getPaymentColorClass(p.method);
                                                     return (
                                                         <span key={`${geo.code}-${p.method}-${idx}`} className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] whitespace-nowrap ${colorClass}`}>
                                                             <span className="font-bold">{p.method}</span>
