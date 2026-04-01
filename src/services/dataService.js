@@ -229,6 +229,19 @@ export const updateGeoShift = async (code, shiftStart, shiftEnd) => {
   return true;
 };
 
+// --- 8c. UPDATE GEO PAYMENTS ---
+export const updateGeoPayments = async (code, paymentsArray) => {
+  const { data, error } = await supabase
+    .from('countries')
+    .update({ payment: paymentsArray })
+    .eq('code', code)
+    .select();
+
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Update blocked by RLS or row not found');
+  return data[0];
+};
+
 // --- 9. GEO NOTES ---
 export const fetchGeoNotes = async (geoCode) => {
   const { data, error } = await supabase

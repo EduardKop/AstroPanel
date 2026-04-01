@@ -240,6 +240,30 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  updateGeoPayments: async (code, paymentsArray) => {
+    try {
+      const { data, error } = await supabase
+        .from('countries')
+        .update({ payment: paymentsArray })
+        .eq('code', code)
+        .select();
+
+      if (error) throw error;
+      
+      // Optimistic Update
+      set(state => ({
+        countries: state.countries.map(c => 
+          c.code === code ? { ...c, payment: paymentsArray } : c
+        )
+      }));
+      
+      return data[0];
+    } catch (err) {
+      console.error('Error updating geo payments in store:', err);
+      throw err;
+    }
+  },
+
   setUser: (user) => set({ user }),
 
   impersonateRole: (role) => {
@@ -574,43 +598,40 @@ export const useAppStore = create((set, get) => ({
 
 
       // PARALLEL FETCHING: Group independent requests including LEADS
-      const [
-        channelsData,
-        managersData,
-        paymentsData,
-        productsData,
-        rulesData,
-        learningData,
-        countriesData,
-        schedulesData,
-        exceptionsData,
-        kpiRatesData,
-        kpiSettingsData,
-        appSettingsData,
-        managerRatesData,
-        // leadsMappingData REMOVED - using View now
-        leadsStatsData,    // RPC for traffic charts
-        sharedPagesData    // Added: Fetch all shared pages
-      ] = await Promise.all([
-        fetchAll('channels', '*', 'id', true),
-        fetchAll('managers', '*', 'created_at', false),
-        fetchAll('enriched_payments_view', '*', 'transaction_date', false), // USED VIEW
+      
+      // Запускаем загрузку платежей асинхронно, чтобы не блокировать интерфейс
+      const paymentsPromise = fetchAll('enriched_payments_view', '*', 'transaction_date', false);
+
+      // Запускаем загрузку второстепенных справочников асинхронно
+      const secondaryDataPromise = Promise.all([
         fetchAll('knowledge_products', '*', 'created_at', false),
         fetchAll('knowledge_rules', '*', 'created_at', false),
         fetchAll('knowledge_learning', '*', 'created_at', false),
-        fetchAll('countries', '*', 'code', true),
-        fetchAll('schedules', '*', 'date', false),
         fetchAll('payment_audit_exceptions', '*', 'created_at', false),
         fetchAll('kpi_product_rates', '*', 'rate', true),
         fetchAll('kpi_settings', '*', 'key', true),
-        fetchAll('app_settings', '*', 'key', true),
         fetchAll('manager_rates', '*', 'created_at', false),
-        // supabase.rpc('get_leads_mapping').then(r => r.data || []), // REMOVED
-        supabase.rpc('get_lead_stats_v2', { start_date: '2020-01-01', end_date: '2030-01-01' }).then(r => r.data || []),
         fetchAll('shared_pages', '*', 'page_key', true).catch(err => {
           console.warn('Shared pages table not found or empty (skipping):', err);
           return [];
         })
+      ]);
+
+      // Ждем только самое Важное для "скелета" интерфейса
+      const [
+        channelsData,
+        managersData,
+        countriesData,
+        schedulesData,
+        appSettingsData,
+        leadsStatsData
+      ] = await Promise.all([
+        fetchAll('channels', '*', 'id', true),
+        fetchAll('managers', '*', 'created_at', false),
+        fetchAll('countries', '*', 'code', true),
+        fetchAll('schedules', '*', 'date', false),
+        fetchAll('app_settings', '*', 'key', true),
+        supabase.rpc('get_lead_stats_v2', { start_date: '2020-01-01', end_date: '2030-01-01' }).then(r => r.data || [])
       ]);
 
 
@@ -625,28 +646,15 @@ export const useAppStore = create((set, get) => ({
       const managersMap = {};
       (managersData || []).forEach(m => managersMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username });
 
-      // Process KPI Settings
-      const kpiSettingsMap = {};
-      (kpiSettingsData || []).forEach(s => kpiSettingsMap[s.key] = s.value);
-
       // Process App Settings
       const permissionsMap = (appSettingsData || []).find(s => s.key === 'role_permissions')?.value || {};
       const roleDocsMap = (appSettingsData || []).find(s => s.key === 'role_documentation')?.value || {};
-
-      // Process Shared Pages
-      const sharedPagesMap = {};
-      (sharedPagesData || []).forEach(p => {
-        sharedPagesMap[p.page_key] = p;
-      });
 
 
       // SAVE TO CACHE
       localStorage.setItem('astroPermissions', JSON.stringify(permissionsMap));
       localStorage.setItem('astroRoleDocs', JSON.stringify(roleDocsMap));
 
-
-      // 1. Создаем карту источников: REMOVED (Logic moved to View)
-      // const leadsSourceMap = {}; ...
 
       // 2. Статистика трафика (RPC data)
       let trafficResult = {};
@@ -670,82 +678,99 @@ export const useAppStore = create((set, get) => ({
         });
       }
 
-      // Е. Форматируем платежи и добавляем SOURCE
-      const uniquePaymentsMap = new Map();
-      (paymentsData || []).forEach(item => {
-        if (item.id && !uniquePaymentsMap.has(item.id)) {
-          uniquePaymentsMap.set(item.id, item);
-        }
-      });
-
-      const formattedPayments = Array.from(uniquePaymentsMap.values()).map(item => {
-        const rawDate = item.transaction_date || item.created_at;
-
-        // Определяем источник из View
-        let source = item.derived_source || 'direct'; // Default to direct if missing
-        if (source === 'unknown') source = 'direct';  // Unknown usually means direct in legacy logic? Or just 'unknown'?
-        // The previous logic defaulted to 'unknown' if not found in leads.
-        // But here user said "if not comment then Direct".
-        // My view logic:
-        // WHEN p.crm_link ~ '^\+?[0-9\s()-]+$' THEN 'whatsapp'
-        // WHEN l.is_comment IS TRUE THEN 'comments'
-        // WHEN l.is_comment IS FALSE THEN 'direct'
-        // ELSE 'unknown'
-
-        // Let's trust the View. If 'unknown' -> maybe treat as 'direct' or keep 'unknown'?
-        // In dashboard, filters are 'direct', 'comments', 'whatsapp'.
-        // If I return 'unknown', it won't match any filter except 'all'.
-
-        // User request: "если оно true тогда это коментарий если нет тогда Direct"
-        // So 'unknown' (no lead match) implies 'direct' (or maybe they assume every client is in leads?)
-        // If crm_link exists but no lead match -> it's a lead that we missed or manually entered?
-        // Let's Default 'unknown' to 'direct' if crm_link is present?
-        // Or better: stick to View logic and let user see 'unknown' if they want? 
-        // User said: "трафик и тут есть поле is_comment если оно true тогда это коментарий если нет тогда Direct".
-        // This implies boolean: true -> comment, false -> direct.
-        // If there IS NO LEAD, then is_comment is NULL.
-        // My View returns 'unknown' for NULL.
-        // I should probably map 'unknown' to 'direct' to match user expectation "if no comment then Direct".
-        if (source === 'unknown') source = 'direct';
-
-        return {
-          ...item,
-          id: item.id,
-          transactionDate: rawDate,
-          amountEUR: Number(item.amount_eur) || 0,
-          amountLocal: Number(item.amount_local) || 0,
-          amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
-          manager: managersMap[item.manager_id]?.name || 'Не назначен',
-          managerId: item.manager_id,
-          managerRole: managersMap[item.manager_id]?.role || null,
-          manager_tg: managersMap[item.manager_id]?.telegram_username || null,
-          type: item.payment_type || 'Other',
-          status: item.status || 'pending',
-          source: source // 'direct', 'comments', 'whatsapp', 'unknown'
-        };
-      });
-
-      const total = formattedPayments.reduce((sum, item) => sum + item.amountEUR, 0);
-
+      // Завершаем инициализацию основной базы БЕЗ второстепенных словарей
       set({
-        payments: formattedPayments,
+        channelsMap: newChannelsMap,
+        channels: channelsData || [],
         managers: managersData || [],
-        products: productsData || [],
-        rules: rulesData || [],
-        learningArticles: learningData || [],
         countries: countriesData || [],
         schedules: schedulesData || [],
-        auditExceptions: exceptionsData || [],
-        kpiRates: kpiRatesData || [],
-        kpiSettings: kpiSettingsMap || {},
-        managerRates: managerRatesData || [],
         permissions: permissionsMap,
         roleDocs: roleDocsMap,
         trafficStats: trafficResult,
-        stats: { totalEur: total.toFixed(2), count: formattedPayments.length },
-        sharedPages: sharedPagesMap, // Added: Set shared pages state
         isLoading: false,
         isInitialized: true
+      });
+
+      // Ждем второстепенные словари и устанавливаем их
+      secondaryDataPromise.then(([
+        productsData,
+        rulesData,
+        learningData,
+        exceptionsData,
+        kpiRatesData,
+        kpiSettingsData,
+        managerRatesData,
+        sharedPagesData
+      ]) => {
+        const kpiSettingsMap = {};
+        (kpiSettingsData || []).forEach(s => kpiSettingsMap[s.key] = s.value);
+
+        const sharedPagesMap = {};
+        (sharedPagesData || []).forEach(p => {
+          sharedPagesMap[p.page_key] = p;
+        });
+
+        set({
+          products: productsData || [],
+          rules: rulesData || [],
+          learningArticles: learningData || [],
+          auditExceptions: exceptionsData || [],
+          kpiRates: kpiRatesData || [],
+          kpiSettings: kpiSettingsMap || {},
+          managerRates: managerRatesData || [],
+          sharedPages: sharedPagesMap
+        });
+      }).catch(err => {
+        console.error('Error in async secondary dictionaries load:', err);
+      });
+
+      // Е. Форматируем платежи асинхронно после получения
+      paymentsPromise.then(paymentsData => {
+        const uniquePaymentsMap = new Map();
+        (paymentsData || []).forEach(item => {
+          if (item.id && !uniquePaymentsMap.has(item.id)) {
+            uniquePaymentsMap.set(item.id, item);
+          }
+        });
+
+        // Берем менеджеров из глобального стейта
+        const currentManagers = get().managers || [];
+        const currentManagersMap = {};
+        currentManagers.forEach(m => currentManagersMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username });
+
+        const formattedPayments = Array.from(uniquePaymentsMap.values()).map(item => {
+          const rawDate = item.transaction_date || item.created_at;
+
+          // Определяем источник из View
+          let source = item.derived_source || 'direct'; // Default to direct if missing
+          if (source === 'unknown') source = 'direct';
+
+          return {
+            ...item,
+            id: item.id,
+            transactionDate: rawDate,
+            amountEUR: Number(item.amount_eur) || 0,
+            amountLocal: Number(item.amount_local) || 0,
+            amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
+            manager: currentManagersMap[item.manager_id]?.name || 'Не назначен',
+            managerId: item.manager_id,
+            managerRole: currentManagersMap[item.manager_id]?.role || null,
+            manager_tg: currentManagersMap[item.manager_id]?.telegram_username || null,
+            type: item.payment_type || 'Other',
+            status: item.status || 'pending',
+            source: source // 'direct', 'comments', 'whatsapp', 'unknown'
+          };
+        });
+
+        const total = formattedPayments.reduce((sum, item) => sum + item.amountEUR, 0);
+
+        set({
+          payments: formattedPayments,
+          stats: { totalEur: total.toFixed(2), count: formattedPayments.length }
+        });
+      }).catch(err => {
+        console.error('Error in async payments load:', err);
       });
 
     } catch (error) {

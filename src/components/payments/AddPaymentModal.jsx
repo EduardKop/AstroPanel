@@ -112,7 +112,7 @@ const TARO_NEW_PRODUCTS = [
     'TaroNew', 'TaroNew2', 'TaroNew3', 'TaroNew4', 'TaroNew5', 'TaroNew6'
 ];
 
-const PAYMENT_METHODS = [
+export const PAYMENT_METHODS = [
     'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты', 'MyFatoorah', 'INSTAPAY'
 ];
 

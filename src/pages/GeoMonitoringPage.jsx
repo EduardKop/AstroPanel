@@ -4,9 +4,10 @@ import { toggleGeoStatus } from '../services/dataService';
 import { showToast } from '../utils/toastEvents';
 import {
     Globe, Power, PowerOff, Calendar as CalendarIcon, Search,
-    TrendingUp, X, Clock, Activity, History, Users, MessageSquare, Send, LayoutGrid, List
+    TrendingUp, X, Clock, Activity, History, Users, MessageSquare, Send, LayoutGrid, List, RefreshCw, DollarSign
 } from 'lucide-react';
 import { fetchGeoNotes, addGeoNote, updateGeoShift } from '../services/dataService';
+import { PAYMENT_METHODS } from '../components/payments/AddPaymentModal';
 import GeoCalendarView from '../components/GeoCalendarView';
 
 // --- HELPER ---
@@ -263,7 +264,7 @@ const NotesModal = ({ country, onClose, user, onNoteAdded }) => {
                                     </div>
                                     <div className="flex-1">
                                         <p className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-                                            {note.note}
+                                            {note.note.replace(/\[DISCONNECT REASON\]\s*/g, '')}
                                         </p>
                                     </div>
                                     {idx === 0 && (
@@ -358,8 +359,99 @@ const ConfirmDeactivationModal = ({ country, onClose, onConfirm }) => {
         </div>
     );
 };
+
+// --- PAYMENT CONFIG MODAL ---
+const PaymentConfigModal = ({ country, onClose, onSave }) => {
+    const [selectedPayments, setSelectedPayments] = useState([]);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (country.payment && Array.isArray(country.payment)) {
+            setSelectedPayments(country.payment);
+        } else {
+            setSelectedPayments([]);
+        }
+    }, [country]);
+
+    const handleToggle = (method, isMain) => {
+        setSelectedPayments(prev => {
+            const existing = prev.find(p => p.method === method);
+            if (existing) {
+                if (existing.type === (isMain ? 'main' : 'additional')) {
+                    return prev.filter(p => p.method !== method);
+                } else {
+                    return prev.map(p => p.method === method ? { ...p, type: isMain ? 'main' : 'additional' } : p);
+                }
+            } else {
+                return [...prev, { method, type: isMain ? 'main' : 'additional' }];
+            }
+        });
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        await onSave(country.code, selectedPayments);
+        setSaving(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-[#111] w-full max-w-sm rounded-xl shadow-2xl border border-gray-200 dark:border-[#333] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="px-5 py-4 border-b border-gray-100 dark:border-[#222] flex items-center justify-between bg-gray-50/50 dark:bg-[#161616]">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl shadow-sm rounded-md bg-white dark:bg-[#222] p-1">{country.emoji}</span>
+                        <div>
+                            <h3 className="font-bold text-base text-gray-900 dark:text-white leading-tight">Платежки: {country.name}</h3>
+                            <p className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">{country.code}</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-[#222] rounded-full transition-colors">
+                        <X size={16} className="text-gray-400" />
+                    </button>
+                </div>
+                <div className="p-5 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-3">
+                    {PAYMENT_METHODS.map(method => {
+                        const current = selectedPayments.find(p => p.method === method);
+                        return (
+                            <div key={method} className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-[#222] bg-gray-50/50 dark:bg-[#151515] hover:border-blue-200 dark:hover:border-blue-900/30 transition-colors">
+                                <span className="text-sm font-bold text-gray-800 dark:text-gray-200">{method}</span>
+                                <div className="flex items-center gap-3">
+                                    <label className="flex items-center gap-1.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={current?.type === 'main'}
+                                            onChange={() => handleToggle(method, true)}
+                                            className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                        <span className="text-[10px] uppercase font-bold text-gray-500 relative top-px">Осн.</span>
+                                    </label>
+                                    <div className="w-px h-6 bg-gray-200 dark:bg-[#333]"></div>
+                                    <label className="flex items-center gap-1.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={current?.type === 'additional'}
+                                            onChange={() => handleToggle(method, false)}
+                                            className="w-3.5 h-3.5 rounded text-fuchsia-600 focus:ring-fuchsia-500 cursor-pointer"
+                                        />
+                                        <span className="text-[10px] uppercase font-bold text-gray-500 relative top-px">Доп.</span>
+                                    </label>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+                <div className="p-4 border-t border-gray-100 dark:border-[#222] flex gap-2">
+                    <button onClick={onClose} className="flex-1 px-4 py-2 text-xs font-bold text-gray-500 bg-gray-100 dark:bg-[#222] hover:bg-gray-200 dark:hover:bg-[#333] transition-colors rounded-lg">Отмена</button>
+                    <button disabled={saving} onClick={handleSave} className="flex-[2] px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors rounded-lg shadow-lg flex items-center justify-center">
+                        {saving ? 'Сохранение...' : 'Сохранить'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 const GeoMonitoringPage = () => {
-    const { countries, trafficStats, channels, user, fetchAllData, managers, schedules, permissions } = useAppStore();
+    const { countries, trafficStats, channels, user, fetchAllData, managers, schedules, permissions, isLoading, updateGeoPayments } = useAppStore();
 
     // Permission check for geo toggle
     const canToggleGeo = useMemo(() => {
@@ -461,8 +553,21 @@ const GeoMonitoringPage = () => {
     const [historyModal, setHistoryModal] = useState(null);
     const [notesModal, setNotesModal] = useState(null); // New state for notes modal
     const [deactivationModal, setDeactivationModal] = useState(null); // New state for deactivation confirms
+    const [paymentModal, setPaymentModal] = useState(null); // Modals for payment configuration
     const [toggling, setToggling] = useState(null);
     const [lastNotes, setLastNotes] = useState({}); // geoCode -> last note text
+
+    const handleSavePayments = async (code, selectedPayments) => {
+        try {
+            // Используем метод из store для мгновенного обновления без ожидания полного fetchAllData
+            await updateGeoPayments(code, selectedPayments);
+            showToast('Способы оплаты обновлены', 'success');
+            setPaymentModal(null);
+        } catch (err) {
+            console.error('Update error:', err);
+            showToast(`Ошибка: ${err.message}`, 'error');
+        }
+    };
 
     // Load last notes for all countries on mount
     const [notesLoaded, setNotesLoaded] = useState(false);
@@ -561,7 +666,7 @@ const GeoMonitoringPage = () => {
 
             // 2. If deactivating, add note
             if (!newStatus && reason) {
-                await addGeoNote(geo.code, `[DISCONNECT REASON] ${reason}`, user?.name || 'Unknown', user?.id);
+                await addGeoNote(geo.code, reason, user?.name || 'Unknown', user?.id);
                 await refreshNote(geo.code);
             }
 
@@ -595,6 +700,15 @@ const GeoMonitoringPage = () => {
     const activeCount = geoData.filter(g => g.isActive).length;
     const inactiveCount = geoData.filter(g => !g.isActive).length;
     const totalTraffic = geoData.reduce((s, g) => s + g.trafficCount, 0);
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 m-4 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
+                <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
+                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка данных...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="p-4 max-w-[1600px] mx-auto font-sans text-gray-900 dark:text-gray-100">
@@ -664,7 +778,7 @@ const GeoMonitoringPage = () => {
                         <span>Смена (UTC)</span>
                         <span>Заметки</span>
                         <span>Трафик</span>
-                        <span>Трафик был (дата)</span>
+                        <span>Платежка</span>
                         <span>Отключено (дата)</span>
                         <span>Sales</span>
                         <span>Consultant</span>
@@ -760,7 +874,7 @@ const GeoMonitoringPage = () => {
                                                 <div className="flex items-start gap-1">
                                                     <MessageSquare size={10} className="mt-0.5 text-blue-500 shrink-0" />
                                                     <span className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 leading-tight group-hover:text-blue-500 transition-colors">
-                                                        {lastNotes[geo.code]}
+                                                        {lastNotes[geo.code].replace(/\[DISCONNECT REASON\]\s*/g, '')}
                                                     </span>
                                                 </div>
                                             ) : (
@@ -784,18 +898,39 @@ const GeoMonitoringPage = () => {
                                         )}
                                     </div>
 
-                                    {/* Last Traffic Date */}
-                                    <div className="flex items-center gap-1.5 text-gray-500">
-                                        {geo.trafficCount > 0 ? (
-                                            <span className="text-[10px] text-gray-400">—</span>
-                                        ) : geo.lastTrafficDate ? (
-                                            <>
-                                                <Clock size={10} className="text-gray-400" />
-                                                <span className="text-[10px] font-mono">{formatDateShort(geo.lastTrafficDate)}</span>
-                                            </>
-                                        ) : (
-                                            <span className="text-[10px] text-gray-400">Нет данных</span>
-                                        )}
+                                    {/* Payments Column */}
+                                    <div className="min-w-0 pr-1">
+                                        <div
+                                            onClick={() => canToggleGeo && setPaymentModal(geo)}
+                                            className={`flex flex-col gap-1 w-full ${canToggleGeo ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1A1A1A] p-1 -m-1 rounded-lg transition-colors' : ''}`}
+                                            title={canToggleGeo ? 'Нажмите для настройки' : ''}
+                                        >
+                                            {geo.payment && Array.isArray(geo.payment) && geo.payment.length > 0 ? (
+                                                [...geo.payment].sort((a, b) => (a.type === 'main' ? -1 : 1)).map((p, idx) => {
+                                                    const isMain = p.type === 'main';
+                                                    let colorClass = "";
+                                                    switch (p.method) {
+                                                        case 'Lava': colorClass = "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800/50"; break;
+                                                        case 'JETFEX': colorClass = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800/50"; break;
+                                                        case 'IBAN': colorClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50"; break;
+                                                        case 'MyFatoorah': colorClass = "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800/50"; break;
+                                                        case 'INSTAPAY': colorClass = "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-400 border-pink-200 dark:border-pink-800/50"; break;
+                                                        default: colorClass = "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-700/50"; break;
+                                                    }
+                                                    return (
+                                                        <span key={`${geo.code}-${p.method}-${idx}`} className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] whitespace-nowrap ${colorClass}`}>
+                                                            <span className="font-bold">{p.method}</span>
+                                                            <span className="text-[9px] opacity-60 uppercase font-bold tracking-wider">{isMain ? 'Основная' : 'Доп.'}</span>
+                                                        </span>
+                                                    );
+                                                })
+                                            ) : (
+                                                <span className="text-xs text-gray-400 font-medium whitespace-nowrap flex items-center gap-1 min-h-[22px]">
+                                                    <DollarSign size={12} className="opacity-50" />
+                                                    Не задано
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Last Deactivation Date */}
@@ -907,6 +1042,9 @@ const GeoMonitoringPage = () => {
 
             {/* Notes Modal */}
             {notesModal && <NotesModal country={notesModal} onClose={() => setNotesModal(null)} user={user} onNoteAdded={() => refreshNote(notesModal.code)} />}
+
+            {/* Payment Modal */}
+            {paymentModal && <PaymentConfigModal country={paymentModal} onClose={() => setPaymentModal(null)} onSave={handleSavePayments} />}
 
             {/* Deactivation Confirm Modal */}
             {deactivationModal && <ConfirmDeactivationModal country={deactivationModal} onClose={() => setDeactivationModal(null)} onConfirm={(reason) => performToggle(deactivationModal, false, reason)} />}
