@@ -536,10 +536,9 @@ const GeoMonitoringPage = () => {
             });
         });
 
-        // === PART 2: Profile-based detection (SMM, Consultant — roles that don't use schedules) ===
-        const profileRoles = ['SMM', 'Consultant'];
+        // === PART 2: Profile-based detection (all roles) ===
+        // This ensures managers manually assigned to a GEO in their profile show up even without past shifts
         managers.forEach(mgr => {
-            if (!profileRoles.includes(mgr.role)) return;
             if (mgr.status === 'inactive') return;
 
             // Parse manager.geo (can be array or string)
