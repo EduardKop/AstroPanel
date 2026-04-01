@@ -318,13 +318,18 @@ const MobileDateRangePicker = ({ startDate, endDate, onChange }) => {
 
 const GeoMatrixPage = () => {
     // ✅ Достаем trafficStats и метод обновления
-    const { payments, trafficStats, fetchTrafficStats, isLoading: storeLoading, user } = useAppStore();
+    const { payments: storePayments, trafficStats, fetchTrafficStats, user } = useAppStore();
 
     const isAdminOrCLevel = user?.role === 'Admin' || user?.role === 'C-Level';
 
     const [countriesList, setCountriesList] = useState([]);
+    const [localPayments, setLocalPayments] = useState(null);
     const [localLoading, setLocalLoading] = useState(true);
-    const loading = localLoading || storeLoading;
+
+    // Use local payments if available (fast load), fallback to store
+    const payments = localPayments ?? storePayments ?? [];
+
+    const loading = localLoading;
     const [isDemoMode, setIsDemoMode] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCell, setSelectedCell] = useState(null);
@@ -358,14 +363,101 @@ const GeoMatrixPage = () => {
     // Загрузка стран (справочник)
     const fetchCountries = async () => {
         try {
-            setLocalLoading(true);
             const { data, error } = await supabase.from('countries').select('*').order('code', { ascending: true }).range(0, 9999);
             if (error) throw error;
             setCountriesList(data || []);
-        } catch (error) { console.error(error); } finally { setLocalLoading(false); }
+        } catch (error) { console.error(error); }
     };
 
-    useEffect(() => { fetchCountries(); }, []);
+    // Быстрая загрузка payments напрямую — только нужные поля, фильтр по дате, не ждём store
+    const fetchLocalPayments = async (fromDate, toDate) => {
+        try {
+            setLocalLoading(true);
+
+            // Build UTC date range.
+            // extractUTCDate() in the matrix reads the UTC date from ISO strings,
+            // so we must filter using UTC boundaries (not local time).
+            const toUTCMidnight = (d) => {
+                const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+                return new Date(Date.UTC(y, m, day)).toISOString(); // YYYY-MM-DDT00:00:00.000Z
+            };
+            const toUTCNextDay = (d) => {
+                const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+                return new Date(Date.UTC(y, m, day + 1)).toISOString(); // exclusive end
+            };
+
+            const fd = fromDate instanceof Date ? fromDate : new Date(fromDate);
+            const td = toDate instanceof Date ? toDate : new Date(toDate);
+
+            const startISO = toUTCMidnight(fd);
+            const endISO = toUTCNextDay(td);
+
+            // Parallel: managers + first page of payments
+            const [mgrsRes, firstPage] = await Promise.all([
+                supabase.from('managers').select('id, role'),
+                supabase
+                    .from('enriched_payments_view')
+                    .select('transaction_date, status, product, payment_type, manager_id, derived_source, country, amount_eur, amount_local')
+                    .gte('transaction_date', startISO)
+                    .lt('transaction_date', endISO)   // exclusive: lt next day = full last day
+                    .range(0, 999)
+            ]);
+
+            const mgrMap = {};
+            (mgrsRes.data || []).forEach(m => { mgrMap[m.id] = m.role; });
+
+            let all = firstPage.data || [];
+
+            // Paginate remaining pages if first page was full
+            if (all.length === 1000) {
+                let offset = 1000;
+                while (true) {
+                    const { data: page, error } = await supabase
+                        .from('enriched_payments_view')
+                        .select('transaction_date, status, product, payment_type, manager_id, derived_source, country, amount_eur, amount_local')
+                        .gte('transaction_date', startISO)
+                        .lt('transaction_date', endISO)
+                        .range(offset, offset + 999);
+                    if (error || !page || page.length === 0) break;
+                    all = all.concat(page);
+                    if (page.length < 1000) break;
+                    offset += 1000;
+                }
+            }
+
+            // Normalize field names for matrix useMemo
+            const normalized = all.map(p => {
+                let source = p.derived_source || 'direct';
+                if (source === 'unknown') source = 'direct';
+                return {
+                    ...p,
+                    transactionDate: p.transaction_date,
+                    amountEUR: Number(p.amount_eur) || 0,
+                    amountLocal: Number(p.amount_local) || 0,
+                    type: p.payment_type || 'Other',
+                    status: p.status || 'pending',
+                    source,
+                    managerRole: mgrMap[p.manager_id] || null,
+                };
+            });
+            setLocalPayments(normalized);
+        } catch (e) {
+            console.error('fetchLocalPayments error:', e);
+        } finally {
+            setLocalLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchCountries();
+    }, []);
+
+    // Reload payments when date range changes
+    useEffect(() => {
+        if (startDate && endDate) {
+            fetchLocalPayments(startDate, endDate);
+        }
+    }, [startDate?.toISOString(), endDate?.toISOString()]);
 
     // ✅ Подгружаем трафик при смене дат (для расчета конверсии в модалке)
     useEffect(() => {

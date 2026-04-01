@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { addCountry, deleteCountry } from '../services/dataService';
-import { Globe, Plus, Trash2, Search, X, AlertCircle, Save, Info, Clock, Flag } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
+import { showToast } from '../utils/toastEvents';
+import { Globe, Plus, Trash2, Search, X, AlertCircle, Save, Info, Clock, Flag, FolderOpen, ChevronDown, Check } from 'lucide-react';
+import ProjectBadge, { getProjectColors } from '../components/geo/ProjectBadge';
+import ProjectsManagerModal from '../components/geo/ProjectsManagerModal';
 
 // Common flags for the dropdown — includes default currency
 const COMMON_FLAGS = [
@@ -35,10 +39,12 @@ const CURRENCY_OPTIONS = [
 ];
 
 const GeoSettingsPage = () => {
-    const { countries, managers, fetchAllData } = useAppStore();
+    const { countries, managers, projects, fetchAllData } = useAppStore();
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
     const [deleteModalData, setDeleteModalData] = useState(null); // { country, activeManagers }
     const [search, setSearch] = useState('');
+    const [editingProjectGeo, setEditingProjectGeo] = useState(null);
     const [submitting, setSubmitting] = useState(false);
 
     // Form State
@@ -49,8 +55,25 @@ const GeoSettingsPage = () => {
         lang: '',
         currency_code: 'EUR',
         shift_start: '09:00',
-        shift_end: '18:00'
+        shift_end: '18:00',
+        project_id: ''
     });
+
+    const handleProjectChange = async (countryCode, newProjectId) => {
+        try {
+            const { error } = await supabase.from('countries').update({ project_id: newProjectId }).eq('code', countryCode);
+            if (error) throw error;
+            useAppStore.setState(state => ({
+                countries: state.countries.map(c => c.code === countryCode ? { ...c, project_id: newProjectId } : c)
+            }));
+            showToast('Успешно', 'Проект для ГЕО изменен', 'success');
+        } catch (error) {
+            console.error('Project assignment error:', error);
+            showToast('Ошибка', 'Не удалось изменить проект', 'error');
+        } finally {
+            setEditingProjectGeo(null);
+        }
+    };
 
     // 🔍 SEARCH FILTER
     const filteredCountries = countries.filter(c =>
@@ -86,11 +109,12 @@ const GeoSettingsPage = () => {
                 lang: formData.lang,
                 currency_code: formData.currency_code.toUpperCase() || 'EUR',
                 shift_start: formData.shift_start,
-                shift_end: formData.shift_end
+                shift_end: formData.shift_end,
+                project_id: formData.project_id || null
             });
             await fetchAllData(true);
             setIsAddModalOpen(false);
-            setFormData({ code: '', name: '', emoji: '', lang: '', currency_code: 'EUR', shift_start: '09:00', shift_end: '18:00' });
+            setFormData({ code: '', name: '', emoji: '', lang: '', currency_code: 'EUR', shift_start: '09:00', shift_end: '18:00', project_id: '' });
         } catch (error) {
             alert('Ошибка при добавлении: ' + error.message);
         } finally {
@@ -153,6 +177,12 @@ const GeoSettingsPage = () => {
                         />
                     </div>
                     <button
+                        onClick={() => setIsProjectsModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-[#1A1A1A] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-[#333] rounded-lg hover:bg-gray-200 dark:hover:bg-[#222] transition-all font-medium text-sm"
+                    >
+                        <FolderOpen size={16} /> Проекты
+                    </button>
+                    <button
                         onClick={() => setIsAddModalOpen(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium text-sm shadow-lg shadow-blue-500/20"
                     >
@@ -163,8 +193,10 @@ const GeoSettingsPage = () => {
 
             {/* GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredCountries.map(country => (
-                    <div key={country.code} className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-5 hover:border-blue-400 dark:hover:border-blue-500/50 transition-all group relative overflow-hidden">
+                {filteredCountries.map(country => {
+                    const project = projects.find(p => p.id === country.project_id);
+                    return (
+                    <div key={country.code} className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl p-5 hover:border-blue-400 dark:hover:border-blue-500/50 transition-all group relative">
 
                         <div className="flex items-start justify-between mb-4">
                             <div className="text-4xl">{country.emoji}</div>
@@ -176,19 +208,53 @@ const GeoSettingsPage = () => {
                             </button>
                         </div>
 
-                        <div className="mb-4">
+                        <div className="mb-3">
                             <h3 className="font-bold text-lg dark:text-white mb-0.5">{country.name}</h3>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                 <span className="text-xs font-mono font-medium bg-gray-100 dark:bg-[#222] text-gray-500 px-2 py-0.5 rounded">{country.code}</span>
                                 {country.currency_code && (
                                     <span className="text-xs font-mono font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-800">
                                         {country.currency_code}
                                     </span>
                                 )}
-                                {country.lang && (
-                                    <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 px-1">
-                                        • {country.lang}
-                                    </span>
+                            </div>
+                            {/* Project Selector inline */}
+                            <div className="relative mt-2">
+                                <button
+                                    onClick={() => setEditingProjectGeo(editingProjectGeo === country.code ? null : country.code)}
+                                    className="flex items-center gap-1.5 hover:scale-[1.02] transition-transform rounded focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                    title="Нажмите чтобы изменить проект"
+                                >
+                                    {project ? (
+                                        <ProjectBadge project={project} />
+                                    ) : (
+                                        <span className="text-[10px] text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded px-2 py-0.5">Без проекта</span>
+                                    )}
+                                    <ChevronDown size={14} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </button>
+                                {editingProjectGeo === country.code && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setEditingProjectGeo(null)} />
+                                        <div className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-xl z-50 overflow-hidden flex flex-col py-1">
+                                            <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50 dark:bg-[#1A1A1A]">Выберите проект</div>
+                                            {projects.map(p => (
+                                                <button
+                                                    key={p.id}
+                                                    onClick={() => handleProjectChange(country.code, p.id)}
+                                                    className="px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-[#222] text-sm text-gray-700 dark:text-gray-300 transition-colors flex items-center justify-between"
+                                                >
+                                                    <span className="truncate">{p.name}</span>
+                                                    {project?.id === p.id && <Check size={14} className="text-blue-500 flex-shrink-0 ml-2" />}
+                                                </button>
+                                            ))}
+                                            <button
+                                                onClick={() => handleProjectChange(country.code, null)}
+                                                className="px-3 py-2 text-left hover:bg-red-50 dark:hover:bg-red-900/20 text-sm text-red-500 transition-colors border-t border-gray-100 dark:border-[#222]"
+                                            >
+                                                Открепить от проекта
+                                            </button>
+                                        </div>
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -198,7 +264,8 @@ const GeoSettingsPage = () => {
                             <span>Смена: <span className="font-mono text-gray-900 dark:text-gray-200">{country.shift_start?.slice(0, 5)} - {country.shift_end?.slice(0, 5)}</span></span>
                         </div>
                     </div>
-                ))}
+                    );
+                })}
             </div>
 
             {/* ADD MODAL */}
@@ -272,6 +339,22 @@ const GeoSettingsPage = () => {
                                 </div>
                             </div>
 
+                            {/* Project selector */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1"><FolderOpen size={12} /> Проект</label>
+                                <select
+                                    name="project_id"
+                                    value={formData.project_id}
+                                    onChange={handleChange}
+                                    className="w-full bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200 dark:border-[#333] rounded-lg px-3 py-2 text-sm dark:text-white"
+                                >
+                                    <option value="">— Не указан —</option>
+                                    {projects.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1"><Clock size={12} /> Начало смены</label>
@@ -343,6 +426,15 @@ const GeoSettingsPage = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* PROJECTS MANAGER MODAL */}
+            {isProjectsModalOpen && (
+                <ProjectsManagerModal
+                    projects={projects}
+                    onClose={() => setIsProjectsModalOpen(false)}
+                    onRefresh={() => fetchAllData(true)}
+                />
             )}
 
         </div>

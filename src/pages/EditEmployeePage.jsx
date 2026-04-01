@@ -7,6 +7,7 @@ import {
   User, Mail, Phone, MapPin, Briefcase,
   UploadCloud, ArrowLeft, Send, Calendar, Save, Loader2, ChevronDown, Sparkles
 } from 'lucide-react';
+import ProjectBadge from '../components/geo/ProjectBadge';
 
 const ROLES = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
 const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
@@ -14,7 +15,7 @@ const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 const EditEmployeePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { logActivity, user: currentUser, fetchAllData } = useAppStore();
+  const { logActivity, user: currentUser, fetchAllData, projects } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -348,6 +349,7 @@ const EditEmployeePage = () => {
                         {availableCountries.map(country => {
                           const isActive = formData.geo.includes(country.code);
                           const isEditingSelfAsNonAdmin = currentUser?.id === id && !['Admin', 'C-level'].includes(currentUser?.role);
+                          const project = projects.find(p => p.id === country.project_id);
 
                           return (
                             <button
@@ -356,7 +358,7 @@ const EditEmployeePage = () => {
                               onClick={() => !isEditingSelfAsNonAdmin && toggleCountry(country.code)}
                               disabled={isEditingSelfAsNonAdmin}
                               className={`
-                                relative group overflow-hidden px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-300 flex items-center gap-2
+                                relative group overflow-hidden px-3 py-2 rounded-xl text-xs font-bold border transition-all duration-300 flex items-center gap-2
                                 ${isEditingSelfAsNonAdmin
                                   ? 'cursor-not-allowed opacity-50'
                                   : 'cursor-pointer'
@@ -370,6 +372,15 @@ const EditEmployeePage = () => {
                               <span className="text-base">{country.emoji}</span>
                               <span className="tracking-wide">{country.code}</span>
                               <span className="text-[10px] opacity-70 font-normal">{country.name}</span>
+                              {project && (
+                                <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${
+                                  isActive
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-gray-400'
+                                }`}>
+                                  {project.name}
+                                </span>
+                              )}
                             </button>
                           )
                         })}

@@ -69,6 +69,7 @@ export const useAppStore = create((set, get) => ({
   products: [],
   rules: [],
   learningArticles: [], // NEW: Learning Center articles
+  projects: [], // NEW: Projects (Astrology, Taro, ...)
   countries: [], // NEW: Countries with flags
   schedules: [], // NEW: Schedule data
   onlineUsers: [], // NEW: Realtime Online Users
@@ -320,34 +321,39 @@ export const useAppStore = create((set, get) => ({
     try {
       const map = get().channelsMap;
 
-      // Use RPC for filtered stats
-      const { data, error } = await supabase.rpc('get_lead_stats_v2', {
-        start_date: dateFrom,
-        end_date: dateTo
-      });
-
-      if (error) throw error;
+      // Paginate RPC to bypass the 1000-row PostgREST limit
+      let all = [];
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .rpc('get_lead_stats_v2', { start_date: dateFrom, end_date: dateTo })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all = all.concat(data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
 
       const formattedStats = {};
-      if (data) {
-        data.forEach(stat => {
-          const countryCode = map[stat.channel_id] || 'Other';
-          const dateStr = stat.created_date; // YYYY-MM-DD from RPC
+      all.forEach(stat => {
+        const countryCode = map[stat.channel_id] || 'Other';
+        const dateStr = stat.created_date;
 
-          if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
-          if (!formattedStats[countryCode][dateStr]) {
-            formattedStats[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
-          }
+        if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
+        if (!formattedStats[countryCode][dateStr]) {
+          formattedStats[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
+        }
 
-          const count = Number(stat.count || 0);
+        const count = Number(stat.count || 0);
 
-          if (stat.is_whatsapp) formattedStats[countryCode][dateStr].whatsapp += count;
-          else if (stat.is_comment) formattedStats[countryCode][dateStr].comments += count;
-          else formattedStats[countryCode][dateStr].direct += count;
+        if (stat.is_whatsapp) formattedStats[countryCode][dateStr].whatsapp += count;
+        else if (stat.is_comment) formattedStats[countryCode][dateStr].comments += count;
+        else formattedStats[countryCode][dateStr].direct += count;
 
-          formattedStats[countryCode][dateStr].all += count;
-        });
-      }
+        formattedStats[countryCode][dateStr].all += count;
+      });
 
       set({ trafficStats: formattedStats });
     } catch (error) {
@@ -560,6 +566,7 @@ export const useAppStore = create((set, get) => ({
       const newChannelsMap = {};
       (channelsData || []).forEach(ch => {
         newChannelsMap[ch.wazzup_id] = ch.country_code;
+        newChannelsMap[ch.id] = ch.country_code;
       });
 
       // Process App Settings
@@ -621,6 +628,7 @@ export const useAppStore = create((set, get) => ({
       const [
         channelsData,
         managersData,
+        projectsData,
         countriesData,
         schedulesData,
         appSettingsData,
@@ -628,10 +636,25 @@ export const useAppStore = create((set, get) => ({
       ] = await Promise.all([
         fetchAll('channels', '*', 'id', true),
         fetchAll('managers', '*', 'created_at', false),
+        fetchAll('projects', '*', 'name', true).catch(() => []),
         fetchAll('countries', '*', 'code', true),
         fetchAll('schedules', '*', 'date', false),
         fetchAll('app_settings', '*', 'key', true),
-        supabase.rpc('get_lead_stats_v2', { start_date: '2020-01-01', end_date: '2030-01-01' }).then(r => r.data || [])
+        // Paginate to bypass 1000-row PostgREST limit
+        (async () => {
+          let all = [], from = 0;
+          const PAGE = 1000;
+          while (true) {
+            const { data, error } = await supabase
+              .rpc('get_lead_stats_v2', { start_date: '2020-01-01', end_date: '2030-01-01' })
+              .range(from, from + PAGE - 1);
+            if (error || !data || data.length === 0) break;
+            all = all.concat(data);
+            if (data.length < PAGE) break;
+            from += PAGE;
+          }
+          return all;
+        })()
       ]);
 
 
@@ -639,6 +662,7 @@ export const useAppStore = create((set, get) => ({
       const newChannelsMap = {};
       (channelsData || []).forEach(ch => {
         newChannelsMap[ch.wazzup_id] = ch.country_code;
+        newChannelsMap[ch.id] = ch.country_code;
       });
       set({ channelsMap: newChannelsMap, channels: channelsData || [] });
 
@@ -683,6 +707,7 @@ export const useAppStore = create((set, get) => ({
         channelsMap: newChannelsMap,
         channels: channelsData || [],
         managers: managersData || [],
+        projects: projectsData || [],
         countries: countriesData || [],
         schedules: schedulesData || [],
         permissions: permissionsMap,
@@ -791,6 +816,7 @@ export const useAppStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_settings' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'countries' }, () => get().fetchAllData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_audit_exceptions' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'manager_rates' }, () => get().fetchAllData(true))
       .subscribe();

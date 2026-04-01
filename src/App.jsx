@@ -407,7 +407,7 @@ function App() {
                   {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
                   {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
                   {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
-                  {hasAccess('geo_monitoring') && <SidebarItem icon={Globe} label="ГЕО" path="/geo-monitoring" />}
+                  {hasAccess('geo_monitoring') && <SidebarItem icon={Globe} label="ГЕО / Проекты" path="/geo-monitoring" />}
                   {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
                   {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. Анализ" path="/quick-stats" />}

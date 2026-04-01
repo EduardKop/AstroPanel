@@ -114,7 +114,7 @@ const TARO_NEW_PRODUCTS = [
 
 export const PAYMENT_METHODS = [
     'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты', 'MyFatoorah', 'INSTAPAY',
-    'Мексика Барбадос (дроп)', 'Турция астрология (дроп)', 'астрология Грузия (дроп)', 'Horizon Азб - Узб (дроп)'
+    'Мексика Барбадос (дроп)', 'Турция астрология (дроп)', 'астрология Грузия (дроп)', 'Horizon Азб - Узб (дроп)', 'Бразилия (дроп)'
 ];
 
 const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {

@@ -6,13 +6,14 @@ import {
   UploadCloud, ArrowLeft, Send, Calendar, Save
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import ProjectBadge from '../components/geo/ProjectBadge';
 
 const ROLES = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
 const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 
 const AddEmployeePage = () => {
   const navigate = useNavigate();
-  const { logActivity, user: currentUser, permissions } = useAppStore();
+  const { logActivity, user: currentUser, permissions, projects } = useAppStore();
   const [loading, setLoading] = useState(false);
 
   const [avatarFile, setAvatarFile] = useState(null);
@@ -270,12 +271,13 @@ const AddEmployeePage = () => {
                   <div className="flex flex-wrap gap-2">
                     {availableCountries.map(country => {
                       const isActive = formData.geo.includes(country.code);
+                      const project = projects.find(p => p.id === country.project_id);
                       return (
                         <button
                           key={country.code}
                           type="button"
                           onClick={() => toggleCountry(country.code)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 ${isActive
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${isActive
                             ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30'
                             : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-400'
                             }`}
@@ -283,6 +285,15 @@ const AddEmployeePage = () => {
                           <span>{country.emoji}</span>
                           <span>{country.code}</span>
                           <span className="text-[10px] opacity-70">{country.name}</span>
+                          {project && (
+                            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${
+                              isActive
+                                ? 'bg-white/20 text-white'
+                                : 'bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-gray-400'
+                            }`}>
+                              {project.name}
+                            </span>
+                          )}
                         </button>
                       )
                     })}
