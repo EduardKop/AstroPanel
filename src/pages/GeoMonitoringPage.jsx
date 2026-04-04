@@ -1,11 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store/appStore';
 import { useLocation } from 'react-router-dom';
 import { toggleGeoStatus } from '../services/dataService';
 import { showToast } from '../utils/toastEvents';
 import {
     Globe, Power, PowerOff, Calendar as CalendarIcon, Search,
-    TrendingUp, X, Clock, Activity, History, Users, MessageSquare, Send, LayoutGrid, List, RefreshCw, DollarSign, Star
+    TrendingUp, X, Clock, Activity, History, Users, MessageSquare, Send, LayoutGrid, List, RefreshCw, DollarSign, Star,
+    ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { fetchGeoNotes, addGeoNote, updateGeoShift } from '../services/dataService';
 import { supabase } from '../services/supabaseClient';
@@ -786,6 +787,23 @@ const GeoMonitoringPage = () => {
         }
     };
 
+    const tableScrollRef = useRef(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(true);
+
+    const updateScrollState = useCallback(() => {
+        const el = tableScrollRef.current;
+        if (!el) return;
+        setCanScrollLeft(el.scrollLeft > 0);
+        setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    }, []);
+
+    const scrollTable = useCallback((dir) => {
+        const el = tableScrollRef.current;
+        if (!el) return;
+        el.scrollBy({ left: dir * 300, behavior: 'smooth' });
+    }, []);
+
     // --- Summary ---
     const activeCount = geoData.filter(g => g.isActive).length;
     const inactiveCount = geoData.filter(g => !g.isActive).length;
@@ -857,46 +875,81 @@ const GeoMonitoringPage = () => {
                     </button>
                 </div>
 
-                {/* Project filter pills */}
-                {projects.length > 0 && (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                        <button
-                            onClick={() => setActiveProjectFilter(null)}
-                            className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-all border ${activeProjectFilter === null
-                                ? 'bg-gray-800 dark:bg-white text-white dark:text-gray-900 border-transparent'
-                                : 'bg-white dark:bg-[#111] text-gray-500 border-gray-200 dark:border-[#333] hover:border-gray-400'
-                            }`}
-                        >
-                            Все проекты
-                        </button>
-                        {projects.map(p => {
-                            const isActive = activeProjectFilter === p.id;
-                            const dotColors = {
-                                blue: 'bg-blue-500', purple: 'bg-purple-500', green: 'bg-emerald-500',
-                                orange: 'bg-orange-500', red: 'bg-red-500', pink: 'bg-pink-500',
-                                yellow: 'bg-yellow-500', cyan: 'bg-cyan-500'
-                            };
-                            return (
-                                <button
-                                    key={p.id}
-                                    onClick={() => setActiveProjectFilter(isActive ? null : p.id)}
-                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition-all border ${isActive
-                                        ? 'bg-gray-800 dark:bg-white text-white dark:text-gray-900 border-transparent'
-                                        : 'bg-white dark:bg-[#111] text-gray-500 border-gray-200 dark:border-[#333] hover:border-gray-400'
-                                    }`}
-                                >
-                                    <span className={`w-1.5 h-1.5 rounded-full ${dotColors[p.color] || 'bg-blue-500'}`} />
-                                    {p.name}
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
+                {/* Project filter pills + scroll arrows */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    {projects.length > 0 && (
+                        <>
+                            <button
+                                onClick={() => setActiveProjectFilter(null)}
+                                className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-all border ${activeProjectFilter === null
+                                    ? 'bg-gray-800 dark:bg-white text-white dark:text-gray-900 border-transparent'
+                                    : 'bg-white dark:bg-[#111] text-gray-500 border-gray-200 dark:border-[#333] hover:border-gray-400'
+                                }`}
+                            >
+                                Все проекты
+                            </button>
+                            {projects.map(p => {
+                                const isActive = activeProjectFilter === p.id;
+                                const dotColors = {
+                                    blue: 'bg-blue-500', purple: 'bg-purple-500', green: 'bg-emerald-500',
+                                    orange: 'bg-orange-500', red: 'bg-red-500', pink: 'bg-pink-500',
+                                    yellow: 'bg-yellow-500', cyan: 'bg-cyan-500'
+                                };
+                                return (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => setActiveProjectFilter(isActive ? null : p.id)}
+                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition-all border ${isActive
+                                            ? 'bg-gray-800 dark:bg-white text-white dark:text-gray-900 border-transparent'
+                                            : 'bg-white dark:bg-[#111] text-gray-500 border-gray-200 dark:border-[#333] hover:border-gray-400'
+                                        }`}
+                                    >
+                                        <span className={`w-1.5 h-1.5 rounded-full ${dotColors[p.color] || 'bg-blue-500'}`} />
+                                        {p.name}
+                                    </button>
+                                );
+                            })}
+                        </>
+                    )}
+
+                    {/* Scroll arrows — only in monitoring tab */}
+                    {activeTab === 'monitoring' && (
+                        <div className="flex items-center gap-1 ml-1">
+                            <button
+                                onClick={() => scrollTable(-1)}
+                                disabled={!canScrollLeft}
+                                className={`w-7 h-7 flex items-center justify-center rounded-md border transition-all duration-150 ${
+                                    canScrollLeft
+                                        ? 'border-gray-200 dark:border-[#333] bg-white dark:bg-[#1E2026] text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 hover:text-gray-900 dark:hover:text-white cursor-pointer'
+                                        : 'border-gray-100 dark:border-[#222] bg-gray-50 dark:bg-[#161616] text-gray-300 dark:text-[#444] cursor-default'
+                                }`}
+                            >
+                                <ChevronLeft size={14} />
+                            </button>
+                            <button
+                                onClick={() => scrollTable(1)}
+                                disabled={!canScrollRight}
+                                className={`w-7 h-7 flex items-center justify-center rounded-md border transition-all duration-150 ${
+                                    canScrollRight
+                                        ? 'border-gray-200 dark:border-[#333] bg-white dark:bg-[#1E2026] text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 hover:text-gray-900 dark:hover:text-white cursor-pointer'
+                                        : 'border-gray-100 dark:border-[#222] bg-gray-50 dark:bg-[#161616] text-gray-300 dark:text-[#444] cursor-default'
+                                }`}
+                            >
+                                <ChevronRight size={14} />
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {activeTab === 'monitoring' ? (
                 /* Table */
-                <div className="border border-gray-200 dark:border-[#333] rounded-lg overflow-x-auto">
+                <div>
+                    <div
+                        ref={tableScrollRef}
+                        onScroll={updateScrollState}
+                        className="border border-gray-200 dark:border-[#333] rounded-lg overflow-x-auto"
+                    >
                   <table className="w-full border-collapse text-xs">
                     <thead>
                         <tr className="bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333]">
@@ -1199,6 +1252,7 @@ const GeoMonitoringPage = () => {
                         )}
                     </tbody>
                   </table>
+                    </div>
                 </div>
             ) : (
                 <GeoCalendarView countries={sortedGeos} />
