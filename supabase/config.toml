@@ -14,3 +14,8 @@ entrypoint = "./functions/instagram-stats/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/novalumen-sent-messages/index.ts"
+
+[functions.novalumen-statistics]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/novalumen-statistics/index.ts"

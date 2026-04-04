@@ -388,7 +388,7 @@ const ManagerActivityEfficiencyPage = () => {
                 body: { fromDt: rangeStartForApi, toDt: rangeEndForApi, offset: API_OFFSET }
             });
 
-            if (!invokeResult.error && invokeResult.data?.data) {
+            if (!invokeResult.error && invokeResult.data && !invokeResult.data.error) {
                  const rawStats = invokeResult.data.data;
                  normalizedStats = Array.isArray(rawStats) ? rawStats : Array.isArray(rawStats?.data) ? rawStats.data : [];
             } else {
@@ -396,12 +396,13 @@ const ManagerActivityEfficiencyPage = () => {
                      // Fallback for dev if the Edge Function is not deployed locally yet
                      const statsUrl = `${API_BASE}/users/statistics?from_dt=${encodeURIComponent(rangeStartForApi)}&to_dt=${encodeURIComponent(rangeEndForApi)}&offset=${API_OFFSET}`;
                      const statsResponse = await fetch(statsUrl);
-                     if (!statsResponse.ok) throw new Error(`Статистика недоступна (HTTP ${statsResponse.status}) - ${invokeResult.error?.message || ''}`);
+                     const invokeErrMsg = invokeResult.error?.message || invokeResult.data?.error || '';
+                     if (!statsResponse.ok) throw new Error(`Статистика недоступна (HTTP ${statsResponse.status}) - ${invokeErrMsg}`);
 
                      const rawStats = await statsResponse.json();
                      normalizedStats = Array.isArray(rawStats) ? rawStats : Array.isArray(rawStats?.data) ? rawStats.data : [];
                  } else {
-                     throw new Error(`Edge Function novalumen-statistics failed: ${invokeResult.error?.message || 'Unknown'}`);
+                     throw new Error(`Edge Function novalumen-statistics failed: ${JSON.stringify(invokeResult)}`);
                  }
             }
 

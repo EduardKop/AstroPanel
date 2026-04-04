@@ -54,7 +54,10 @@ serve(async (req: Request) => {
     });
 
     if (!response.ok) {
-      throw new Error(`Upstream HTTP error: ${response.status}`);
+      const errorText = await response.text().catch(() => "Unknown upstream error");
+      return new Response(JSON.stringify({ error: `Upstream error ${response.status}: ${errorText}` }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();
@@ -65,9 +68,8 @@ serve(async (req: Request) => {
   } catch (error) {
     console.error("novalumen-statistics proxy error:", error);
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Unknown server error",
+      error: String(error)
     }), {
-      status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
