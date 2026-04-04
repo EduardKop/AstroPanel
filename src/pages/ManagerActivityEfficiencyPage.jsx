@@ -150,10 +150,18 @@ const ManagerIdentity = React.memo(({ name, userId, avatarUrl, username, geo }) 
                         <span className="text-[10px] font-medium text-gray-400 dark:text-[#555]">#{userId}</span>
                     )}
                     {formattedGeo && (
-                        <>
-                            <span className="text-[10px] text-gray-300 dark:text-[#444]">•</span>
-                            <span className="text-[9px] font-bold uppercase tracking-widest text-gray-500 dark:text-[#777] truncate">{formattedGeo}</span>
-                        </>
+                        <div className="relative group flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] text-gray-300 dark:text-[#444] shrink-0">•</span>
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-gray-500 dark:text-[#777] truncate cursor-pointer transition-colors hover:text-gray-700 dark:hover:text-gray-300">
+                                {formattedGeo}
+                            </span>
+                            
+                            <div className="pointer-events-none absolute left-4 top-full mt-1.5 z-50 w-max max-w-[250px] opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-1 group-hover:translate-y-0">
+                                <div className="rounded-lg bg-gray-900 px-3 py-2 text-[10px] font-bold uppercase tracking-widest leading-relaxed text-white shadow-xl dark:bg-[#1E2026] dark:border dark:border-[#2B2F36]">
+                                    {formattedGeo}
+                                </div>
+                            </div>
+                        </div>
                     )}
                 </div>
             </div>
@@ -161,7 +169,7 @@ const ManagerIdentity = React.memo(({ name, userId, avatarUrl, username, geo }) 
     );
 });
 
-const ActivityRow = React.memo(({ item }) => {
+const ActivityRow = React.memo(({ item, pastDateRangeLabel }) => {
     const hasTimeline = item.timelineStatus === 'ready';
     
     let workTimeClass = 'text-gray-400 dark:text-gray-500'; // Default / no activity
@@ -192,7 +200,18 @@ const ActivityRow = React.memo(({ item }) => {
                 />
             </div>
 
-            <div className="min-w-0 px-2 flex items-center">
+            <div className="min-w-0 px-2 flex flex-col justify-center gap-1.5 py-1">
+                {(item.todayDirect > 0 || item.todayComments > 0 || item.pastDirect > 0 || item.pastComments > 0) && (
+                    <div className="flex items-center gap-1.5 text-[8px] font-bold text-gray-400 dark:text-[#555] uppercase tracking-widest pl-1 leading-none">
+                        <span className="flex items-center gap-1 text-[#3B82F6]/90 dark:text-blue-400">
+                            Дневной <span className="text-gray-700 dark:text-[#EAECEF] font-medium">Direct <span className="text-[10px] font-bold">{item.todayDirect}</span></span> <span className="text-gray-700 dark:text-[#EAECEF] font-medium">Комментарии <span className="text-[10px] font-bold">{item.todayComments}</span></span>
+                        </span>
+                        <span className="text-gray-300 dark:text-[#333]">|</span>
+                        <span className="flex items-center gap-1 text-[#10B981]/90 dark:text-emerald-400">
+                            База клиентов {pastDateRangeLabel ? `(${pastDateRangeLabel})` : ''} <span className="text-gray-700 dark:text-[#EAECEF] font-medium">Direct <span className="text-[10px] font-bold">{item.pastDirect}</span></span> <span className="text-gray-700 dark:text-[#EAECEF] font-medium">Комментарии <span className="text-[10px] font-bold">{item.pastComments}</span></span>
+                        </span>
+                    </div>
+                )}
                 <ActivityRail segments={item.timelineSegments} status={item.timelineStatus} startLabel={item.timelineStartLabel} endLabel={item.timelineEndLabel} />
             </div>
 
@@ -318,8 +337,11 @@ const fetchTimelineInDev = async (userIds, fromDt, toDt) => {
 
 const ManagerActivityEfficiencyPage = () => {
     const storeManagers = useAppStore((state) => state.managers);
+    const channelsMap = useAppStore((state) => state.channelsMap);
+    const countries = useAppStore((state) => state.countries);
 
     const [localManagers, setLocalManagers] = useState(null);
+    const [geoTraffic, setGeoTraffic] = useState({});
     const today = new Date().toISOString().split('T')[0];
     const [date, setDate] = useState(today);
 
@@ -335,6 +357,7 @@ const ManagerActivityEfficiencyPage = () => {
         setDate(d.toISOString().split('T')[0]);
     };
     const [roleFilter, setRoleFilter] = useState('all');
+    const [sortType, setSortType] = useState('activity');
     const [hideInactive, setHideInactive] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -346,6 +369,16 @@ const ManagerActivityEfficiencyPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [timelineMode, setTimelineMode] = useState('smart');
+
+    // Fix: main element is flex-1 (100vh) which traps scroll inside.
+    // We override it only for this page and restore on unmount.
+    useEffect(() => {
+        const main = document.querySelector('main');
+        if (!main) return;
+        const prev = main.style.height;
+        main.style.height = 'auto';
+        return () => { main.style.height = prev; };
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -387,6 +420,63 @@ const ManagerActivityEfficiencyPage = () => {
             const invokeResult = await supabase.functions.invoke('novalumen-statistics', {
                 body: { fromDt: rangeStartForApi, toDt: rangeEndForApi, offset: API_OFFSET }
             });
+
+            // FETCH TRAFFIC
+            try {
+                const activeDate = date; // 'YYYY-MM-DD'
+                const d3 = new Date(date); 
+                d3.setDate(d3.getDate() - 3);
+                const trafficStartApi = d3.toISOString().split('T')[0];
+
+                // To include the activeDate fully (up to 23:59:59), we must pass activeDate + 1 day to the RPC
+                // because start_date and end_date are parsed as 00:00:00 bounds in Supabase.
+                const dEnd = new Date(date);
+                dEnd.setDate(dEnd.getDate() + 1);
+                const trafficEndApi = dEnd.toISOString().split('T')[0];
+
+                const { data: leadData } = await supabase.rpc('get_lead_stats_v2', { start_date: trafficStartApi, end_date: trafficEndApi });
+                
+                let mapToUse = channelsMap;
+                if (!mapToUse || Object.keys(mapToUse).length === 0) {
+                    const { data: cData } = await supabase.from('channels').select('id, wazzup_id, country_code');
+                    const tempMap = {};
+                    if (cData) {
+                        cData.forEach(c => {
+                            tempMap[c.wazzup_id] = c.country_code;
+                            tempMap[c.id] = c.country_code;
+                        });
+                        mapToUse = tempMap;
+                    }
+                }
+
+                const newGeoTraffic = {};
+                if (leadData) {
+                    leadData.forEach((stat) => {
+                        const countryCode = mapToUse[stat.channel_id];
+                        if (!countryCode) return;
+                        
+                        const dateStr = stat.created_date;
+                        const count = Number(stat.count || 0);
+
+                        if (!newGeoTraffic[countryCode]) {
+                            newGeoTraffic[countryCode] = { todayDirect: 0, todayComments: 0, pastDirect: 0, pastComments: 0 };
+                        }
+                        
+                        const isComment = stat.is_comment;
+
+                        if (dateStr === activeDate) {
+                            if (isComment) newGeoTraffic[countryCode].todayComments += count;
+                            else newGeoTraffic[countryCode].todayDirect += count;
+                        } else if (dateStr >= trafficStartApi && dateStr < activeDate) {
+                            if (isComment) newGeoTraffic[countryCode].pastComments += count;
+                            else newGeoTraffic[countryCode].pastDirect += count;
+                        }
+                    });
+                }
+                setGeoTraffic(newGeoTraffic);
+            } catch (err) {
+                console.error("Failed to load traffic stats", err);
+            }
 
             if (!invokeResult.error && invokeResult.data && !invokeResult.data.error) {
                  const rawStats = invokeResult.data.data;
@@ -479,6 +569,27 @@ const ManagerActivityEfficiencyPage = () => {
                 )
                 : null;
 
+            let todayDirect = 0, todayComments = 0, pastDirect = 0, pastComments = 0;
+            const geoString = manager?.geo || null;
+            let displayGeo = geoString;
+            
+            if (geoString) {
+                const geoArray = Array.isArray(geoString) ? geoString : geoString.split(',').map(g => g.trim().toUpperCase());
+                geoArray.forEach((g) => {
+                    if (geoTraffic[g]) {
+                        todayDirect += geoTraffic[g].todayDirect;
+                        todayComments += geoTraffic[g].todayComments;
+                        pastDirect += geoTraffic[g].pastDirect;
+                        pastComments += geoTraffic[g].pastComments;
+                    }
+                });
+                
+                displayGeo = geoArray.map((g) => {
+                    const country = countries?.find(c => c.code === g);
+                    return country ? `${country.emoji} ${country.name}` : g;
+                }).join(', ');
+            }
+
             return {
                 ...item,
                 manager,
@@ -486,7 +597,11 @@ const ManagerActivityEfficiencyPage = () => {
                 role: manager?.role || 'Unknown',
                 avatar_url: manager?.avatar_url || null,
                 telegramUsername: manager?.telegram_username || null,
-                geo: manager?.geo || null,
+                geo: displayGeo,
+                todayDirect,
+                todayComments,
+                pastDirect,
+                pastComments,
                 totalMessages: Number(item.total_messages_count) || timelineData?.messageCount || 0,
                 timelineStatus,
                 timelineError,
@@ -497,7 +612,7 @@ const ManagerActivityEfficiencyPage = () => {
                 timelineEndLabel,
             };
         });
-    }, [managerMap, effectiveRangeStart, effectiveRangeEnd, statsData, timelinePayloads, timelineStartLabel, timelineEndLabel]);
+    }, [managerMap, effectiveRangeStart, effectiveRangeEnd, statsData, timelinePayloads, timelineStartLabel, timelineEndLabel, geoTraffic, countries]);
 
     const filteredRows = useMemo(() => {
         const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
@@ -514,10 +629,22 @@ const ManagerActivityEfficiencyPage = () => {
                 return managerName.includes(normalizedQuery) || telegramUsername.includes(normalizedQuery) || userIdLabel.includes(normalizedQuery);
             })
             .sort((a, b) => {
+                if (sortType === 'traffic_daily') {
+                    const bDaily = (b.todayDirect || 0) + (b.todayComments || 0);
+                    const aDaily = (a.todayDirect || 0) + (a.todayComments || 0);
+                    if (bDaily !== aDaily) return bDaily - aDaily;
+                    return b.totalMessages - a.totalMessages;
+                }
+                if (sortType === 'traffic_past') {
+                    const bPast = (b.pastDirect || 0) + (b.pastComments || 0);
+                    const aPast = (a.pastDirect || 0) + (a.pastComments || 0);
+                    if (bPast !== aPast) return bPast - aPast;
+                    return b.totalMessages - a.totalMessages;
+                }
                 if (b.totalMessages !== a.totalMessages) return b.totalMessages - a.totalMessages;
                 return (b.activeDurationMs || 0) - (a.activeDurationMs || 0);
             });
-    }, [deferredSearchQuery, hideInactive, preparedRows, roleFilter]);
+    }, [deferredSearchQuery, hideInactive, preparedRows, roleFilter, sortType]);
 
     const summary = useMemo(() => {
         return filteredRows.reduce((acc, item) => {
@@ -537,6 +664,17 @@ const ManagerActivityEfficiencyPage = () => {
     }, [managers]);
 
     const timelineIssuesCount = Object.keys(timelineErrors).length;
+
+    const pastDateRangeLabel = useMemo(() => {
+        if (!date) return '';
+        const dStart = new Date(date);
+        dStart.setDate(dStart.getDate() - 3);
+        const dEnd = new Date(date);
+        dEnd.setDate(dEnd.getDate() - 1);
+        
+        const f = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return `${f(dStart)} - ${f(dEnd)}`;
+    }, [date]);
 
     return (
         <div className="pb-0">
@@ -601,6 +739,16 @@ const ManagerActivityEfficiencyPage = () => {
                                 {role === 'all' ? 'Все роли' : role}
                             </option>
                         ))}
+                    </select>
+
+                    <select
+                        value={sortType}
+                        onChange={(e) => setSortType(e.target.value)}
+                        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium outline-none transition-colors focus:border-emerald-400 dark:border-[#2A2A2A] dark:bg-[#16181d] dark:text-white"
+                    >
+                        <option value="activity">По активности</option>
+                        <option value="traffic_daily">По дневному трафику</option>
+                        <option value="traffic_past">По базе клиентов</option>
                     </select>
 
                     <label className="relative min-w-[220px] flex-1">
@@ -713,7 +861,7 @@ const ManagerActivityEfficiencyPage = () => {
                                         description="Попробуй расширить даты или отключить фильтр скрытия неактивных менеджеров."
                                     />
                                 ) : (
-                                    filteredRows.map((item) => <ActivityRow key={item.user_id} item={item} />)
+                                    filteredRows.map((item) => <ActivityRow key={item.user_id} item={item} pastDateRangeLabel={pastDateRangeLabel} />)
                                 )}
                             </div>
                         </div>
