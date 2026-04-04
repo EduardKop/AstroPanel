@@ -394,7 +394,7 @@ const GeoMatrixPage = () => {
 
             // Parallel: managers + first page of payments
             const [mgrsRes, firstPage] = await Promise.all([
-                supabase.from('managers').select('id, role'),
+                supabase.from('managers').select('id, name, role, telegram_username'),
                 supabase
                     .from('enriched_payments_view')
                     .select('transaction_date, status, product, payment_type, manager_id, derived_source, country, amount_eur, amount_local')
@@ -404,7 +404,13 @@ const GeoMatrixPage = () => {
             ]);
 
             const mgrMap = {};
-            (mgrsRes.data || []).forEach(m => { mgrMap[m.id] = m.role; });
+            (mgrsRes.data || []).forEach(m => {
+                mgrMap[m.id] = {
+                    name: m.name,
+                    role: m.role,
+                    telegram_username: m.telegram_username,
+                };
+            });
 
             let all = firstPage.data || [];
 
@@ -434,10 +440,13 @@ const GeoMatrixPage = () => {
                     transactionDate: p.transaction_date,
                     amountEUR: Number(p.amount_eur) || 0,
                     amountLocal: Number(p.amount_local) || 0,
+                    manager: mgrMap[p.manager_id]?.name || 'Не назначен',
+                    managerId: p.manager_id,
+                    manager_tg: mgrMap[p.manager_id]?.telegram_username || null,
                     type: p.payment_type || 'Other',
                     status: p.status || 'pending',
                     source,
-                    managerRole: mgrMap[p.manager_id] || null,
+                    managerRole: mgrMap[p.manager_id]?.role || null,
                 };
             });
             setLocalPayments(normalized);

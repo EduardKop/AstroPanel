@@ -62,20 +62,27 @@ import GeoSettingsPage from './pages/GeoSettingsPage';
 import GeoMonitoringPage from './pages/GeoMonitoringPage';
 import PaymentAuditPage from './pages/PaymentAuditPage';
 import ManagerActivityPage from './pages/ManagerActivityPage';
+import ManagerActivityEfficiencyPage from './pages/ManagerActivityEfficiencyPage';
 import AddPaymentButton from './components/payments/AddPaymentButton';
 import PublicSharedPage from './pages/public/PublicSharedPage';
 
 
-const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild, children, isOpen, onToggle }) => {
+const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild, children, isOpen, onToggle, activePaths = [] }) => {
   const location = useLocation();
+  const matchesNestedPath = (candidatePath) => location.pathname === candidatePath || location.pathname.startsWith(`${candidatePath}/`);
   const isActive = location.pathname === path;
+  const isGroupActive = activePaths.some(matchesNestedPath);
   const baseClasses = `group w-full flex items-center gap-2.5 px-3 py-2.5 md:py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-sm md:text-xs font-medium ${isChild ? 'pl-8' : ''}`;
   const stateClasses = isActive ? 'bg-gray-200 text-black dark:bg-[#2A2A2A] dark:text-white font-semibold' : 'text-gray-600 dark:text-[#888888] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] hover:text-black dark:hover:text-[#EAEAEA]';
 
   if (children) {
+    const groupStateClasses = (isOpen || isGroupActive)
+      ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]'
+      : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]';
+
     return (
       <>
-        <button onClick={onToggle} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${isOpen ? 'text-black dark:text-white bg-gray-100 dark:bg-[#1A1A1A]' : 'text-gray-600 dark:text-[#888] hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'}`}>
+        <button onClick={onToggle} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-[6px] transition-all duration-150 mb-0.5 text-xs font-medium ${groupStateClasses}`}>
           <div className="flex items-center gap-2.5"><Icon size={16} /><span>{label}</span></div>
           <ChevronRight size={12} className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
         </button>
@@ -131,6 +138,7 @@ function App() {
   const [isEmployeesOpen, setIsEmployeesOpen] = useState(false);
   const [isSalesOpen, setIsSalesOpen] = useState(false);
   const [isConsOpen, setIsConsOpen] = useState(false);
+  const [isActivityOpen, setIsActivityOpen] = useState(() => window.location.pathname.startsWith('/manager-activity'));
   const [isCLevelOpen, setIsCLevelOpen] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -412,7 +420,18 @@ function App() {
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
                   {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. Анализ" path="/quick-stats" />}
                   {(hasAccess('pnl_report') || hasAccess('pnl_data')) && <SidebarItem icon={TrendingUp} label="P&L" path="/pnl" />}
-                  {hasAccess('manager_activity') && <SidebarItem icon={Activity} label="Активность" path="/manager-activity" />}
+                  {hasAccess('manager_activity') && (
+                    <SidebarItem
+                      icon={Activity}
+                      label="Активность"
+                      isOpen={isActivityOpen}
+                      onToggle={() => setIsActivityOpen(!isActivityOpen)}
+                      activePaths={['/manager-activity']}
+                    >
+                      <SidebarItem icon={Clock} label="Опоздания" path="/manager-activity/lateness" isChild />
+                      <SidebarItem icon={BarChart3} label="Эффективность" path="/manager-activity/efficiency" isChild />
+                    </SidebarItem>
+                  )}
                 </div>
               </>
             )}
@@ -654,7 +673,9 @@ function App() {
               <Route path="/pnl" element={<ProtectedRoute resource="pnl"><PnLPage /></ProtectedRoute>} />
 
               {/* ✅ АКТИВНОСТЬ МЕНЕДЖЕРОВ */}
-              <Route path="/manager-activity" element={<ProtectedRoute resource="manager_activity"><ManagerActivityPage /></ProtectedRoute>} />
+              <Route path="/manager-activity" element={<ProtectedRoute resource="manager_activity"><Navigate to="/manager-activity/lateness" replace /></ProtectedRoute>} />
+              <Route path="/manager-activity/lateness" element={<ProtectedRoute resource="manager_activity"><ManagerActivityPage /></ProtectedRoute>} />
+              <Route path="/manager-activity/efficiency" element={<ProtectedRoute resource="manager_activity"><ManagerActivityEfficiencyPage /></ProtectedRoute>} />
 
               {/* ✅ PUBLIC SHARED PAGES */}
               <Route path="/s/:slug" element={<PublicSharedPage />} />
