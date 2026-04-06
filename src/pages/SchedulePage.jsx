@@ -674,6 +674,30 @@ const SchedulePage = () => {
         return sorted;
     }, [scheduleData, orderedManagers]);
 
+    // Today's date key (YYYY-MM-DD)
+    const todayKey = useMemo(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }, []);
+
+    const copyAllNicknames = useCallback(() => {
+        const nicks = sortedScheduleData
+            .filter(r => r.nickname)
+            .map(r => `@${r.nickname.replace('@', '')}`);
+        if (!nicks.length) { showToast('Нет никнеймов', 'error'); return; }
+        navigator.clipboard.writeText(nicks.join(' '));
+        showToast(`Скопировано ${nicks.length} никнеймов`, 'success');
+    }, [sortedScheduleData]);
+
+    const copyOnShiftNicknames = useCallback(() => {
+        const nicks = sortedScheduleData
+            .filter(r => r.nickname && r.shifts[todayKey])
+            .map(r => `@${r.nickname.replace('@', '')}`);
+        if (!nicks.length) { showToast('Никого нет на смене сегодня', 'error'); return; }
+        navigator.clipboard.writeText(nicks.join(' '));
+        showToast(`Скопировано ${nicks.length} никнеймов (на смене)`, 'success');
+    }, [sortedScheduleData, todayKey]);
+
     // Update order when drag ends
     const handleReorder = useCallback((newIds) => {
         setOrderedManagers(newIds);
@@ -974,6 +998,22 @@ const SchedulePage = () => {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Copy nickname actions */}
+            <div className="flex items-center gap-5 px-1 mt-3 mb-1">
+                <button
+                    onClick={copyAllNicknames}
+                    className="text-[11px] text-gray-400 dark:text-[#555] hover:text-blue-500 dark:hover:text-blue-400 transition-colors hover:underline underline-offset-2 cursor-pointer"
+                >
+                    скопировать все никнеймы
+                </button>
+                <button
+                    onClick={copyOnShiftNicknames}
+                    className="text-[11px] text-gray-400 dark:text-[#555] hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors hover:underline underline-offset-2 cursor-pointer"
+                >
+                    скопировать никнеймы текущих сотрудников на смене
+                </button>
             </div>
 
             {/* Schedule Stats */}

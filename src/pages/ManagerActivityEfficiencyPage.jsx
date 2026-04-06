@@ -842,7 +842,7 @@ const ManagerActivityEfficiencyPage = () => {
                 )}
 
                 <div className="-mx-3 overflow-x-clip overflow-y-visible bg-white md:-mx-6 dark:bg-[#0A0C11]">
-                    <div className="overflow-x-auto overflow-y-visible">
+                    <div className="overflow-x-auto overflow-y-clip">
                         <div className="min-w-[900px]">
                             <div className={`grid ${BOARD_COLUMNS} gap-6 bg-gray-50 border-b border-gray-200 px-3 py-4 text-[9px] font-bold uppercase tracking-widest text-gray-400 md:px-6 dark:bg-[#12141A] dark:border-[#1E2026] dark:text-[#777]`}>
                                 <div>Менеджер</div>

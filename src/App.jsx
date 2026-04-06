@@ -411,7 +411,7 @@ function App() {
                   <span>Общие дешборды</span>
                   <ChevronRight size={12} className={`transition-transform duration-200 ${sectionStates.dashboards ? 'rotate-90' : ''}`} />
                 </button>
-                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.dashboards ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.dashboards ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
                   {hasAccess('dashboard_view') && <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />}
                   {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
                   {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
