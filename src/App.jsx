@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp, Monitor
 } from 'lucide-react'
 
 import ThemeToggle from './components/ThemeToggle';
@@ -63,6 +63,7 @@ import GeoMonitoringPage from './pages/GeoMonitoringPage';
 import PaymentAuditPage from './pages/PaymentAuditPage';
 import ManagerActivityPage from './pages/ManagerActivityPage';
 import ManagerActivityEfficiencyPage from './pages/ManagerActivityEfficiencyPage';
+import ManagerDevicesPage from './pages/ManagerDevicesPage';
 import AddPaymentButton from './components/payments/AddPaymentButton';
 import PublicSharedPage from './pages/public/PublicSharedPage';
 
@@ -430,6 +431,7 @@ function App() {
                     >
                       <SidebarItem icon={Clock} label="Опоздания" path="/manager-activity/lateness" isChild />
                       <SidebarItem icon={BarChart3} label="Эффективность" path="/manager-activity/efficiency" isChild />
+                      <SidebarItem icon={Monitor} label="Устройства" path="/manager-activity/devices" isChild />
                     </SidebarItem>
                   )}
                 </div>
@@ -676,6 +678,7 @@ function App() {
               <Route path="/manager-activity" element={<ProtectedRoute resource="manager_activity"><Navigate to="/manager-activity/lateness" replace /></ProtectedRoute>} />
               <Route path="/manager-activity/lateness" element={<ProtectedRoute resource="manager_activity"><ManagerActivityPage /></ProtectedRoute>} />
               <Route path="/manager-activity/efficiency" element={<ProtectedRoute resource="manager_activity"><ManagerActivityEfficiencyPage /></ProtectedRoute>} />
+              <Route path="/manager-activity/devices" element={<ProtectedRoute resource="manager_activity"><ManagerDevicesPage /></ProtectedRoute>} />
 
               {/* ✅ PUBLIC SHARED PAGES */}
               <Route path="/s/:slug" element={<PublicSharedPage />} />
