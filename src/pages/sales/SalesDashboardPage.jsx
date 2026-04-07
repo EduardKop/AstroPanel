@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../../store/appStore';
+import { supabase } from '../../services/supabaseClient';
 import {
   Filter, RotateCcw, XCircle, X,
   Users, DollarSign, Percent, CreditCard, LayoutDashboard,
@@ -53,6 +54,7 @@ const toYMD = (date) => {
 };
 
 import { DenseSelect } from '../../components/ui/FilterSelect';
+import { CurrentManagerActivityWidget } from './components/CurrentManagerActivityWidget';
 
 // Mobile Date Range Picker
 const MobileDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
@@ -357,10 +359,195 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
 };
 
 const SalesDashboardPage = () => {
-  const { payments, user: currentUser, isLoading, trafficStats, fetchTrafficStats, fetchAllData } = useAppStore();
+  const { payments: storePayments, user: currentUser, isLoading, trafficStats, fetchTrafficStats, fetchAllData, managers, schedules, channelsMap } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
+
+  const currentManagerId = useMemo(() => {
+    return managers?.find(m => m.name === currentUser?.name)?.id;
+  }, [managers, currentUser]);
+
+  const isRestrictedUser = useMemo(() => {
+    if (!currentUser) return false;
+    const restrictedRoles = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Retention', 'Consultant'];
+    return restrictedRoles.includes(currentUser.role);
+  }, [currentUser]);
+
+  const shiftDatesGeoMap = useMemo(() => {
+    if (!currentManagerId || !schedules) return null;
+    const map = new Map();
+    schedules.forEach(s => {
+      if (s.manager_id === currentManagerId) {
+        let geos = s.geo_code ? (Array.isArray(s.geo_code) ? s.geo_code : s.geo_code.split(',').map(g => g.trim().toUpperCase())) : [];
+        const existing = map.get(s.date) || [];
+        map.set(s.date, [...new Set([...existing, ...geos])]);
+      }
+    });
+    return map;
+  }, [schedules, currentManagerId]);
+
+  const [localPayments, setLocalPayments] = useState(null);
+  const [localLoading, setLocalLoading] = useState(true);
+
+  const payments = localPayments ?? storePayments ?? [];
+
+  const fetchLocalPayments = async (fromDate, toDate, retries = 2) => {
+    try {
+      setLocalLoading(true);
+
+      const toUTCMidnight = (d) => {
+        const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+        return new Date(Date.UTC(y, m, day)).toISOString();
+      };
+      const toUTCNextDay = (d) => {
+        const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+        return new Date(Date.UTC(y, m, day + 1)).toISOString();
+      };
+
+      const startISO = toUTCMidnight(fromDate);
+      const endISO = toUTCNextDay(toDate);
+
+      const mgrMap = {};
+      (managers || []).forEach(m => {
+        mgrMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username };
+      });
+
+      let query = supabase
+        .from('enriched_payments_view')
+        .select('id, transaction_date, status, product, payment_type, manager_id, derived_source, country, amount_eur, amount_local, crm_link')
+        .gte('transaction_date', startISO)
+        .lt('transaction_date', endISO);
+        
+      if (isRestrictedUser && currentManagerId) {
+        query = query.eq('manager_id', currentManagerId);
+      }
+
+      let all = [];
+      let offset = 0;
+      
+      while (true) {
+        const { data: page, error } = await query.range(offset, offset + 999);
+        
+        if (error) {
+          if (retries > 0) {
+            console.warn(`Error fetching payments, retrying... (${retries} left)`, error);
+            await new Promise(r => setTimeout(r, 1000));
+            return fetchLocalPayments(fromDate, toDate, retries - 1);
+          }
+          throw error;
+        }
+        if (!page || page.length === 0) break;
+        all = all.concat(page);
+        if (page.length < 1000) break;
+        offset += 1000;
+      }
+
+      const normalized = all.map(p => {
+        let source = p.derived_source || 'direct';
+        if (source === 'unknown') source = 'direct';
+        return {
+          ...p,
+          transactionDate: p.transaction_date,
+          amountEUR: Number(p.amount_eur) || 0,
+          amountLocal: Number(p.amount_local) || 0,
+          manager: mgrMap[p.manager_id]?.name || 'Не назначен',
+          managerId: p.manager_id,
+          manager_tg: mgrMap[p.manager_id]?.telegram_username || null,
+          type: p.payment_type || 'Other',
+          status: p.status || 'pending',
+          source,
+          managerRole: mgrMap[p.manager_id]?.role || null,
+        };
+      });
+      setLocalPayments(normalized);
+    } catch (e) {
+      console.error('fetchLocalPayments error:', e);
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const [todayPayments, setTodayPayments] = useState([]);
+  const [todayTrafficStats, setTodayTrafficStats] = useState({});
+
+  useEffect(() => {
+    if (startDate && endDate && managers?.length > 0) {
+      fetchLocalPayments(startDate, endDate);
+    }
+  }, [startDate?.toISOString(), endDate?.toISOString(), managers?.length, isRestrictedUser, currentManagerId]);
+
+  useEffect(() => {
+    const loadTodayData = async () => {
+      try {
+        const todayObj = new Date();
+        const todayStr = toYMD(todayObj);
+        
+        const dEnd = new Date(todayObj);
+        dEnd.setDate(dEnd.getDate() + 1);
+        const trafficEndApi = toYMD(dEnd);
+
+        // Fetch Today traffic
+        const { data: trafficData } = await supabase.rpc('get_lead_stats_v2', { start_date: todayStr, end_date: trafficEndApi });
+        const trafficObj = {};
+        if (trafficData) {
+          trafficData.forEach(stat => {
+            const countryCode = channelsMap ? channelsMap[stat.channel_id] || 'Other' : 'Other';
+            const dateStr = stat.created_date;
+            
+            if (!trafficObj[countryCode]) {
+               trafficObj[countryCode] = {};
+            }
+            if (!trafficObj[countryCode][dateStr]) {
+               trafficObj[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
+            }
+
+            const count = Number(stat.count || 0);
+
+            if (stat.is_whatsapp) trafficObj[countryCode][dateStr].whatsapp += count;
+            else if (stat.is_comment) trafficObj[countryCode][dateStr].comments += count;
+            else trafficObj[countryCode][dateStr].direct += count;
+            
+            trafficObj[countryCode][dateStr].all += count;
+          });
+        }
+        setTodayTrafficStats(trafficObj);
+
+        // For payments, use the same isoStart / isoEnd format as fetchLocalPayments
+        const startClone = new Date(todayObj); startClone.setHours(0,0,0,0);
+        const endClone = new Date(todayObj); endClone.setHours(23,59,59,999);
+        const isoStart = startClone.toISOString();
+        const isoEnd = endClone.toISOString();
+
+        let query = supabase.from('enriched_payments_view').select('id, transaction_date, status, product, payment_type, manager_id, derived_source, country, amount_eur, amount_local, crm_link').gte('transaction_date', isoStart).lt('transaction_date', isoEnd);
+        if (isRestrictedUser && currentManagerId) query = query.eq('manager_id', currentManagerId);
+        
+        const { data: payData } = await query;
+        const mgrMap = {};
+        (managers || []).forEach(m => mgrMap[m.id] = { name: m.name, role: m.role });
+        
+        const norm = (payData || []).map(p => {
+          let source = p.derived_source || 'direct';
+          if (source === 'unknown') source = 'direct';
+          return {
+             ...p,
+             transactionDate: p.transaction_date,
+             amountEUR: Number(p.amount_eur) || 0,
+             managerRole: mgrMap[p.manager_id]?.role || null,
+             manager: mgrMap[p.manager_id]?.name,
+             source,
+             country: p.country,
+             product: p.product,
+             type: p.payment_type || 'Other'
+          }
+        });
+        setTodayPayments(norm);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    if (managers?.length > 0) loadTodayData();
+  }, [managers?.length, isRestrictedUser, currentManagerId]);
 
   const [filters, setFilters] = useState({ manager: [], country: [], product: [], type: [], source: 'all', showMobileFilters: false });
   const [expandedId, setExpandedId] = useState(null);
@@ -369,26 +556,19 @@ const SalesDashboardPage = () => {
     return !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all');
   }, [filters]);
 
-  // 🔄 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ДАННЫХ ПРИ МОНТИРОВАНИИ
   useEffect(() => {
-    if (fetchAllData) {
-      fetchAllData(true); // force update
-    }
-  }, [fetchAllData]);
-
-  useEffect(() => {
-    if (fetchTrafficStats) {
-      const isoStart = startDate ? new Date(startDate.setHours(0, 0, 0, 0)).toISOString() : undefined;
-      const isoEnd = endDate ? new Date(endDate.setHours(23, 59, 59, 999)).toISOString() : undefined;
+    if (fetchTrafficStats && startDate && endDate) {
+      const startClone = new Date(startDate);
+      startClone.setHours(0, 0, 0, 0);
+      const isoStart = startClone.toISOString();
+      
+      const endClone = new Date(endDate);
+      endClone.setHours(23, 59, 59, 999);
+      const isoEnd = endClone.toISOString();
+      
       fetchTrafficStats(isoStart, isoEnd);
     }
   }, [fetchTrafficStats, startDate, endDate]);
-
-  const isRestrictedUser = useMemo(() => {
-    if (!currentUser) return false;
-    const restrictedRoles = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Retention', 'Consultant'];
-    return restrictedRoles.includes(currentUser.role);
-  }, [currentUser]);
 
   const uniqueValues = useMemo(() => {
     const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
@@ -488,6 +668,11 @@ const SalesDashboardPage = () => {
         Object.entries(geoData).forEach(([dateStr, val]) => {
           if (dateStr < startStr || dateStr > endStr) return;
 
+          if (isRestrictedUser && shiftDatesGeoMap) {
+            const workedGeos = shiftDatesGeoMap.get(dateStr);
+            if (!workedGeos || !workedGeos.includes(geo)) return;
+          }
+
           if (typeof val === 'object' && val !== null) {
             if (filters.source === 'all') sum += (val.all || 0);
             else if (filters.source === 'direct') sum += (val.direct || 0);
@@ -523,7 +708,7 @@ const SalesDashboardPage = () => {
       avgCheck,
       activeManagers: activeManagersSet.size
     };
-  }, [filteredData, trafficStats, filters, startDate, endDate, paymentRanks]);
+  }, [filteredData, trafficStats, filters, startDate, endDate, paymentRanks, shiftDatesGeoMap]);
 
   // ✅ РАСЧЕТ KPI ПО ИСТОЧНИКАМ
   // Direct, Comments, WhatsApp - всегда показывает полные данные
@@ -569,17 +754,11 @@ const SalesDashboardPage = () => {
   }, [filteredData]);
 
   // ✅ ТАБЛИЦА КОНВЕРСИЙ: Direct / Comments / Общее (независимо от source-фильтра)
-  const conversionStats = useMemo(() => {
-    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
-    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+  const getConversionStats = (payArr, trStats, startStr, endStr) => {
+    let directSales = 0; let commentsSales = 0; let whatsappSales = 0;
+    let directTraffic = 0; let commentsTraffic = 0; let whatsappTraffic = 0;
 
-    let directSales = 0;
-    let commentsSales = 0;
-    let directTraffic = 0;
-    let commentsTraffic = 0;
-
-    // Продажи по источнику — отдельно, без source-фильтра, но с остальными фильтрами
-    payments.forEach(item => {
+    payArr.forEach(item => {
       if (!['Sales', 'SeniorSales'].includes(item.managerRole)) return;
       if (!item.transactionDate) return;
       const dbDateStr = extractUTCDate(item.transactionDate);
@@ -590,34 +769,82 @@ const SalesDashboardPage = () => {
       if (filters.type.length > 0 && !filters.type.includes(item.type)) return;
       if (item.source === 'direct') directSales++;
       else if (item.source === 'comments') commentsSales++;
+      else if (item.source === 'whatsapp') whatsappSales++;
     });
 
-    // Трафик по источнику
-    if (trafficStats && Object.keys(trafficStats).length > 0) {
-      const geos = filters.country.length > 0 ? filters.country : Object.keys(trafficStats);
+    if (trStats && Object.keys(trStats).length > 0) {
+      const geos = filters.country.length > 0 ? filters.country : Object.keys(trStats);
       geos.forEach(geo => {
-        const geoData = trafficStats[geo];
+        const geoData = trStats[geo];
         if (!geoData) return;
         Object.entries(geoData).forEach(([dateStr, val]) => {
           if (dateStr < startStr || dateStr > endStr) return;
+          if (isRestrictedUser && shiftDatesGeoMap) {
+            const workedGeos = shiftDatesGeoMap.get(dateStr);
+            if (!workedGeos || !workedGeos.includes(geo)) return;
+          }
           if (typeof val === 'object' && val !== null) {
             directTraffic += (val.direct || 0);
             commentsTraffic += (val.comments || 0);
+            whatsappTraffic += (val.whatsapp || 0);
           }
         });
       });
     }
 
     const cr = (t, s) => t > 0 ? ((s / t) * 100).toFixed(2) : '0.00';
-    const totalSales = directSales + commentsSales;
-    const totalTraffic = directTraffic + commentsTraffic;
+    const totalSales = directSales + commentsSales + whatsappSales;
+    const totalTraffic = directTraffic + commentsTraffic + whatsappTraffic;
 
     return {
-      direct:   { traffic: directTraffic,            sales: directSales,   cr: cr(directTraffic,  directSales)  },
-      comments: { traffic: commentsTraffic,           sales: commentsSales, cr: cr(commentsTraffic, commentsSales) },
-      total:    { traffic: totalTraffic,              sales: totalSales,    cr: cr(totalTraffic,    totalSales)   },
+      direct:   { traffic: directTraffic,   sales: directSales,   cr: cr(directTraffic,  directSales)  },
+      comments: { traffic: commentsTraffic, sales: commentsSales, cr: cr(commentsTraffic, commentsSales) },
+      whatsapp: { traffic: whatsappTraffic, sales: whatsappSales, cr: cr(whatsappTraffic, whatsappSales) },
+      total:    { traffic: totalTraffic,    sales: totalSales,    cr: cr(totalTraffic,    totalSales)   },
     };
-  }, [payments, startDate, endDate, filters.country, filters.product, filters.type, isRestrictedUser, currentUser, trafficStats]);
+  };
+
+  const conversionStats = useMemo(() => {
+    return getConversionStats(payments, trafficStats, startDate ? toYMD(startDate) : '0000-00-00', endDate ? toYMD(endDate) : '9999-99-99');
+  }, [payments, startDate, endDate, filters, isRestrictedUser, currentUser, trafficStats, shiftDatesGeoMap]);
+
+  const todayConversionStats = useMemo(() => {
+    const todayStr = toYMD(new Date());
+    return getConversionStats(todayPayments, todayTrafficStats, todayStr, todayStr);
+  }, [todayPayments, todayTrafficStats, filters, isRestrictedUser, currentUser, shiftDatesGeoMap]);
+
+  const todaySalesStats = useMemo(() => {
+    let filtered = todayPayments.filter(item => {
+      if (!['Sales', 'SeniorSales'].includes(item.managerRole)) return false;
+      if (isRestrictedUser && item.manager !== currentUser?.name) return false;
+      if (filters.country.length > 0 && !filters.country.includes(item.country)) return false;
+      if (filters.product.length > 0 && !filters.product.includes(item.product)) return false;
+      if (filters.type.length > 0 && !filters.type.includes(item.type)) return false;
+      return true;
+    });
+
+    const types = {};
+    const products = {};
+    filtered.forEach(p => {
+      const t = p.type || 'Other';
+      const pr = p.product || 'Other';
+      types[t] = (types[t] || 0) + 1;
+      products[pr] = (products[pr] || 0) + 1;
+    });
+
+    const total = filtered.length;
+    
+    // Convert to arrays, sort by count descending, and calculate percentages
+    const topTypes = Object.entries(types)
+      .map(([name, count]) => ({ name, count, percent: total ? (count/total)*100 : 0 }))
+      .sort((a,b) => b.count - a.count);
+      
+    const topProducts = Object.entries(products)
+      .map(([name, count]) => ({ name, count, percent: total ? (count/total)*100 : 0 }))
+      .sort((a,b) => b.count - a.count);
+
+    return { topTypes, topProducts, total };
+  }, [todayPayments, filters, isRestrictedUser, currentUser]);
 
   const chartData = useMemo(() => {
     const grouped = {};
@@ -636,6 +863,15 @@ const SalesDashboardPage = () => {
     setFilters({ manager: [], country: [], product: [], type: [], source: 'all' });
     setDateRange(getLastWeekRange());
   };
+
+  if (localLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm text-gray-500">Загрузка данных...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-10 transition-colors duration-200 w-full max-w-full overflow-x-hidden">
@@ -761,24 +997,22 @@ const SalesDashboardPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-3 md:gap-4 mb-6 mt-4 w-full min-w-0">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6 mb-6 mt-4 w-full min-w-0">
 
-        {/* 1. ГЛАВНЫЙ БЛОК */}
-        {/* 1. ГЛАВНЫЙ БЛОК */}
-        <div className="col-span-12 lg:col-span-8 flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0">
+        {/* 1. БЛОК ФИЛЬТРА (ЛЕВЫЙ) */}
+        <div className="flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0 w-full h-full">
           <div className="absolute inset-0 bg-white dark:bg-[#0F0F11] transition-colors duration-200"></div>
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5 pointer-events-none"></div>
 
           <div className="relative z-10 flex flex-col h-full p-4 md:p-5 overflow-hidden">
             <div className="mb-4 flex items-center justify-between min-w-0">
               <h3 className="text-sm font-bold text-gray-900 dark:text-white tracking-wide flex items-center gap-2 truncate">
-                <Activity size={16} className="text-blue-500 shrink-0" /> Конверсии по источникам
+                <Activity size={16} className="text-blue-500 shrink-0" /> Конверсии по источникам <span className="text-gray-400 font-normal">| {startDate?.toLocaleDateString('ru-RU')} - {endDate?.toLocaleDateString('ru-RU')}</span>
               </h3>
             </div>
 
             {/* ─── Conversion Table ─── */}
             <div className="rounded-xl border border-gray-100 dark:border-[#222] overflow-hidden mb-4 w-full">
-
               {/* Header */}
               <div className="grid grid-cols-4 bg-gray-50 dark:bg-[#1A1A1A] border-b border-gray-100 dark:border-[#222]">
                 <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">Источник</div>
@@ -831,35 +1065,57 @@ const SalesDashboardPage = () => {
                 </div>
               </div>
 
-              {/* Total */}
-              <div className="grid grid-cols-4 bg-gray-50/80 dark:bg-[#161616]">
+              {/* WhatsApp */}
+              <div className="grid grid-cols-4 border-b border-gray-100 dark:border-[#222] hover:bg-green-50/30 dark:hover:bg-green-900/5 transition-colors group">
                 <div className="px-4 py-4 flex items-center gap-2.5">
-                  <div className="w-1.5 h-6 rounded-full bg-gray-400 dark:bg-gray-500 shrink-0" />
+                  <div className="w-1.5 h-6 rounded-full bg-green-500 shrink-0" />
                   <div className="flex items-center gap-1.5">
-                    <Layers size={12} className="text-gray-400 shrink-0" />
-                    <span className="text-xs font-bold text-gray-900 dark:text-white">Общее</span>
+                    <Phone size={12} className="text-green-400 shrink-0" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">WhatsApp</span>
                   </div>
                 </div>
                 <div className="px-4 py-4 flex items-center justify-center">
-                  <span className="text-sm font-mono font-bold text-gray-900 dark:text-white">{conversionStats.total.traffic.toLocaleString()}</span>
+                  <span className="text-sm font-mono font-bold text-gray-900 dark:text-gray-200">{conversionStats.whatsapp.traffic.toLocaleString()}</span>
                 </div>
                 <div className="px-4 py-4 flex items-center justify-center">
-                  <span className={`text-sm font-mono font-bold ${conversionStats.total.sales > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
-                    {conversionStats.total.sales}
+                  <span className={`text-sm font-mono font-bold ${conversionStats.whatsapp.sales > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                    {conversionStats.whatsapp.sales}
                   </span>
                 </div>
                 <div className="px-4 py-4 flex items-center justify-end">
-                  <span className={`text-sm font-mono font-bold ${getCRColor(conversionStats.total.cr)}`}>{conversionStats.total.cr}%</span>
+                  <span className={`text-sm font-mono font-bold ${getCRColor(conversionStats.whatsapp.cr)}`}>{conversionStats.whatsapp.cr}%</span>
                 </div>
               </div>
 
+              {/* Total */}
+              <div className="grid grid-cols-4 bg-[#EFF6FF] dark:bg-[#111C33]/80 border-t-2 border-blue-100 dark:border-blue-900 shadow-[0_-4px_12px_rgba(0,0,0,0.02)] z-10 relative">
+                <div className="px-5 py-5 flex items-center gap-3">
+                  <div className="w-2 h-7 rounded-full bg-blue-500 shrink-0" />
+                  <div className="flex items-center gap-2">
+                    <Layers size={16} className="text-blue-500 shrink-0" />
+                    <span className="text-sm font-bold uppercase tracking-wider text-blue-900 dark:text-blue-200">Общее</span>
+                  </div>
+                </div>
+                <div className="px-5 py-5 flex items-center justify-center">
+                  <span className="text-[17px] font-mono font-black text-blue-900 dark:text-blue-100 drop-shadow-sm">{conversionStats.total.traffic.toLocaleString()}</span>
+                </div>
+                <div className="px-5 py-5 flex items-center justify-center">
+                  <span className={`text-[17px] font-mono font-black ${conversionStats.total.sales > 0 ? 'text-emerald-600 dark:text-emerald-400 drop-shadow-sm' : 'text-blue-800/50 dark:text-blue-200/50'}`}>
+                    {conversionStats.total.sales}
+                  </span>
+                </div>
+                <div className="px-5 py-5 flex items-center justify-end">
+                  <span className={`text-[17px] font-mono font-black ${getCRColor(conversionStats.total.cr)} drop-shadow-sm`}>{conversionStats.total.cr}%</span>
+                </div>
+              </div>
             </div>
 
             <div className="flex-1 min-h-[100px] w-full min-w-0">
               <div className="text-[10px] font-bold text-gray-400 uppercase mb-2 truncate">Динамика продаж</div>
-              <div className="h-24 w-full min-w-0 overflow-hidden">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
+              <div className="h-24 w-full min-w-0 overflow-hidden" style={{ position: 'relative' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
@@ -871,55 +1127,173 @@ const SalesDashboardPage = () => {
                     <Area type="monotone" dataKey="count" stroke="#3B82F6" fillOpacity={1} fill="url(#colorCount)" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 2. KPI CARDS (Sales Only) */}
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-3 min-w-0">
+        {/* 2. БЛОК СЕГОДНЯ (ПРАВЫЙ) */}
+        <div className="flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0 w-full h-full">
+          <div className="absolute inset-0 bg-white dark:bg-[#0F0F11] transition-colors duration-200"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-teal-500/5 pointer-events-none"></div>
 
-          <ProductCard
-            title="Отдел Продаж"
-            subtitle="Первые продажи"
-            mainValue={
-              filters.source === 'all'
-                ? kpiData.direct.sales + kpiData.comments.sales + kpiData.whatsapp.sales
-                : filters.source === 'direct' ? kpiData.direct.sales
-                  : filters.source === 'comments' ? kpiData.comments.sales
-                    : kpiData.whatsapp.sales
-            }
-            mainType="count"
-            data={(() => {
-              const src = filters.source;
-              const isAll = src === 'all';
-              const sales = isAll ? kpiData.direct.sales + kpiData.comments.sales + kpiData.whatsapp.sales
-                : src === 'direct' ? kpiData.direct.sales
-                  : src === 'comments' ? kpiData.comments.sales
-                    : kpiData.whatsapp.sales;
-              const sum = isAll
-                ? Number(kpiData.direct.depositSum) + Number(kpiData.comments.depositSum) + Number(kpiData.whatsapp.depositSum)
-                : src === 'direct' ? Number(kpiData.direct.depositSum)
-                  : src === 'comments' ? Number(kpiData.comments.depositSum)
-                    : Number(kpiData.whatsapp.depositSum);
-              const active = isAll
-                ? kpiData.direct.active + kpiData.comments.active + kpiData.whatsapp.active
-                : src === 'direct' ? kpiData.direct.active
-                  : src === 'comments' ? kpiData.comments.active
-                    : kpiData.whatsapp.active;
-              return [
-                { label: 'Активных менеджеров', val: active },
-                { label: 'Сумма депозитов', val: `€${sum.toFixed(2)}` },
-                { label: 'Средний чек', val: `€${sales > 0 ? (sum / sales).toFixed(2) : '0.00'}` }
-              ];
-            })()}
-          />
+          <div className="relative z-10 flex flex-col h-full p-4 md:p-5 overflow-hidden">
+            <div className="mb-4 flex items-center justify-between min-w-0">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white tracking-wide flex items-center gap-2 truncate">
+                <Activity size={16} className="text-emerald-500 shrink-0" /> Конверсии за Сегодня <span className="text-gray-400 font-normal">| {new Date().toLocaleDateString('ru-RU')}</span>
+              </h3>
+            </div>
 
+            {/* ─── Today Conversion Table ─── */}
+            <div className="rounded-xl border border-gray-100 dark:border-[#222] overflow-hidden mb-5 w-full">
+              {/* Header */}
+              <div className="grid grid-cols-4 bg-gray-50 dark:bg-[#1A1A1A] border-b border-gray-100 dark:border-[#222]">
+                <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">Источник</div>
+                <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 text-center">Обращения</div>
+                <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 text-center">Продажи</div>
+                <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 text-right">Конверсия</div>
+              </div>
+
+              {/* Direct */}
+              <div className="grid grid-cols-4 border-b border-gray-100 dark:border-[#222] hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors group">
+                <div className="px-4 py-4 flex items-center gap-2.5">
+                  <div className="w-1.5 h-6 rounded-full bg-blue-500 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <MessageCircle size={12} className="text-blue-400 shrink-0" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Direct</span>
+                  </div>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className="text-sm font-mono font-bold text-gray-900 dark:text-gray-200">{todayConversionStats.direct.traffic.toLocaleString()}</span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className={`text-sm font-mono font-bold ${todayConversionStats.direct.sales > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                    {todayConversionStats.direct.sales}
+                  </span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-end">
+                  <span className={`text-sm font-mono font-bold ${getCRColor(todayConversionStats.direct.cr)}`}>{todayConversionStats.direct.cr}%</span>
+                </div>
+              </div>
+
+              {/* Comments */}
+              <div className="grid grid-cols-4 border-b border-gray-100 dark:border-[#222] hover:bg-orange-50/30 dark:hover:bg-orange-900/5 transition-colors group">
+                <div className="px-4 py-4 flex items-center gap-2.5">
+                  <div className="w-1.5 h-6 rounded-full bg-orange-500 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <MessageSquare size={12} className="text-orange-400 shrink-0" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Комментарии</span>
+                  </div>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className="text-sm font-mono font-bold text-gray-900 dark:text-gray-200">{todayConversionStats.comments.traffic.toLocaleString()}</span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className={`text-sm font-mono font-bold ${todayConversionStats.comments.sales > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                    {todayConversionStats.comments.sales}
+                  </span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-end">
+                  <span className={`text-sm font-mono font-bold ${getCRColor(todayConversionStats.comments.cr)}`}>{todayConversionStats.comments.cr}%</span>
+                </div>
+              </div>
+
+              {/* WhatsApp */}
+              <div className="grid grid-cols-4 border-b border-gray-100 dark:border-[#222] hover:bg-green-50/30 dark:hover:bg-green-900/5 transition-colors group">
+                <div className="px-4 py-4 flex items-center gap-2.5">
+                  <div className="w-1.5 h-6 rounded-full bg-green-500 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <Phone size={12} className="text-green-400 shrink-0" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">WhatsApp</span>
+                  </div>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className="text-sm font-mono font-bold text-gray-900 dark:text-gray-200">{todayConversionStats.whatsapp.traffic.toLocaleString()}</span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className={`text-sm font-mono font-bold ${todayConversionStats.whatsapp.sales > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                    {todayConversionStats.whatsapp.sales}
+                  </span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-end">
+                  <span className={`text-sm font-mono font-bold ${getCRColor(todayConversionStats.whatsapp.cr)}`}>{todayConversionStats.whatsapp.cr}%</span>
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="grid grid-cols-4 bg-[#F0FDF4] dark:bg-[#064E3B]/20 border-t-2 border-emerald-100 dark:border-emerald-900/50 shadow-[0_-4px_12px_rgba(0,0,0,0.02)] z-10 relative">
+                <div className="px-5 py-5 flex items-center gap-3">
+                  <div className="w-2 h-7 rounded-full bg-emerald-500 shrink-0" />
+                  <div className="flex items-center gap-2">
+                    <Layers size={16} className="text-emerald-500 shrink-0" />
+                    <span className="text-sm font-bold uppercase tracking-wider text-emerald-900 dark:text-emerald-200">Общее</span>
+                  </div>
+                </div>
+                <div className="px-5 py-5 flex items-center justify-center">
+                  <span className="text-[17px] font-mono font-black text-emerald-900 dark:text-emerald-100 drop-shadow-sm">{todayConversionStats.total.traffic.toLocaleString()}</span>
+                </div>
+                <div className="px-5 py-5 flex items-center justify-center">
+                  <span className={`text-[17px] font-mono font-black ${todayConversionStats.total.sales > 0 ? 'text-emerald-600 dark:text-emerald-400 drop-shadow-sm' : 'text-emerald-800/50 dark:text-emerald-200/50'}`}>
+                    {todayConversionStats.total.sales}
+                  </span>
+                </div>
+                <div className="px-5 py-5 flex items-center justify-end">
+                  <span className={`text-[17px] font-mono font-black ${getCRColor(todayConversionStats.total.cr)} drop-shadow-sm`}>{todayConversionStats.total.cr}%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ─── BREAKDOWN БЛОК ВМЕСТО ГРАФИКА ─── */}
+            <div className="flex-1 min-h-[100px] w-full min-w-0 flex flex-col justify-end">
+              <div className="grid grid-cols-2 gap-4 h-full">
+                {/* Left Half: Payment Types */}
+                <div className="flex flex-col h-full border-r border-gray-100 dark:border-[#222] pr-4 gap-1.5">
+                  <div className="text-[9px] uppercase font-bold text-gray-400 tracking-wider flex items-center gap-1.5 mb-1"><Activity size={10} className="text-blue-500"/> Типы платежей</div>
+                  <div className="flex flex-col gap-2 flex-1 justify-center">
+                    {todaySalesStats.topTypes.map(t => (
+                      <div key={t.name} className="flex flex-col gap-1">
+                        <div className="flex justify-between items-end text-[10px]">
+                          <span className="font-bold text-gray-700 dark:text-gray-300 truncate pr-1">{t.name === 'Other' ? 'Другое' : t.name}</span>
+                          <span className="font-mono text-blue-600 dark:text-blue-400 font-bold">{t.percent.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-gray-100 dark:bg-[#222] rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${t.percent}%` }}></div>
+                        </div>
+                      </div>
+                    ))}
+                    {todaySalesStats.topTypes.length === 0 && <div className="text-[10px] text-gray-500">Нет продаж за сегодня</div>}
+                  </div>
+                </div>
+
+                {/* Right Half: Products */}
+                <div className="flex flex-col h-full pl-2 gap-1.5">
+                  <div className="text-[9px] uppercase font-bold text-gray-400 tracking-wider flex items-center gap-1.5 mb-1"><Layers size={10} className="text-purple-500"/> Продукты</div>
+                  <div className="flex flex-col gap-2 flex-1 justify-center">
+                    {todaySalesStats.topProducts.map(p => (
+                      <div key={p.name} className="flex flex-col gap-1">
+                        <div className="flex justify-between items-end text-[10px]">
+                          <span className="font-bold text-gray-700 dark:text-gray-300 truncate pr-1 max-w-[100px]" title={p.name}>{p.name}</span>
+                          <span className="font-mono text-purple-600 dark:text-purple-400 font-bold">{p.percent.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-gray-100 dark:bg-[#222] rounded-full overflow-hidden">
+                          <div className="h-full bg-purple-500 rounded-full transition-all duration-500" style={{ width: `${p.percent}%` }}></div>
+                        </div>
+                      </div>
+                    ))}
+                    {todaySalesStats.topProducts.length === 0 && <div className="text-[10px] text-gray-500">Нет продаж за сегодня</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+          </div>
         </div>
 
-
-
       </div>
+
+      {/* --- CURRENT MANAGER OVERVIEW --- */}
+      <CurrentManagerActivityWidget />
 
       {/* --- BOTTOM TABLE --- */}
       <div className="mt-2 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden shadow-sm transition-colors duration-200 min-w-0 w-full">

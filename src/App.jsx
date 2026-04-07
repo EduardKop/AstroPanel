@@ -414,7 +414,7 @@ function App() {
                 <div className={`overflow-hidden transition-all duration-300 ease-in-out ${sectionStates.dashboards ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
                   {hasAccess('dashboard_view') && <SidebarItem icon={LayoutDashboard} label="Обзор" path="/" />}
                   {hasAccess('stats') && <SidebarItem icon={LineChart} label="Аналитика" path="/stats" />}
-                  {hasAccess('geo') && <SidebarItem icon={Globe} label="География" path="/geo" />}
+                  {hasAccess('geo') && <SidebarItem icon={Globe} label="Конверсии" path="/geo" />}
                   {hasAccess('geo_matrix') && <SidebarItem icon={LayoutGrid} label="Матрица" path="/geo-matrix" />}
                   {hasAccess('geo_monitoring') && <SidebarItem icon={Globe} label="ГЕО / Проекты" path="/geo-monitoring" />}
                   {hasAccess('stats') && <SidebarItem icon={Clock} label="Время оплат" path="/payment-times" />}
