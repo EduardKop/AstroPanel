@@ -5,13 +5,14 @@ import {
   Filter,
   Users, TrendingUp, Globe,
   Calendar as CalendarIcon,
-  Search, X,
+  Copy, Search, X,
   RotateCcw, RefreshCw
 } from 'lucide-react';
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { extractUTCDate } from '../utils/kyivTime';
+import { showToast } from '../utils/toastEvents';
 
 // --- КОМПОНЕНТЫ ---
 import ProjectBadge from '../components/geo/ProjectBadge';
@@ -357,6 +358,51 @@ const createDefaultFilters = () => ({
   showMobileFilters: false,
 });
 
+const getFlagIconUrl = (code) => {
+  if (!code || !/^[A-Za-z]{2}$/.test(code)) return '';
+  return `https://cdn.jsdelivr.net/npm/flag-icons/flags/4x3/${code.toLowerCase()}.svg`;
+};
+
+const CountryFlagIcon = ({ code, emoji, name, className = '', imgClassName = '', fallbackClassName = '' }) => {
+  const [hasError, setHasError] = useState(false);
+  const src = getFlagIconUrl(code);
+
+  if (!src || hasError) {
+    return <span className={`${fallbackClassName} ${className}`}>{emoji || '🏳️'}</span>;
+  }
+
+  return (
+    <img
+      src={src}
+      alt={name ? `Флаг ${name}` : `Флаг ${code}`}
+      loading="lazy"
+      decoding="async"
+      onError={() => setHasError(true)}
+      className={`${imgClassName} ${className}`}
+    />
+  );
+};
+
+const formatTelegramUsername = (username) => {
+  if (!username) return '';
+  return `@${String(username).trim().replace(/^@+/, '')}`;
+};
+
+const getManagerRoleMeta = (role) => {
+  switch (role) {
+    case 'Sales':
+      return { label: 'Отдел Продаж', className: 'bg-blue-500/10 text-blue-500 dark:text-blue-400' };
+    case 'SeniorSales':
+      return { label: 'Сеньор ОП', className: 'bg-indigo-500/10 text-indigo-500 dark:text-indigo-400' };
+    case 'Consultant':
+      return { label: 'Конс.', className: 'bg-emerald-500/10 text-emerald-500 dark:text-emerald-400' };
+    case 'Retention':
+      return { label: 'Retention', className: 'bg-amber-500/10 text-amber-500 dark:text-amber-400' };
+    default:
+      return role ? { label: role, className: 'bg-gray-500/10 text-gray-500 dark:text-gray-400' } : null;
+  }
+};
+
 const GeoPage = () => {
   const { trafficStats, fetchTrafficStats, user: currentUser, countries, projects, isLoading } = useAppStore();
 
@@ -442,6 +488,7 @@ const GeoPage = () => {
         status: p.status || 'pending',
         source: sourceMap[p.id] || 'direct',
         managerRole: mgrMap[p.manager_id]?.role || null,
+        managerTelegram: mgrMap[p.manager_id]?.telegram_username || null,
       }));
 
       setLocalPayments(normalized);
@@ -476,6 +523,23 @@ const GeoPage = () => {
     setActiveProjectFilter(null);
   };
   const resetDateRange = () => setDateRange(getLastWeekRange());
+
+  const handleCopyTelegram = async (username) => {
+    const formatted = formatTelegramUsername(username);
+    if (!formatted) return;
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+      showToast('Копирование недоступно в этом браузере', 'error');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(formatted);
+      showToast(`${formatted} скопирован`, 'success');
+    } catch (error) {
+      console.error('Failed to copy telegram username:', error);
+      showToast('Не удалось скопировать никнейм', 'error');
+    }
+  };
 
   useEffect(() => {
     if (fetchTrafficStats) {
@@ -547,7 +611,7 @@ const GeoPage = () => {
     });
 
     // 4. Агрегация продаж по источнику
-    const managersByGeo = {}; // { geoCode: { managerName: { direct:0, comments:0, whatsapp:0, total:0 } } }
+    const managersByGeo = {}; // { geoCode: { managerName: { direct:0, comments:0, whatsapp:0, total:0, role:null, telegram_username:null } } }
 
     filteredPayments.forEach(p => {
       const code = p.country || null;
@@ -566,7 +630,18 @@ const GeoPage = () => {
       // Track managers
       const mgr = p.manager || 'Не назначен';
       if (!managersByGeo[code]) managersByGeo[code] = {};
-      if (!managersByGeo[code][mgr]) managersByGeo[code][mgr] = { direct: 0, comments: 0, whatsapp: 0, total: 0 };
+      if (!managersByGeo[code][mgr]) {
+        managersByGeo[code][mgr] = {
+          direct: 0,
+          comments: 0,
+          whatsapp: 0,
+          total: 0,
+          role: p.managerRole || null,
+          telegram_username: p.managerTelegram || null,
+        };
+      }
+      if (!managersByGeo[code][mgr].role && p.managerRole) managersByGeo[code][mgr].role = p.managerRole;
+      if (!managersByGeo[code][mgr].telegram_username && p.managerTelegram) managersByGeo[code][mgr].telegram_username = p.managerTelegram;
       managersByGeo[code][mgr].total += 1;
       if (src === 'comments' || src === 'comment') managersByGeo[code][mgr].comments += 1;
       else if (src === 'whatsapp') managersByGeo[code][mgr].whatsapp += 1;
@@ -682,15 +757,15 @@ const GeoPage = () => {
 
         {/* Заголовок */}
         <div className="flex flex-col md:flex-row items-start md:items-center gap-3 mb-4">
-          <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 pr-4 shrink-0">
-            <Globe size={18} className="text-blue-500 shrink-0" />
+          <h2 className="text-base 2xl:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 pr-4 shrink-0">
+            <Globe size={17} className="text-blue-500 shrink-0 2xl:w-[18px] 2xl:h-[18px]" />
             <span className="truncate">География</span>
           </h2>
 
-          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[8px] h-[32px] items-center shrink-0 w-full md:w-auto">
-            <button onClick={() => setGeoSortMode('traffic_desc')} className={`flex-1 px-3 h-full rounded-[6px] text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'traffic_desc' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>По объему лидов</button>
-            <button onClick={() => setGeoSortMode('cr_desc')} className={`flex-1 px-3 h-full rounded-[6px] text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'cr_desc' ? 'bg-white dark:bg-[#333] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Лучший CR</button>
-            <button onClick={() => setGeoSortMode('cr_asc')} className={`flex-1 px-3 h-full rounded-[6px] text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'cr_asc' ? 'bg-white dark:bg-[#333] text-rose-600 dark:text-rose-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Худший CR</button>
+          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[8px] h-[30px] 2xl:h-[32px] items-center shrink-0 w-full md:w-auto">
+            <button onClick={() => setGeoSortMode('traffic_desc')} className={`flex-1 px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'traffic_desc' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>По объему лидов</button>
+            <button onClick={() => setGeoSortMode('cr_desc')} className={`flex-1 px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'cr_desc' ? 'bg-white dark:bg-[#333] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Лучший CR</button>
+            <button onClick={() => setGeoSortMode('cr_asc')} className={`flex-1 px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'cr_asc' ? 'bg-white dark:bg-[#333] text-rose-600 dark:text-rose-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Худший CR</button>
           </div>
         </div>
 
@@ -701,15 +776,15 @@ const GeoPage = () => {
             {/* ГРУППА КНОПОК СЛЕВА */}
             <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
               {/* Поиск GEO */}
-              <div className="flex h-[34px] w-full md:w-[220px] items-center gap-2 rounded-[6px] bg-gray-200 px-3 dark:bg-[#1A1A1A] border border-transparent focus-within:border-gray-300 dark:focus-within:border-[#333]">
-                <Search size={12} className="shrink-0 text-gray-400" />
+              <div className="flex h-[32px] 2xl:h-[34px] w-full md:w-[190px] 2xl:md:w-[220px] items-center gap-2 rounded-[6px] bg-gray-200 px-2.5 2xl:px-3 dark:bg-[#1A1A1A] border border-transparent focus-within:border-gray-300 dark:focus-within:border-[#333]">
+                <Search size={11} className="shrink-0 text-gray-400 2xl:w-[12px] 2xl:h-[12px]" />
                 <input
                   type="text"
                   value={geoQuery}
                   onChange={(e) => setGeoQuery(e.target.value)}
                   placeholder="Поиск по GEO"
                   aria-label="Поиск по GEO"
-                  className="w-full bg-transparent text-[11px] font-medium text-gray-700 outline-none placeholder:text-gray-500 dark:text-gray-200"
+                  className="w-full bg-transparent text-[10px] 2xl:text-[11px] font-medium text-gray-700 outline-none placeholder:text-gray-500 dark:text-gray-200"
                 />
                 {geoQuery ? (
                   <button
@@ -718,17 +793,17 @@ const GeoPage = () => {
                     className="shrink-0 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
                     title="Очистить поиск"
                   >
-                    <X size={12} />
+                    <X size={11} className="2xl:w-[12px] 2xl:h-[12px]" />
                   </button>
                 ) : null}
               </div>
 
               {/* Кнопки Департаментов */}
-              <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full md:w-auto justify-center">
-                <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
-                <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
-                <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
-                <button onClick={() => setFilters(prev => ({ ...prev, department: 'taro' }))} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'taro' ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Таро</button>
+              <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[32px] 2xl:h-[34px] items-center w-full md:w-auto justify-center">
+                <button onClick={() => setFilters(prev => ({ ...prev, department: 'all' }))} className={`px-2 2xl:px-2.5 h-full rounded-[4px] text-[9px] 2xl:text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'all' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Все</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: 'sales' }))} className={`px-2 2xl:px-2.5 h-full rounded-[4px] text-[9px] 2xl:text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>ОП</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: 'consultant' }))} className={`px-2 2xl:px-2.5 h-full rounded-[4px] text-[9px] 2xl:text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'consultant' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Конс.</button>
+                <button onClick={() => setFilters(prev => ({ ...prev, department: 'taro' }))} className={`px-2 2xl:px-2.5 h-full rounded-[4px] text-[9px] 2xl:text-[10px] font-bold transition-all whitespace-nowrap ${filters.department === 'taro' ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Таро</button>
               </div>
             </div>
 
@@ -797,7 +872,7 @@ const GeoPage = () => {
                 )}
               </div>
 
-              <div className="hidden md:flex md:w-[240px]">
+              <div className="hidden md:flex md:w-[210px] 2xl:md:w-[240px]">
                 <CustomDateRangePicker
                   startDate={startDate}
                   endDate={endDate}
@@ -820,6 +895,7 @@ const GeoPage = () => {
             const countryDef = countries?.find(c => c.code === geo.code) || { name: geo.code, emoji: '🏳️' };
             const project = (projects || []).find(p => p.id === geo.project_id);
             const projName = project?.name?.toLowerCase() || '';
+            const flagIconUrl = getFlagIconUrl(geo.code);
 
             const crClass = (val) => {
               if (val >= 8) return 'text-emerald-500 font-bold';
@@ -840,61 +916,81 @@ const GeoPage = () => {
             ];
 
             return (
-              <div key={geo.code} className={`bg-white dark:bg-[#111] rounded-xl border ${cardBorder} shadow-sm overflow-hidden`}>
-                <div className="flex items-stretch divide-x divide-gray-100 dark:divide-[#1e1e1e]">
+              <div key={geo.code} className={`bg-white dark:bg-[#111] rounded-lg 2xl:rounded-xl border ${cardBorder} shadow-sm overflow-hidden`}>
+                <div className="flex items-stretch divide-x divide-gray-200 dark:divide-[#2a2a2a]">
 
                   {/* LEFT: Geo identity */}
-                  <div className="flex items-center gap-3 px-4 py-3 w-[210px] shrink-0">
-                    <span className="text-3xl leading-none">{countryDef.emoji}</span>
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm text-gray-900 dark:text-white truncate">
-                        {countryDef.name || geo.code}
+                  <div className="relative w-[156px] xl:w-[168px] 2xl:w-[210px] shrink-0 overflow-hidden bg-gradient-to-br from-transparent via-transparent to-gray-100/50 dark:to-white/[0.03]">
+                    {flagIconUrl ? (
+                      <img
+                        src={flagIconUrl}
+                        alt=""
+                        aria-hidden="true"
+                        loading="lazy"
+                        decoding="async"
+                        className="pointer-events-none absolute right-[-16%] top-1/2 h-[125%] w-auto -translate-y-1/2 opacity-[0.08] dark:opacity-[0.06] saturate-[1.15]"
+                      />
+                    ) : null}
+                    <div className="relative z-10 flex items-center gap-2 2xl:gap-3 px-2.5 2xl:px-4 py-2 2xl:py-3 h-full">
+                      <div className="flex h-[18px] w-[26px] xl:h-[20px] xl:w-[28px] 2xl:h-[22px] 2xl:w-[32px] shrink-0 items-center justify-center overflow-hidden rounded-[4px] border border-white/20 dark:border-white/10 shadow-sm">
+                        <CountryFlagIcon
+                          code={geo.code}
+                          emoji={countryDef.emoji}
+                          name={countryDef.name || geo.code}
+                          imgClassName="h-full w-full object-cover"
+                          fallbackClassName="text-[18px] xl:text-[20px] 2xl:text-[22px] leading-none"
+                        />
                       </div>
-                      <div className="mt-1 flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] font-mono uppercase text-gray-400 shrink-0">
-                          {geo.code}
-                        </span>
-                        {project ? <ProjectBadge project={project} size="xs" /> : null}
+                      <div className="min-w-0">
+                        <div className="font-bold text-[12px] xl:text-[13px] 2xl:text-sm text-gray-900 dark:text-white truncate">
+                          {countryDef.name || geo.code}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5 2xl:gap-2 min-w-0">
+                          <span className="text-[8px] xl:text-[9px] 2xl:text-[10px] font-mono uppercase text-gray-400 shrink-0">
+                            {geo.code}
+                          </span>
+                          {project ? <ProjectBadge project={project} size="xs" /> : null}
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* CENTER: Source breakdown */}
-                  <div className="grid flex-[1.2] min-w-0 grid-cols-2 lg:grid-cols-4 divide-x divide-gray-100 dark:divide-[#1e1e1e]">
+                  <div className="grid flex-[1.2] min-w-0 grid-cols-2 lg:grid-cols-4 divide-x divide-gray-200 dark:divide-[#2a2a2a]">
                     {srcCols.map((col) => (
-                      <div key={col.key} className="flex h-full min-w-0 flex-col justify-center px-3 py-3">
-                        <div className="mb-2">
-                          <span className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-bold ${col.color} ${col.bgLabel}`}>
+                      <div key={col.key} className={`flex h-full min-w-0 flex-col justify-center px-2 2xl:px-3 py-2 2xl:py-3 ${col.key === 'all' ? 'bg-gray-50/60 dark:bg-[#171717]' : ''}`}>
+                        <div className="mb-1 2xl:mb-2 flex justify-center">
+                          <span className={`inline-flex items-center rounded-full px-1.5 2xl:px-2 py-0.5 2xl:py-1 text-[8px] xl:text-[9px] 2xl:text-[10px] font-bold ${col.color} ${col.bgLabel}`}>
                             {col.label}
                           </span>
                         </div>
 
                         <div className="flex items-stretch h-full">
-                          <div className="flex flex-1 flex-col justify-center pr-3 border-r border-gray-100 dark:border-[#222] min-w-[80px]">
-                            <div className="flex flex-col mb-3">
-                              <span className={`text-[17px] font-black leading-none ${col.traffic > 0 ? 'text-blue-500 dark:text-blue-400' : 'text-gray-300 dark:text-gray-600'}`}>
-                                {col.traffic > 0 ? col.traffic.toLocaleString() : '—'}
+                          <div className="flex flex-1 flex-col items-center justify-center pr-1.5 2xl:pr-3 text-center min-w-[56px] xl:min-w-[64px] 2xl:min-w-[80px]">
+                            <div className="flex flex-col items-center mb-2 2xl:mb-3">
+                              <span className={`text-[14px] xl:text-[15px] 2xl:text-[17px] font-black leading-none ${col.traffic > 0 ? 'text-blue-500 dark:text-blue-400' : 'text-gray-300 dark:text-gray-600'}`}>
+                                {(col.traffic || 0).toLocaleString()}
                               </span>
-                              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-1">
+                              <span className="text-[8px] xl:text-[9px] 2xl:text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-1">
                                 заявок
                               </span>
                             </div>
 
-                            <div className="flex flex-col">
-                              <span className={`text-[17px] font-black leading-none ${col.sales > 0 ? 'text-gray-900 dark:text-white' : 'text-gray-300 dark:text-gray-700'}`}>
-                                {col.sales > 0 ? col.sales : '—'}
+                            <div className="flex flex-col items-center">
+                              <span className={`text-[14px] xl:text-[15px] 2xl:text-[17px] font-black leading-none ${col.sales > 0 ? 'text-gray-900 dark:text-white' : 'text-gray-300 dark:text-gray-700'}`}>
+                                {col.sales || 0}
                               </span>
-                              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-1">
+                              <span className="text-[8px] xl:text-[9px] 2xl:text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-1">
                                 продаж
                               </span>
                             </div>
                           </div>
 
-                          <div className="flex flex-col items-center justify-center w-[60px] shrink-0 pl-2">
-                            <span className={`text-[15px] font-black ${crClass(col.cr)}`}>
-                              {col.cr > 0 ? `${col.cr}%` : '—'}
+                          <div className="flex flex-col items-center justify-center w-[44px] xl:w-[48px] 2xl:w-[60px] shrink-0 pl-1 2xl:pl-2">
+                            <span className={`text-[12px] xl:text-[13px] 2xl:text-[15px] font-black ${crClass(col.cr)}`}>
+                              {`${col.cr || 0}%`}
                             </span>
-                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-1">
+                            <span className="text-[8px] xl:text-[9px] 2xl:text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-1">
                               CR
                             </span>
                           </div>
@@ -907,90 +1003,128 @@ const GeoPage = () => {
                   {geo.managers && geo.managers.length > 0 && (
                     <div className="flex-1 min-w-0 bg-white dark:bg-[#0a0a0a] flex flex-col border-l-4 border-gray-50 dark:border-[#141414]">
                       {/* Managers Header Row */}
-                      <div className="px-4 py-2.5 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#222] flex items-center shrink-0 bg-gray-50 dark:bg-[#111]">
-                        <div className="flex items-center gap-1.5"><Users size={12} /><span>Менеджеры ({geo.managers.length})</span></div>
+                      <div className="px-2.5 2xl:px-4 py-1.5 2xl:py-2.5 text-[8px] xl:text-[9px] 2xl:text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-[#222] flex items-center shrink-0 bg-gray-50 dark:bg-[#111]">
+                        <div className="flex items-center gap-1 2xl:gap-1.5"><Users size={11} className="2xl:w-[12px] 2xl:h-[12px]" /><span>Менеджеры ({geo.managers.length})</span></div>
                       </div>
                       
                       {/* Managers List */}
-                      <div className="flex-1 overflow-y-auto max-h-[160px] custom-scrollbar">
+                      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                         {geo.managers.map(([name, stats], idx) => {
                           const crDirect = geo.traffic.direct > 0 ? ((stats.direct / Math.max(geo.traffic.direct, 1)) * 100).toFixed(1) : 0;
                           const crComments = geo.traffic.comments > 0 ? ((stats.comments / Math.max(geo.traffic.comments, 1)) * 100).toFixed(1) : 0;
                           const crAll = geo.traffic.all > 0 ? ((stats.total / Math.max(geo.traffic.all, 1)) * 100).toFixed(1) : 0;
                           const rowBg = idx % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/70 dark:bg-[#141414]';
+                          const roleMeta = getManagerRoleMeta(stats.role);
+                          const telegramUsername = formatTelegramUsername(stats.telegram_username);
 
                           return (
-                            <div key={name} className={`flex flex-col px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] transition-colors border-b border-gray-100 dark:border-[#222] last:border-0 ${rowBg}`}>
-                               <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-[12px] font-bold text-gray-900 dark:text-gray-200 truncate" title={name}>{name}</span>
+                            <div key={name} className={`flex flex-col px-2.5 2xl:px-4 py-2 2xl:py-3 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] transition-colors border-b border-gray-100 dark:border-[#222] last:border-0 ${rowBg}`}>
+                               <div className="mb-1 2xl:mb-2 flex min-w-0 items-center gap-1 2xl:gap-2 overflow-hidden whitespace-nowrap">
+                                  <span className="min-w-0 truncate text-[10px] xl:text-[11px] 2xl:text-[12px] font-bold text-gray-900 dark:text-gray-200" title={name}>{name}</span>
+                                  {roleMeta ? (
+                                    <span className={`shrink-0 rounded-full px-1.5 2xl:px-2 py-0.5 text-[8px] 2xl:text-[9px] font-bold ${roleMeta.className}`}>
+                                      {roleMeta.label}
+                                    </span>
+                                  ) : null}
+                                  {telegramUsername ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyTelegram(telegramUsername)}
+                                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-gray-200 px-1.5 2xl:px-2 py-0.5 text-[8px] 2xl:text-[9px] font-bold text-gray-500 transition-colors hover:border-blue-300 hover:text-blue-500 dark:border-[#333] dark:text-gray-400 dark:hover:border-blue-700 dark:hover:text-blue-400"
+                                      title={`Скопировать ${telegramUsername}`}
+                                    >
+                                      {telegramUsername}
+                                      <Copy size={9} />
+                                    </button>
+                                  ) : null}
                                </div>
-                               <div className="grid grid-cols-4 gap-3">
+                               <div className="grid grid-cols-4 gap-2 2xl:gap-3">
                                   
                                   {/* Direct Stack */}
-                                  <div className="flex items-stretch pr-2 border-r border-gray-100 dark:border-[#333]">
-                                     <div className="flex flex-col flex-1 min-w-0">
-                                         <div className="flex flex-col mb-1.5">
-                                           <span className="text-[12px] font-bold text-gray-700 dark:text-gray-400 leading-none">{geo.traffic.direct || 0}</span>
-                                           <span className="text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
-                                         </div>
-                                         <div className="flex flex-col">
-                                           <span className="text-[12px] font-black text-gray-900 dark:text-gray-200 leading-none">{stats.direct}</span>
-                                           <span className="text-[8px] text-gray-400 uppercase tracking-tighter">продаж</span>
-                                         </div>
+                                  <div className="flex flex-col pr-1.5 2xl:pr-2 border-r border-gray-100 dark:border-[#333]">
+                                     <div className="mb-1 2xl:mb-1.5">
+                                       <span className="inline-flex items-center rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[7px] 2xl:text-[8px] font-bold text-blue-500 dark:text-blue-400">Direct</span>
                                      </div>
-                                     <div className="flex items-center justify-center pl-2 border-l border-gray-50 dark:border-[#222]">
-                                         <span className={`text-[10px] font-black ${crClass(parseFloat(crDirect))}`}>{crDirect > 0 ? `${crDirect}%` : '—'}</span>
+                                     <div className="flex items-stretch">
+                                       <div className="flex flex-col flex-1 min-w-0">
+                                           <div className="flex flex-col mb-1 2xl:mb-1.5">
+                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-700 dark:text-gray-400 leading-none">{geo.traffic.direct || 0}</span>
+                                             <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
+                                           </div>
+                                           <div className="flex flex-col">
+                                             <span className="text-[11px] 2xl:text-[12px] font-black text-gray-900 dark:text-gray-200 leading-none">{stats.direct}</span>
+                                             <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">продаж</span>
+                                           </div>
+                                       </div>
+                                       <div className="flex items-center justify-center pl-1.5 2xl:pl-2 border-l border-gray-50 dark:border-[#222]">
+                                           <span className={`text-[9px] 2xl:text-[10px] font-black ${crClass(parseFloat(crDirect))}`}>{`${crDirect || 0}%`}</span>
+                                       </div>
                                      </div>
                                   </div>
 
                                   {/* Comments Stack */}
-                                  <div className="flex items-stretch pr-2 border-r border-gray-100 dark:border-[#333]">
-                                     <div className="flex flex-col flex-1 min-w-0">
-                                         <div className="flex flex-col mb-1.5">
-                                           <span className="text-[12px] font-bold text-gray-700 dark:text-gray-400 leading-none">{geo.traffic.comments || 0}</span>
-                                           <span className="text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
-                                         </div>
-                                         <div className="flex flex-col">
-                                           <span className="text-[12px] font-black text-gray-900 dark:text-gray-200 leading-none">{stats.comments}</span>
-                                           <span className="text-[8px] text-gray-400 uppercase tracking-tighter">продаж</span>
-                                         </div>
+                                  <div className="flex flex-col pr-1.5 2xl:pr-2 border-r border-gray-100 dark:border-[#333]">
+                                     <div className="mb-1 2xl:mb-1.5">
+                                       <span className="inline-flex items-center rounded-full bg-orange-500/10 px-1.5 py-0.5 text-[7px] 2xl:text-[8px] font-bold text-orange-500 dark:text-orange-400">Коммент.</span>
                                      </div>
-                                     <div className="flex items-center justify-center pl-2 border-l border-gray-50 dark:border-[#222]">
-                                         <span className={`text-[10px] font-black ${crClass(parseFloat(crComments))}`}>{crComments > 0 ? `${crComments}%` : '—'}</span>
+                                     <div className="flex items-stretch">
+                                       <div className="flex flex-col flex-1 min-w-0">
+                                           <div className="flex flex-col mb-1 2xl:mb-1.5">
+                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-700 dark:text-gray-400 leading-none">{geo.traffic.comments || 0}</span>
+                                             <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
+                                           </div>
+                                           <div className="flex flex-col">
+                                             <span className="text-[11px] 2xl:text-[12px] font-black text-gray-900 dark:text-gray-200 leading-none">{stats.comments}</span>
+                                             <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">продаж</span>
+                                           </div>
+                                       </div>
+                                       <div className="flex items-center justify-center pl-1.5 2xl:pl-2 border-l border-gray-50 dark:border-[#222]">
+                                           <span className={`text-[9px] 2xl:text-[10px] font-black ${crClass(parseFloat(crComments))}`}>{`${crComments || 0}%`}</span>
+                                       </div>
                                      </div>
                                   </div>
 
                                   {/* WhatsApp Stack */}
-                                  <div className="flex items-stretch pr-2 border-r border-gray-100 dark:border-[#333]">
-                                     <div className="flex flex-col flex-1 min-w-0">
-                                         <div className="flex flex-col mb-1.5">
-                                           <span className="text-[12px] font-bold text-gray-400 leading-none">—</span>
-                                           <span className="text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
-                                         </div>
-                                         <div className="flex flex-col">
-                                           <span className="text-[12px] font-black text-gray-900 dark:text-gray-200 leading-none">{stats.whatsapp}</span>
-                                           <span className="text-[8px] text-gray-400 uppercase tracking-tighter">продаж</span>
-                                         </div>
+                                  <div className="flex flex-col pr-1.5 2xl:pr-2 border-r border-gray-100 dark:border-[#333]">
+                                     <div className="mb-1 2xl:mb-1.5">
+                                       <span className="inline-flex items-center rounded-full bg-green-500/10 px-1.5 py-0.5 text-[7px] 2xl:text-[8px] font-bold text-green-500 dark:text-green-400">WhatsApp</span>
                                      </div>
-                                     <div className="flex items-center justify-center pl-2 border-l border-gray-50 dark:border-[#222]">
-                                         <span className={`text-[10px] font-black text-gray-400`}>—</span>
+                                     <div className="flex items-stretch">
+                                       <div className="flex flex-col flex-1 min-w-0">
+                                           <div className="flex flex-col mb-1 2xl:mb-1.5">
+                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-400 leading-none">0</span>
+                                             <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
+                                           </div>
+                                           <div className="flex flex-col">
+                                             <span className="text-[11px] 2xl:text-[12px] font-black text-gray-900 dark:text-gray-200 leading-none">{stats.whatsapp}</span>
+                                             <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">продаж</span>
+                                           </div>
+                                       </div>
+                                       <div className="flex items-center justify-center pl-1.5 2xl:pl-2 border-l border-gray-50 dark:border-[#222]">
+                                           <span className="text-[9px] 2xl:text-[10px] font-black text-gray-400">0%</span>
+                                       </div>
                                      </div>
                                   </div>
 
                                   {/* Total Stack */}
-                                  <div className="flex items-stretch">
-                                     <div className="flex flex-col flex-1 min-w-0">
-                                         <div className="flex flex-col mb-1.5">
-                                           <span className="text-[13px] font-black text-gray-900 dark:text-white leading-none">{geo.traffic.all || 0}</span>
-                                           <span className="text-[8px] text-gray-500 font-bold uppercase tracking-tighter">заявок</span>
-                                         </div>
-                                         <div className="flex flex-col">
-                                           <span className="text-[13px] font-black text-blue-600 dark:text-blue-400 leading-none">{stats.total}</span>
-                                           <span className="text-[8px] text-gray-500 font-bold uppercase tracking-tighter">продаж</span>
-                                         </div>
+                                  <div className="flex flex-col">
+                                     <div className="mb-1 2xl:mb-1.5">
+                                       <span className="inline-flex items-center rounded-full bg-gray-500/10 px-1.5 py-0.5 text-[7px] 2xl:text-[8px] font-bold text-gray-500 dark:text-gray-400">Всего</span>
                                      </div>
-                                     <div className="flex items-center justify-center pl-2 border-l border-gray-300 dark:border-[#444]">
-                                         <span className={`text-[11px] font-black ${crClass(parseFloat(crAll))}`}>{crAll > 0 ? `${crAll}%` : '—'}</span>
+                                     <div className="flex items-stretch">
+                                       <div className="flex flex-col flex-1 min-w-0">
+                                           <div className="flex flex-col mb-1 2xl:mb-1.5">
+                                             <span className="text-[12px] 2xl:text-[13px] font-black text-gray-900 dark:text-white leading-none">{geo.traffic.all || 0}</span>
+                                             <span className="text-[7px] 2xl:text-[8px] text-gray-500 font-bold uppercase tracking-tighter">заявок</span>
+                                           </div>
+                                           <div className="flex flex-col">
+                                             <span className="text-[12px] 2xl:text-[13px] font-black text-blue-600 dark:text-blue-400 leading-none">{stats.total}</span>
+                                             <span className="text-[7px] 2xl:text-[8px] text-gray-500 font-bold uppercase tracking-tighter">продаж</span>
+                                           </div>
+                                       </div>
+                                       <div className="flex items-center justify-center pl-1.5 2xl:pl-2 border-l border-gray-300 dark:border-[#444]">
+                                           <span className={`text-[10px] 2xl:text-[11px] font-black ${crClass(parseFloat(crAll))}`}>{`${crAll || 0}%`}</span>
+                                       </div>
                                      </div>
                                   </div>
 
