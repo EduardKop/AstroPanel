@@ -1019,9 +1019,10 @@ const GeoMonitoringPage = () => {
                                 >
                                     {/* GEO Name */}
                                     <td className="px-4 py-2.5 align-top whitespace-nowrap">
-                                        <div className="relative flex min-h-[64px] items-center gap-3 overflow-hidden rounded-xl border border-white/10 bg-[#0b0b0b] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                        <div className="relative flex min-h-[64px] items-center gap-3 overflow-hidden rounded-xl border border-gray-200 bg-gradient-to-br from-white via-white to-slate-50 px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#0b0b0b] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                            <div className="pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-sky-50/80 via-sky-50/20 to-transparent dark:hidden" />
                                             <div className="relative z-10 flex items-center gap-3">
-                                                <div className="flex h-[26px] w-[38px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-white/15 bg-black/30 shadow-sm">
+                                                <div className="flex h-[26px] w-[38px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-gray-200 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.12)] dark:border-white/15 dark:bg-black/30 dark:shadow-sm">
                                                     <CountryFlagIcon
                                                         code={geo.code}
                                                         emoji={geo.emoji}
@@ -1032,8 +1033,8 @@ const GeoMonitoringPage = () => {
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="font-bold text-white whitespace-nowrap">{geo.name}</span>
-                                                        <span className="text-[10px] font-mono text-gray-400 whitespace-nowrap">{geo.code}</span>
+                                                        <span className="font-bold text-gray-900 dark:text-white whitespace-nowrap">{geo.name}</span>
+                                                        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">{geo.code}</span>
                                                     </div>
                                                     <div className="mt-1.5">
                                                         {(() => {
