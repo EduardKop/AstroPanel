@@ -568,6 +568,57 @@ const SalesDashboardPage = () => {
     };
   }, [filteredData]);
 
+  // ✅ ТАБЛИЦА КОНВЕРСИЙ: Direct / Comments / Общее (независимо от source-фильтра)
+  const conversionStats = useMemo(() => {
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
+    let directSales = 0;
+    let commentsSales = 0;
+    let directTraffic = 0;
+    let commentsTraffic = 0;
+
+    // Продажи по источнику — отдельно, без source-фильтра, но с остальными фильтрами
+    payments.forEach(item => {
+      if (!['Sales', 'SeniorSales'].includes(item.managerRole)) return;
+      if (!item.transactionDate) return;
+      const dbDateStr = extractUTCDate(item.transactionDate);
+      if (dbDateStr < startStr || dbDateStr > endStr) return;
+      if (isRestrictedUser && item.manager !== currentUser?.name) return;
+      if (filters.country.length > 0 && !filters.country.includes(item.country)) return;
+      if (filters.product.length > 0 && !filters.product.includes(item.product)) return;
+      if (filters.type.length > 0 && !filters.type.includes(item.type)) return;
+      if (item.source === 'direct') directSales++;
+      else if (item.source === 'comments') commentsSales++;
+    });
+
+    // Трафик по источнику
+    if (trafficStats && Object.keys(trafficStats).length > 0) {
+      const geos = filters.country.length > 0 ? filters.country : Object.keys(trafficStats);
+      geos.forEach(geo => {
+        const geoData = trafficStats[geo];
+        if (!geoData) return;
+        Object.entries(geoData).forEach(([dateStr, val]) => {
+          if (dateStr < startStr || dateStr > endStr) return;
+          if (typeof val === 'object' && val !== null) {
+            directTraffic += (val.direct || 0);
+            commentsTraffic += (val.comments || 0);
+          }
+        });
+      });
+    }
+
+    const cr = (t, s) => t > 0 ? ((s / t) * 100).toFixed(2) : '0.00';
+    const totalSales = directSales + commentsSales;
+    const totalTraffic = directTraffic + commentsTraffic;
+
+    return {
+      direct:   { traffic: directTraffic,            sales: directSales,   cr: cr(directTraffic,  directSales)  },
+      comments: { traffic: commentsTraffic,           sales: commentsSales, cr: cr(commentsTraffic, commentsSales) },
+      total:    { traffic: totalTraffic,              sales: totalSales,    cr: cr(totalTraffic,    totalSales)   },
+    };
+  }, [payments, startDate, endDate, filters.country, filters.product, filters.type, isRestrictedUser, currentUser, trafficStats]);
+
   const chartData = useMemo(() => {
     const grouped = {};
     filteredData.forEach(item => {
@@ -721,25 +772,87 @@ const SalesDashboardPage = () => {
           <div className="relative z-10 flex flex-col h-full p-4 md:p-5 overflow-hidden">
             <div className="mb-4 flex items-center justify-between min-w-0">
               <h3 className="text-sm font-bold text-gray-900 dark:text-white tracking-wide flex items-center gap-2 truncate">
-                <Activity size={16} className="text-blue-500 shrink-0" /> Ключевые метрики
+                <Activity size={16} className="text-blue-500 shrink-0" /> Конверсии по источникам
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-px bg-gray-100 dark:bg-[#222] border border-gray-100 dark:border-[#222] rounded-lg overflow-hidden mb-4 transition-colors duration-200 w-full">
-              {/* Row 1 */}
-              <TechStatItem icon={Users} label="Трафик" value={stats.traffic} />
-              <TechStatItem icon={CreditCard} label="Продажи" value={stats.count} />
-              <TechStatItem icon={Percent} label="Конверсия" value={`${stats.conversion}%`} valueColor={getCRColor(stats.conversion)} />
+            {/* ─── Conversion Table ─── */}
+            <div className="rounded-xl border border-gray-100 dark:border-[#222] overflow-hidden mb-4 w-full">
 
-              {/* Row 2 */}
-              <TechStatItem icon={Trophy} label="Уникальные" value={stats.uniqueSales} highlight />
-              <TechStatItem icon={Layers} label="Вторые продажи" value={stats.secondSales} />
-              <TechStatItem icon={Activity} label="Конв. (Уник)" value={`${stats.conversionUnique}%`} valueColor={getCRColor(stats.conversionUnique)} />
+              {/* Header */}
+              <div className="grid grid-cols-4 bg-gray-50 dark:bg-[#1A1A1A] border-b border-gray-100 dark:border-[#222]">
+                <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">Источник</div>
+                <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 text-center">Обращения</div>
+                <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 text-center">Продажи</div>
+                <div className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 text-right">Конверсия</div>
+              </div>
 
-              {/* Row 3 */}
-              <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
-              <TechStatItem icon={DollarSign} label="Средний чек" value={`€${Number(stats.avgCheck).toLocaleString()}`} />
-              <TechStatItem icon={Users} label="Кол-во менеджеров" value={stats.activeManagers} />
+              {/* Direct */}
+              <div className="grid grid-cols-4 border-b border-gray-100 dark:border-[#222] hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors group">
+                <div className="px-4 py-4 flex items-center gap-2.5">
+                  <div className="w-1.5 h-6 rounded-full bg-blue-500 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <MessageCircle size={12} className="text-blue-400 shrink-0" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Direct</span>
+                  </div>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className="text-sm font-mono font-bold text-gray-900 dark:text-gray-200">{conversionStats.direct.traffic.toLocaleString()}</span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className={`text-sm font-mono font-bold ${conversionStats.direct.sales > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                    {conversionStats.direct.sales}
+                  </span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-end">
+                  <span className={`text-sm font-mono font-bold ${getCRColor(conversionStats.direct.cr)}`}>{conversionStats.direct.cr}%</span>
+                </div>
+              </div>
+
+              {/* Comments */}
+              <div className="grid grid-cols-4 border-b border-gray-100 dark:border-[#222] hover:bg-orange-50/30 dark:hover:bg-orange-900/5 transition-colors group">
+                <div className="px-4 py-4 flex items-center gap-2.5">
+                  <div className="w-1.5 h-6 rounded-full bg-orange-500 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <MessageSquare size={12} className="text-orange-400 shrink-0" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Комментарии</span>
+                  </div>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className="text-sm font-mono font-bold text-gray-900 dark:text-gray-200">{conversionStats.comments.traffic.toLocaleString()}</span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className={`text-sm font-mono font-bold ${conversionStats.comments.sales > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                    {conversionStats.comments.sales}
+                  </span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-end">
+                  <span className={`text-sm font-mono font-bold ${getCRColor(conversionStats.comments.cr)}`}>{conversionStats.comments.cr}%</span>
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="grid grid-cols-4 bg-gray-50/80 dark:bg-[#161616]">
+                <div className="px-4 py-4 flex items-center gap-2.5">
+                  <div className="w-1.5 h-6 rounded-full bg-gray-400 dark:bg-gray-500 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <Layers size={12} className="text-gray-400 shrink-0" />
+                    <span className="text-xs font-bold text-gray-900 dark:text-white">Общее</span>
+                  </div>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className="text-sm font-mono font-bold text-gray-900 dark:text-white">{conversionStats.total.traffic.toLocaleString()}</span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-center">
+                  <span className={`text-sm font-mono font-bold ${conversionStats.total.sales > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                    {conversionStats.total.sales}
+                  </span>
+                </div>
+                <div className="px-4 py-4 flex items-center justify-end">
+                  <span className={`text-sm font-mono font-bold ${getCRColor(conversionStats.total.cr)}`}>{conversionStats.total.cr}%</span>
+                </div>
+              </div>
+
             </div>
 
             <div className="flex-1 min-h-[100px] w-full min-w-0">
