@@ -29,6 +29,31 @@ const formatDateShort = (dateStr) => {
     return `${parts[2]}.${parts[1]}.${parts[0]}`;
 };
 
+const getFlagIconUrl = (code) => {
+    if (!code || !/^[A-Za-z]{2}$/.test(code)) return '';
+    return `https://cdn.jsdelivr.net/npm/flag-icons/flags/4x3/${code.toLowerCase()}.svg`;
+};
+
+const CountryFlagIcon = ({ code, emoji, name, className = '', imgClassName = '', fallbackClassName = '' }) => {
+    const [hasError, setHasError] = useState(false);
+    const src = getFlagIconUrl(code);
+
+    if (!src || hasError) {
+        return <span className={`${fallbackClassName} ${className}`}>{emoji || '🏳️'}</span>;
+    }
+
+    return (
+        <img
+            src={src}
+            alt={name ? `Флаг ${name}` : `Флаг ${code}`}
+            loading="lazy"
+            decoding="async"
+            onError={() => setHasError(true)}
+            className={`${imgClassName} ${className}`}
+        />
+    );
+};
+
 // --- COMPACT DATE RANGE PICKER ---
 const DateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -994,18 +1019,28 @@ const GeoMonitoringPage = () => {
                                 >
                                     {/* GEO Name */}
                                     <td className="px-4 py-2.5 align-top whitespace-nowrap">
-                                        <div className="flex items-center gap-2.5">
-                                            <span className="text-lg">{geo.emoji}</span>
-                                            <div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="font-bold text-gray-900 dark:text-white whitespace-nowrap">{geo.name}</span>
-                                                    <span className="text-[10px] font-mono text-gray-400 whitespace-nowrap">{geo.code}</span>
+                                        <div className="relative flex min-h-[64px] items-center gap-3 overflow-hidden rounded-xl border border-white/10 bg-[#0b0b0b] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                            <div className="relative z-10 flex items-center gap-3">
+                                                <div className="flex h-[26px] w-[38px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-white/15 bg-black/30 shadow-sm">
+                                                    <CountryFlagIcon
+                                                        code={geo.code}
+                                                        emoji={geo.emoji}
+                                                        name={geo.name}
+                                                        imgClassName="h-full w-full object-cover"
+                                                        fallbackClassName="text-[24px] leading-none"
+                                                    />
                                                 </div>
-                                                <div className="mt-1.5">
-                                                    {(() => {
-                                                        const proj = projects.find(p => p.id === geo.project_id);
-                                                        return proj ? <ProjectBadge project={proj} size="xs" /> : null;
-                                                    })()}
+                                                <div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-bold text-white whitespace-nowrap">{geo.name}</span>
+                                                        <span className="text-[10px] font-mono text-gray-400 whitespace-nowrap">{geo.code}</span>
+                                                    </div>
+                                                    <div className="mt-1.5">
+                                                        {(() => {
+                                                            const proj = projects.find(p => p.id === geo.project_id);
+                                                            return proj ? <ProjectBadge project={proj} size="xs" /> : null;
+                                                        })()}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
