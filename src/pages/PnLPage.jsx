@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     TrendingUp, ClipboardList, ChevronDown, ChevronRight,
     Plus, Save, X, Clipboard, Edit3, Trash2, Check, RefreshCw,
-    Calendar as CalendarIcon, RotateCcw, ArrowUpAZ, ArrowDownUp,
+    Calendar as CalendarIcon, RotateCcw, ArrowUpAZ, ArrowDownUp, Download,
     MessageCircle, MessageSquare
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
+import { showToast } from '../utils/toastEvents';
 
 // ─── TABS CONFIG ──────────────────────────────────────────────────────────────
 const TABS = [
@@ -46,6 +47,14 @@ const formatDate = (d) => {
     if (!d) return '';
     const [y, m, day] = d.split('-');
     return `${day}.${m}.${y}`;
+};
+const escapeCsvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+const formatMetricExportValue = (val, metricKey) => {
+    if (val === null || val === undefined) return '';
+    if (metricKey === 'roi') return `${fmt(val, 1)}%`;
+    if (metricKey === 'cpc') return `${fmt(val, 3)}$`;
+    if (metricKey === 'clicks' || metricKey === 'salesCount') return fmtInt(val);
+    return `${fmt(val)}$`;
 };
 
 // ─── ENTRY FORM ──────────────────────────────────────────────────────────────
@@ -535,9 +544,59 @@ const PnLReportTab = ({ startDate, endDate }) => {
         return { cellMap: map, sortedGeos, sortedDates, geoTotals, dateTotals, grandTotal };
     }, [entries, payments, eurToUsd, trafficSource, deptFilter]);
 
+    const countryByCode = useMemo(
+        () => new Map((countries || []).map((country) => [country.code, country])),
+        [countries]
+    );
+
     // Get metric value from a cell
     const getVal = (cell, m) => cell ? cell[m] ?? 0 : null;
     const curMetric = METRICS.find(m => m.key === metric) || METRICS[0];
+
+    const handleExportMatrix = () => {
+        if (!sortedGeos.length) {
+            showToast('Нет данных для выгрузки', 'error');
+            return;
+        }
+
+        const csvRows = [
+            ['ГЕО', ...sortedDates.map(formatDate), 'Итого'],
+            ...sortedGeos.map((code) => {
+                const country = countryByCode.get(code);
+                const geoLabel = country?.name ? `${code} / ${country.name}` : code;
+                return [
+                    geoLabel,
+                    ...sortedDates.map((date) => formatMetricExportValue(getVal(cellMap[code]?.[date] || null, metric), metric)),
+                    formatMetricExportValue(getVal(geoTotals[code], metric), metric),
+                ];
+            }),
+            [
+                'Итого',
+                ...sortedDates.map((date) => formatMetricExportValue(getVal(dateTotals[date], metric), metric)),
+                formatMetricExportValue(getVal(grandTotal, metric), metric),
+            ],
+        ];
+
+        const csvContent = [
+            'sep=;',
+            `Метрика;${escapeCsvCell(curMetric.label)}`,
+            `Период;${escapeCsvCell(`${formatDate(dateFrom)} - ${formatDate(dateTo)}`)}`,
+            ...csvRows.map((row) => row.map(escapeCsvCell).join(';')),
+        ].join('\r\n');
+
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.href = url;
+        link.setAttribute('download', `pnl_${metric}_${dateFrom}_${dateTo}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showToast('Выгрузка готова', 'success');
+    };
 
     // Cell color: heatmap based on profit/roi (positive = green shades, negative = red)
     const getCellStyle = (val, m) => {
@@ -571,55 +630,70 @@ const PnLReportTab = ({ startDate, endDate }) => {
     return (
         <div className="space-y-5">
             {/* Controls: metric switcher + filter buttons */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Metric switcher */}
+                    <div className="flex flex-wrap gap-1 bg-gray-100 dark:bg-[#1a1a1a] p-0.5 rounded-lg">
+                        {METRICS.map(m => (
+                            <button key={m.key} onClick={() => setMetric(m.key)}
+                                className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${metric === m.key
+                                    ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                                {m.label}
+                            </button>
+                        ))}
+                    </div>
 
-                {/* Metric switcher */}
-                <div className="flex flex-wrap gap-1 bg-gray-100 dark:bg-[#1a1a1a] p-0.5 rounded-lg">
-                    {METRICS.map(m => (
-                        <button key={m.key} onClick={() => setMetric(m.key)}
-                            className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${metric === m.key
-                                ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-                            {m.label}
-                        </button>
-                    ))}
+                    {/* Traffic Source Toggle: Все / Direct / Comm */}
+                    <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-lg h-[30px] items-center">
+                        <button onClick={() => setTrafficSource('all')}
+                            className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                                trafficSource === 'all' ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}>Все</button>
+                        <button onClick={() => setTrafficSource('direct')}
+                            className={`px-2 h-full rounded-md text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${
+                                trafficSource === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}><MessageCircle size={10} />Direct</button>
+                        <button onClick={() => setTrafficSource('comments')}
+                            className={`px-2 h-full rounded-md text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${
+                                trafficSource === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}><MessageSquare size={10} />Comm</button>
+                    </div>
+
+                    {/* Department Toggle: Все / on / Конс. / Таро — multi-select */}
+                    <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-lg h-[30px] items-center">
+                        <button onClick={() => setDeptFilter([])}
+                            className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                                deptFilter.length === 0 ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}>Все</button>
+                        <button onClick={() => toggleDept('sales')}
+                            className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                                deptFilter.includes('sales') ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}>on</button>
+                        <button onClick={() => toggleDept('consultant')}
+                            className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                                deptFilter.includes('consultant') ? 'bg-white dark:bg-[#333] text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}>Конс.</button>
+                        <button onClick={() => toggleDept('taro')}
+                            className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
+                                deptFilter.includes('taro') ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                            }`}>Таро</button>
+                    </div>
                 </div>
 
-                {/* Traffic Source Toggle: Все / Direct / Comm */}
-                <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-lg h-[30px] items-center">
-                    <button onClick={() => setTrafficSource('all')}
-                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
-                            trafficSource === 'all' ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}>Все</button>
-                    <button onClick={() => setTrafficSource('direct')}
-                        className={`px-2 h-full rounded-md text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${
-                            trafficSource === 'direct' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}><MessageCircle size={10} />Direct</button>
-                    <button onClick={() => setTrafficSource('comments')}
-                        className={`px-2 h-full rounded-md text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${
-                            trafficSource === 'comments' ? 'bg-white dark:bg-[#333] text-orange-600 dark:text-orange-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}><MessageSquare size={10} />Comm</button>
-                </div>
-
-                {/* Department Toggle: Все / on / Конс. / Таро — multi-select */}
-                <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-lg h-[30px] items-center">
-                    <button onClick={() => setDeptFilter([])}
-                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
-                            deptFilter.length === 0 ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}>Все</button>
-                    <button onClick={() => toggleDept('sales')}
-                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
-                            deptFilter.includes('sales') ? 'bg-white dark:bg-[#333] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}>on</button>
-                    <button onClick={() => toggleDept('consultant')}
-                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
-                            deptFilter.includes('consultant') ? 'bg-white dark:bg-[#333] text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}>Конс.</button>
-                    <button onClick={() => toggleDept('taro')}
-                        className={`px-2.5 h-full rounded-md text-[10px] font-bold transition-all whitespace-nowrap ${
-                            deptFilter.includes('taro') ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}>Таро</button>
-                </div>
+                <button
+                    type="button"
+                    onClick={handleExportMatrix}
+                    disabled={!sortedGeos.length}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-xs font-bold transition-opacity h-[34px] ${
+                        sortedGeos.length
+                            ? 'bg-black dark:bg-white text-white dark:text-black hover:opacity-80'
+                            : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-400 cursor-not-allowed'
+                    }`}
+                >
+                    <Download size={12} />
+                    <span>Выгрузка</span>
+                </button>
             </div>
 
             {/* Summary KPIs */}
@@ -676,7 +750,7 @@ const PnLReportTab = ({ startDate, endDate }) => {
 
                             <tbody className="divide-y divide-gray-50 dark:divide-[#1a1a1a]">
                                 {sortedGeos.map(code => {
-                                    const country = countries?.find(c => c.code === code);
+                                    const country = countryByCode.get(code);
                                     const geo = geoTotals[code];
                                     const totalVal = getVal(geo, metric);
                                     return (

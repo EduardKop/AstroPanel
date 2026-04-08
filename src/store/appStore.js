@@ -95,6 +95,7 @@ export const useAppStore = create((set, get) => ({
 
   stats: { totalEur: 0, count: 0 },
   isLoading: false,
+  paymentsLoaded: false,
   isInitialized: false,
 
   // Knowledge Base Sharing
@@ -313,7 +314,8 @@ export const useAppStore = create((set, get) => ({
       kpiRates: [],
       kpiSettings: {},
       managerRates: [],
-      stats: { totalEur: 0, count: 0 }
+      stats: { totalEur: 0, count: 0 },
+      paymentsLoaded: false
     });
   },
 
@@ -596,7 +598,7 @@ export const useAppStore = create((set, get) => ({
     if (get().isLoading && !forceUpdate) return;
     // ... existing implementation ...
 
-    set({ isLoading: true });
+    set({ isLoading: true, paymentsLoaded: false });
 
     try {
       // А. Каналы
@@ -792,15 +794,17 @@ export const useAppStore = create((set, get) => ({
 
         set({
           payments: formattedPayments,
-          stats: { totalEur: total.toFixed(2), count: formattedPayments.length }
+          stats: { totalEur: total.toFixed(2), count: formattedPayments.length },
+          paymentsLoaded: true
         });
       }).catch(err => {
         console.error('Error in async payments load:', err);
+        set({ paymentsLoaded: true });
       });
 
     } catch (error) {
       console.error('Critical Store Error:', error);
-      set({ isLoading: false });
+      set({ isLoading: false, paymentsLoaded: true });
     }
   },
 

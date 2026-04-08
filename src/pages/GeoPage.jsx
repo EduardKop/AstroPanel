@@ -5,7 +5,7 @@ import {
   Filter,
   Users, TrendingUp, Globe,
   Calendar as CalendarIcon,
-  Copy, Search, X,
+  Copy, Search, X, Download,
   RotateCcw, RefreshCw
 } from 'lucide-react';
 
@@ -388,6 +388,36 @@ const formatTelegramUsername = (username) => {
   return `@${String(username).trim().replace(/^@+/, '')}`;
 };
 
+const formatExportDate = (date) => {
+  if (!date) return '';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
+};
+
+const formatExportPeriodLabel = (startDate, endDate) => {
+  if (!startDate || !endDate) return 'Период';
+
+  const isSameMonth =
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth();
+
+  const isFullMonth =
+    startDate.getDate() === 1 &&
+    endDate.getDate() === new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
+
+  if (isSameMonth && isFullMonth) {
+    const monthName = startDate.toLocaleString('ru-RU', { month: 'long' });
+    return monthName.charAt(0).toUpperCase() + monthName.slice(1);
+  }
+
+  return `${formatExportDate(startDate)} - ${formatExportDate(endDate)}`;
+};
+
+const escapeCsvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+const formatExportPercent = (value) => `${Number(value || 0).toFixed(2)}%`;
+
 const getManagerRoleMeta = (role) => {
   switch (role) {
     case 'Sales':
@@ -738,6 +768,53 @@ const GeoPage = () => {
     });
   }, [localPayments, trafficStats, startDate, endDate, filters, isRestrictedUser, currentUser, countries, projects, activeProjectFilter, geoSortMode, deferredGeoQuery]);
 
+  const handleExportGeoTable = () => {
+    if (!geoStats.length) {
+      showToast('Нет данных для выгрузки', 'error');
+      return;
+    }
+
+    const periodLabel = formatExportPeriodLabel(startDate, endDate);
+    const exportColumns = [
+      { label: 'Лиды Direct', getValue: (geo) => geo.traffic.direct || 0 },
+      { label: 'Лиды Коммент.', getValue: (geo) => geo.traffic.comments || 0 },
+      { label: 'Лиды WhatsApp', getValue: (geo) => geo.traffic.whatsapp || 0 },
+      { label: 'Лиды Всего', getValue: (geo) => geo.traffic.all || 0 },
+      { label: 'CR Direct', getValue: (geo) => formatExportPercent(geo.cr.direct) },
+      { label: 'CR Коммент.', getValue: (geo) => formatExportPercent(geo.cr.comments) },
+      { label: 'CR WhatsApp', getValue: (geo) => formatExportPercent(geo.cr.whatsapp) },
+      { label: 'CR Всего', getValue: (geo) => formatExportPercent(geo.cr.all) },
+    ];
+    const csvRows = [
+      ['', ...exportColumns.map(() => periodLabel)],
+      ['', ...exportColumns.map((column) => column.label)],
+      ...geoStats.map((geo) => {
+        const countryDef = countries?.find((country) => country.code === geo.code);
+        const countryName = countryDef?.name || geo.code;
+        return [countryName, ...exportColumns.map((column) => column.getValue(geo))];
+      }),
+    ];
+
+    const csvContent = [
+      'sep=;',
+      ...csvRows.map((row) => row.map(escapeCsvCell).join(';')),
+    ].join('\r\n');
+
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const filePeriod = `${toYMD(startDate)}_${toYMD(endDate)}`;
+
+    link.href = url;
+    link.setAttribute('download', `geo_leads_cr_${filePeriod}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showToast('Выгрузка готова', 'success');
+  };
+
   const localIsLoading = localLoading || (!localPayments.length && isLoading);
 
   if (localIsLoading) {
@@ -862,6 +939,20 @@ const GeoPage = () => {
                     />
 
                     <button
+                      type="button"
+                      onClick={handleExportGeoTable}
+                      disabled={!geoStats.length}
+                      className={`w-full flex items-center justify-center gap-2 rounded-[6px] px-3 py-2 text-xs font-bold transition-opacity ${
+                        geoStats.length
+                          ? 'bg-black dark:bg-white text-white dark:text-black hover:opacity-80'
+                          : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <Download size={12} />
+                      <span>Скачать таблицу</span>
+                    </button>
+
+                    <button
                       onClick={resetFilters}
                       disabled={!hasActiveFilters}
                       className={`w-full p-2 bg-red-500/10 text-red-500 rounded-[6px] hover:bg-red-500/20 text-xs font-bold transition-opacity ${hasActiveFilters ? 'opacity-100' : 'opacity-50 cursor-not-allowed'}`}
@@ -880,6 +971,20 @@ const GeoPage = () => {
                   onReset={resetDateRange}
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={handleExportGeoTable}
+                disabled={!geoStats.length}
+                className={`hidden md:inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-[6px] text-xs font-bold transition-opacity h-[34px] ${
+                  geoStats.length
+                    ? 'bg-black dark:bg-white text-white dark:text-black hover:opacity-80'
+                    : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <Download size={12} />
+                <span>Выгрузка</span>
+              </button>
 
             </div>
           </div>

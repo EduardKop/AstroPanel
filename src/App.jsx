@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp, Monitor
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp, Monitor, Wallet
 } from 'lucide-react'
 
 import ThemeToggle from './components/ThemeToggle';
@@ -40,6 +40,7 @@ import ActivityLogsPage from './pages/ActivityLogsPage';
 import PaymentTimesPage from './pages/PaymentTimesPage';
 import HRDashboardPage from './pages/HRDashboardPage';
 import PnLPage from './pages/PnLPage';
+import PaymentMethodsPage from './pages/PaymentMethodsPage';
 
 // Sales Department Pages
 import SalesDashboardPage from './pages/sales/SalesDashboardPage';
@@ -421,6 +422,7 @@ function App() {
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
                   {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. Анализ" path="/quick-stats" />}
                   {(hasAccess('pnl_report') || hasAccess('pnl_data')) && <SidebarItem icon={TrendingUp} label="P&L" path="/pnl" />}
+                  {isCLevel && <SidebarItem icon={Wallet} label="Методы оплаты" path="/payment-methods" />}
                   {hasAccess('manager_activity') && (
                     <SidebarItem
                       icon={Activity}
@@ -673,6 +675,9 @@ function App() {
 
               {/* ✅ P&L */}
               <Route path="/pnl" element={<ProtectedRoute resource="pnl"><PnLPage /></ProtectedRoute>} />
+
+              {/* ✅ МЕТОДЫ ОПЛАТЫ */}
+              <Route path="/payment-methods" element={<ProtectedRoute allowedRoles={['C-level']}><PaymentMethodsPage /></ProtectedRoute>} />
 
               {/* ✅ АКТИВНОСТЬ МЕНЕДЖЕРОВ */}
               <Route path="/manager-activity" element={<ProtectedRoute resource="manager_activity"><Navigate to="/manager-activity/lateness" replace /></ProtectedRoute>} />

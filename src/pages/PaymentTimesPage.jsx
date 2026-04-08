@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore';
 import {
     Filter, RotateCcw, X,
     Users, Calendar as CalendarIcon,
-    Clock, ChevronDown, ChevronUp, MessageCircle, MessageSquare, Phone, Percent, List, AlignJustify
+    Clock, ChevronDown, ChevronUp, MessageCircle, MessageSquare, Phone, Percent, List, AlignJustify, RefreshCw
 } from 'lucide-react';
 import { extractUTCDate, formatUTCDate, formatUTCTime, getKyivDateString } from '../utils/kyivTime';
 
@@ -352,14 +352,33 @@ const AllPaymentsList = ({ payments }) => {
 
 // --- MAIN PAGE ---
 const PaymentTimesPage = () => {
-    const { payments, user: currentUser, isLoading, fetchAllData } = useAppStore();
+    const { payments, user: currentUser, paymentsLoaded, fetchAllData } = useAppStore();
     const [dateRange, setDateRange] = useState(getLastWeekRange());
     const [startDate, endDate] = dateRange;
     const [filters, setFilters] = useState(() => ({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all', showMobileFilters: false }));
     const [expandedGeo, setExpandedGeo] = useState(null);
+    const [pageLoading, setPageLoading] = useState(true);
+    const hasStartedRefreshRef = useRef(false);
+    const hasSeenPendingPaymentsRef = useRef(false);
 
     const hasActiveFilters = useMemo(() => !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all'), [filters]);
-    useEffect(() => { if (fetchAllData) fetchAllData(true); }, [fetchAllData]);
+    useEffect(() => {
+        if (!fetchAllData) return;
+        hasStartedRefreshRef.current = true;
+        hasSeenPendingPaymentsRef.current = false;
+        setPageLoading(true);
+        fetchAllData(true);
+    }, [fetchAllData]);
+    useEffect(() => {
+        if (!hasStartedRefreshRef.current) return;
+        if (!paymentsLoaded) {
+            hasSeenPendingPaymentsRef.current = true;
+            return;
+        }
+        if (hasSeenPendingPaymentsRef.current) {
+            setPageLoading(false);
+        }
+    }, [paymentsLoaded]);
     const isRestrictedUser = useMemo(() => { if (!currentUser) return false; return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role); }, [currentUser]);
 
     const uniqueValues = useMemo(() => {
@@ -412,6 +431,15 @@ const PaymentTimesPage = () => {
 
     const resetDateRange = () => setDateRange(getLastWeekRange());
     const resetFilters = () => { setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all' }); setDateRange(getLastWeekRange()); };
+
+    if (pageLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
+                <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
+                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка данных...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="pb-10 transition-colors duration-200 w-full max-w-full">
