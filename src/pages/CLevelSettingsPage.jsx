@@ -5,7 +5,7 @@ import {
     LayoutDashboard, Users, Globe, CreditCard,
     BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
     Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-    BookOpen, Coins, Calendar, Clock, Lock, CheckSquare, Square, PieChart, Eye, ShieldAlert, Activity, TrendingUp, ClipboardList
+    BookOpen, Coins, Calendar, Clock, Lock, CheckSquare, Square, PieChart, Eye, ShieldAlert, Activity, TrendingUp, ClipboardList, Wallet
 } from 'lucide-react';
 
 const ROLES = ['C-level', 'Admin', 'HR', 'SeniorSales', 'Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSMM', 'SMM'];
@@ -26,6 +26,7 @@ const SECTIONS = [
             { key: 'transactions_view', editKey: 'transactions_edit', label: 'Транзакции', icon: CreditCard },
             { key: 'pnl_report', label: 'P&L — Отчёт', icon: TrendingUp },
             { key: 'pnl_data', label: 'P&L — Заполнение данных', icon: ClipboardList },
+            { key: 'payment_methods', label: 'Методы оплаты', icon: Wallet },
             { key: 'manager_activity', label: 'Активность Менеджеров', icon: Activity },
         ]
     },

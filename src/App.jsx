@@ -322,7 +322,7 @@ function App() {
   const closeToast = () => setToast(prev => ({ ...prev, visible: false }));
 
   // --- SECTION VISIBILITY LOGIC ---
-  const showDashboardsSection = hasAccess('dashboard_view') || hasAccess('stats') || hasAccess('geo') || hasAccess('geo_matrix') || hasAccess('transactions_view') || hasAccess('geo_monitoring') || hasAccess('manager_activity');
+  const showDashboardsSection = hasAccess('dashboard_view') || hasAccess('stats') || hasAccess('geo') || hasAccess('geo_matrix') || hasAccess('transactions_view') || hasAccess('geo_monitoring') || hasAccess('manager_activity') || hasAccess('payment_methods');
 
   const showSalesSection = hasAccess('sales_dashboard') || hasAccess('sales_payments') || hasAccess('sales_quick_stats') || hasAccess('sales_matrix') || hasAccess('sales_geo') || hasAccess('sales_stats');
 
@@ -422,7 +422,7 @@ function App() {
                   {hasAccess('transactions_view') && <SidebarItem icon={CreditCard} label="Транзакции" path="/list" />}
                   {hasAccess('quick_stats') && <SidebarItem icon={BarChart3} label="Сравн. Анализ" path="/quick-stats" />}
                   {(hasAccess('pnl_report') || hasAccess('pnl_data')) && <SidebarItem icon={TrendingUp} label="P&L" path="/pnl" />}
-                  {isCLevel && <SidebarItem icon={Wallet} label="Методы оплаты" path="/payment-methods" />}
+                  {hasAccess('payment_methods') && <SidebarItem icon={Wallet} label="Методы оплаты" path="/payment-methods" />}
                   {hasAccess('manager_activity') && (
                     <SidebarItem
                       icon={Activity}
@@ -677,7 +677,7 @@ function App() {
               <Route path="/pnl" element={<ProtectedRoute resource="pnl"><PnLPage /></ProtectedRoute>} />
 
               {/* ✅ МЕТОДЫ ОПЛАТЫ */}
-              <Route path="/payment-methods" element={<ProtectedRoute allowedRoles={['C-level']}><PaymentMethodsPage /></ProtectedRoute>} />
+              <Route path="/payment-methods" element={<ProtectedRoute resource="payment_methods"><PaymentMethodsPage /></ProtectedRoute>} />
 
               {/* ✅ АКТИВНОСТЬ МЕНЕДЖЕРОВ */}
               <Route path="/manager-activity" element={<ProtectedRoute resource="manager_activity"><Navigate to="/manager-activity/lateness" replace /></ProtectedRoute>} />
