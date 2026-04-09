@@ -153,6 +153,35 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
         country: 'UA' // Default
     });
 
+    // Broadcast presence when modal opens
+    useEffect(() => {
+        if (!user || !isOpen) return;
+        
+        const channel = supabase.channel('payment-form-presence');
+        let isSubscribed = false;
+
+        channel
+            .on('presence', { event: 'sync' }, () => {})
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    isSubscribed = true;
+                    await channel.track({
+                        manager_id: user.id,
+                        manager_name: user.name,
+                        manager_role: user.role,
+                        started_at: new Date().toISOString(),
+                    });
+                }
+            });
+
+        return () => {
+            if (isSubscribed) {
+                channel.untrack().catch(() => {});
+            }
+            supabase.removeChannel(channel);
+        };
+    }, [isOpen, user]);
+
     // Reset on open
     useEffect(() => {
         if (isOpen && user) {
@@ -246,6 +275,63 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
 
             // Fire confetti based on payment count
             triggerConfetti(todayCount || 1);
+
+            // Directly patch local store for INSTANT update without relying on Realtime/Websockets
+            // Directly patch local store for INSTANT update without relying on Realtime/Websockets
+            const currentManagersMap = {};
+            (useAppStore.getState().managers || []).forEach(m => {
+                currentManagersMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username };
+            });
+
+            let derivedSource = 'direct';
+            const rawLink = (payload.crm_link || '').toLowerCase();
+            if (rawLink.includes('instagram')) derivedSource = 'instagram';
+            else if (rawLink.includes('wa.me') || /^\+?\d+$/.test(rawLink)) derivedSource = 'whatsapp';
+
+            const newItem = data[0];
+            const formattedLocal = {
+                ...newItem,
+                id: newItem.id,
+                transactionDate: newItem.transaction_date || newItem.created_at,
+                amountEUR: Number(newItem.amount_eur) || 0,
+                amountLocal: Number(newItem.amount_local) || 0,
+                amount: Number(newItem.amount_local) || Number(newItem.amount_eur) || 0,
+                manager: currentManagersMap[newItem.manager_id]?.name || 'Не назначен',
+                managerId: newItem.manager_id,
+                managerRole: currentManagersMap[newItem.manager_id]?.role || null,
+                manager_tg: currentManagersMap[newItem.manager_id]?.telegram_username || null,
+                type: newItem.payment_type || 'Other',
+                status: newItem.status || 'pending',
+                source: derivedSource,
+                country: payload.country,
+                product: payload.product
+            };
+
+            // Broadcast via Supabase Broadcast (works globally without needing logic replication)
+            const bChannel = supabase.channel('dashboard-new-payments');
+            bChannel.subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    bChannel.send({
+                        type: 'broadcast',
+                        event: 'new_payment_added',
+                        payload: formattedLocal
+                    }).then(() => {
+                        supabase.removeChannel(bChannel);
+                    });
+                }
+            });
+
+            useAppStore.setState(state => {
+                if (state.payments.some(p => p.id === formattedLocal.id)) return state;
+                return {
+                    payments: [formattedLocal, ...state.payments],
+                    stats: { 
+                        ...state.stats, 
+                        totalEur: Number(state.stats?.totalEur || 0) + formattedLocal.amountEUR, 
+                        count: (state.stats?.count || 0) + 1 
+                    }
+                };
+            });
 
             // Log
             await logActivity({

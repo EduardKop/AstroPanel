@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
+import { supabase } from '../services/supabaseClient';
 import {
   Filter, RotateCcw, XCircle, X,
   Users, DollarSign, Percent, CreditCard, LayoutDashboard,
-  Activity, Trophy, Globe, Layers, MessageCircle, MessageSquare, Phone, Calendar as CalendarIcon
+  Activity, Trophy, Globe, Layers, MessageCircle, MessageSquare, Phone, Calendar as CalendarIcon, RefreshCw
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -24,6 +25,16 @@ const FLAGS = {
 };
 const getFlag = (code) => FLAGS[code] || '🏳️';
 
+const CURRENCY_MAP = {
+  UA: 'UAH', RO: 'RON', PL: 'PLN', CZ: 'CZK', HU: 'HUF',
+  DE: 'EUR', FR: 'EUR', IT: 'EUR', ES: 'EUR', NL: 'EUR',
+  AT: 'EUR', BE: 'EUR', PT: 'EUR', FI: 'EUR', SK: 'EUR',
+  LV: 'EUR', LT: 'EUR', EE: 'EUR', SI: 'EUR', GR: 'EUR',
+  BG: 'BGN', HR: 'HRK', RS: 'RSD', KZ: 'KZT', UZ: 'UZS', MD: 'MDL',
+  GB: 'GBP', CH: 'CHF', SE: 'SEK', NO: 'NOK', DK: 'DKK',
+};
+const getCurrencyCode = (country) => CURRENCY_MAP[country] || '';
+
 const getCRColor = (val) => {
   const num = parseFloat(val);
   if (num >= 10) return 'text-emerald-600 dark:text-emerald-400';
@@ -40,6 +51,28 @@ const getPaymentBadgeStyle = (type) => {
   return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20';
 };
 
+const formatPaymentType = (type) => {
+  if (!type) return 'Other';
+  const upper = type.toUpperCase();
+  if (upper === 'ПРЯМЫЕ РЕКВИЗИТЫ') return 'РЕКВИЗИТЫ';
+  return upper;
+};
+
+const getRoleTag = (role) => {
+  if (!role) return null;
+  const map = {
+    'Sales':      { label: 'Sales',   cls: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+    'SeniorSales':{ label: 'Sr.Sales',cls: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
+    'SalesTaro':  { label: 'Taro',    cls: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20' },
+    'SalesTaroNew':{ label: 'Taro',   cls: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20' },
+    'Consultant': { label: 'Cons.',   cls: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
+    'Retention':  { label: 'Ret.',    cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' },
+    'TeamLead':   { label: 'TL',      cls: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' },
+  };
+  const r = map[role] || { label: role, cls: 'bg-gray-500/10 text-gray-500 border-gray-500/20' };
+  return <span className={`px-1 py-px rounded text-[8px] font-bold border whitespace-nowrap ${r.cls}`}>{r.label}</span>;
+};
+
 const getRankEmoji = (index) => {
   if (index === 0) return '🥇';
   if (index === 1) return '🥈';
@@ -47,10 +80,13 @@ const getRankEmoji = (index) => {
   return <span className="text-gray-400 text-[10px] font-mono">#{index + 1}</span>;
 }
 
-const getLastWeekRange = () => {
+const getTodayRange = () => {
   const end = new Date();
   const start = new Date();
-  start.setDate(end.getDate() - 7);
+  // Начало текущей недели (Понедельник)
+  const day = start.getDay(); // 0=вс, 1=пн, ...
+  const diff = day === 0 ? -6 : 1 - day; // если воскресенье — берем 6 дней назад
+  start.setDate(start.getDate() + diff);
   return [start, end];
 };
 
@@ -371,9 +407,10 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
 };
 
 const DashboardPage = () => {
-  const { payments, user: currentUser, isLoading, trafficStats, fetchTrafficStats, fetchAllData } = useAppStore();
+  const { payments, user: currentUser, isLoading, trafficStats, fetchTrafficStats, fetchAllData, countries, managers } = useAppStore();
+  const getCountryName = (code) => countries?.find?.(c => c.code === code)?.name || code;
 
-  const [dateRange, setDateRange] = useState(getLastWeekRange());
+  const [dateRange, setDateRange] = useState(getTodayRange());
   const [startDate, endDate] = dateRange;
 
   const [filters, setFilters] = useState(() => {
@@ -390,6 +427,54 @@ const DashboardPage = () => {
     };
   });
   const [expandedId, setExpandedId] = useState(null);
+  const [activeFilling, setActiveFilling] = useState([]); // [{manager_name, manager_role, started_at}]
+
+  // Subscribe to payment-form-presence channel
+  useEffect(() => {
+    const channel = supabase.channel('payment-form-presence');
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const fillers = Object.values(state).flat();
+        setActiveFilling(fillers);
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        setActiveFilling(prev => {
+          const ids = new Set(prev.map(p => p.manager_id));
+          const toAdd = newPresences.filter(p => !ids.has(p.manager_id));
+          return [...prev, ...toAdd];
+        });
+      })
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        const leftIds = new Set(leftPresences.map(p => p.manager_id));
+        setActiveFilling(prev => prev.filter(p => !leftIds.has(p.manager_id)));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // ⚡ Real-time: instantly prepend new payment via Broadcast
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard-new-payments')
+      .on('broadcast', { event: 'new_payment_added' }, (payload) => {
+        const formatted = payload.payload;
+        if (!formatted || !formatted.id) return;
+        
+        // Prepend into store
+        useAppStore.setState(state => {
+          // Avoid duplicates
+          if (state.payments.some(p => p.id === formatted.id)) return state;
+          
+          return {
+            payments: [formatted, ...state.payments],
+            stats: { ...state.stats, totalEur: Number(state.stats?.totalEur || 0) + formatted.amountEUR, count: (state.stats?.count || 0) + 1 }
+          };
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const hasActiveFilters = useMemo(() => {
     return !!(filters.manager.length || filters.country.length || filters.product.length || filters.type.length || filters.source !== 'all');
@@ -712,11 +797,20 @@ const DashboardPage = () => {
     }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 50);
   }, [filteredData, trafficStats, startDate, endDate, filters.source]);
 
-  const resetDateRange = () => setDateRange(getLastWeekRange());
+  const resetDateRange = () => setDateRange(getTodayRange());
   const resetFilters = () => {
     setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: [] });
-    setDateRange(getLastWeekRange());
+    setDateRange(getTodayRange());
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] border-transparent h-[calc(100vh-80px)]">
+        <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
+        <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка дашборда...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-10 transition-colors duration-200 w-full max-w-full overflow-x-hidden">
@@ -879,275 +973,293 @@ const DashboardPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-3 md:gap-4 mb-6 mt-4 w-full min-w-0">
+      <div className="flex flex-col lg:flex-row gap-3 md:gap-4 mb-6 mt-4 w-full min-w-0">
 
-        {/* 1. ГЛАВНЫЙ БЛОК */}
-        <div className="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0">
-          <div className="absolute inset-0 bg-white dark:bg-[#0F0F11] transition-colors duration-200"></div>
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5 pointer-events-none"></div>
-
-          <div className="relative z-10 flex flex-col h-full p-4 md:p-5 overflow-hidden">
-            <div className="mb-4 flex items-center justify-between min-w-0">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white tracking-wide flex items-center gap-2 truncate">
-                <Activity size={16} className="text-blue-500 shrink-0" /> Ключевые метрики
-              </h3>
+        {/* --- LEFT COLUMN: LIVE FEED (Последние операции) --- */}
+        <div className="flex-1 lg:w-[55%] w-full flex flex-col min-w-0 order-2 lg:order-2">
+          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden shadow-sm flex flex-col h-[900px] lg:h-[calc(100vh-140px)] transition-colors duration-200">
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex items-center gap-3 bg-gray-50/50 dark:bg-[#161616] shrink-0">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-600 dark:text-gray-400">Транзакции</span>
+              <span className="hidden md:inline text-[10px] text-gray-400 dark:text-gray-600">· real-time</span>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-px bg-gray-100 dark:bg-[#222] border border-gray-100 dark:border-[#222] rounded-lg overflow-hidden mb-4 transition-colors duration-200 w-full">
-              {/* Row 1 */}
-              <TechStatItem icon={Users} label="Трафик" value={stats.traffic} />
-              <TechStatItem icon={CreditCard} label="Продажи" value={stats.count} />
-              <TechStatItem icon={Percent} label="Конверсия" value={`${stats.conversion}%`} valueColor={getCRColor(stats.conversion)} />
-
-              {/* Row 2 */}
-              <TechStatItem icon={Trophy} label="Уникальные" value={stats.uniqueSales} highlight />
-              <TechStatItem icon={Layers} label="Повторные" value={stats.repeatSales} />
-              <TechStatItem icon={Activity} label="Конв. (Уник)" value={`${stats.conversionUnique}%`} valueColor={getCRColor(stats.conversionUnique)} />
-
-              {/* Row 3 */}
-              <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
-              <TechStatItem icon={DollarSign} label="Средний чек" value={`€${Number(stats.avgCheck).toLocaleString()}`} />
-              <TechStatItem icon={Users} label="Кол-во менеджеров" value={employeeCounts.total} />
-            </div>
-
-            <div className="flex-1 min-h-[100px] w-full min-w-0">
-              <div className="text-[10px] font-bold text-gray-400 uppercase mb-2 truncate">Динамика продаж</div>
-              <div className="h-24 w-full min-w-0 overflow-hidden">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="date" hide />
-                    <RechartsTooltip contentStyle={{ backgroundColor: '#111', borderColor: '#333', fontSize: '12px', color: '#fff' }} itemStyle={{ color: '#fff' }} cursor={{ stroke: '#555', strokeWidth: 1 }} />
-                    <Area type="monotone" dataKey="count" stroke="#3B82F6" fillOpacity={1} fill="url(#colorCount)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. KPI CARDS (First Dynamic, Second Static) */}
-        <div className="col-span-12 md:col-span-6 lg:col-span-3 xl:col-span-4 flex flex-col gap-3 min-w-0">
-
-          <ProductCard
-            title="Отдел Продаж"
-            subtitle="Первые продажи"
-            mainValue={stats.count}
-            mainType="count"
-            data={[
-              { label: 'Активных менеджеров', val: employeeCounts.sales },
-              { label: 'Сумма депозитов', val: `€${stats.totalEur}` },
-              { label: 'Средний чек', val: `€${stats.avgCheck}` }
-            ]}
-          />
-
-          <ProductCard
-            title="Консультанты"
-            subtitle="Продажи с Консультаций"
-            mainValue={consultantStats.sales}
-            mainType="count"
-            data={[
-              { label: 'Активных менеджеров', val: consultantStats.activeMgrs },
-              { label: 'Сумма депозитов', val: `€${consultantStats.depositSum}` },
-              { label: 'Средний чек', val: `€${consultantStats.avgCheck}` }
-            ]}
-          />
-
-        </div>
-
-        {/* 3. LEADERBOARDS */}
-        <div className="col-span-12 md:col-span-6 lg:col-span-4 flex flex-col gap-3 min-w-0">
-
-          {/* Top Managers */}
-          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
-              <div className="flex items-center gap-2 min-w-0">
-                <Trophy size={14} className="text-amber-500 shrink-0" />
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ менеджеры</span>
-              </div>
-            </div>
-            <div className="p-2 space-y-1 max-h-[160px] overflow-y-auto custom-scrollbar">
-              {topManagers.map((mgr, i) => (
-                <div key={mgr.name} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
-                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate leading-none">{mgr.name}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-right">
-                    <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{mgr.count} Lead</span>
-                    <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[60px]">€{mgr.sum.toFixed(0)}</span>
-                  </div>
-                </div>
-              ))}
-              {topManagers.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
-            </div>
-          </div>
-
-          {/* Top Geo */}
-          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
-              <div className="flex items-center gap-2 min-w-0">
-                <Globe size={14} className="text-blue-500 shrink-0" />
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ ГЕО</span>
-              </div>
-            </div>
-            <div className="p-2 space-y-1 max-h-[160px] overflow-y-auto custom-scrollbar">
-              {topCountries.map((geo, i) => (
-                <div key={geo.code} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
-                    <div className="flex items-center gap-1.5 leading-none">
-                      <span className="text-base">{getFlag(geo.code)}</span>
-                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{geo.code}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-right">
-                    <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{geo.salesCount} Lead</span>
-                    <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[50px]">€{geo.salesSum.toFixed(0)}</span>
-                    <span className={`text-[10px] font-bold w-[35px] text-right ${getCRColor(geo.cr)}`}>{geo.cr}%</span>
-                  </div>
-                </div>
-              ))}
-              {topCountries.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* --- BOTTOM TABLE --- */}
-      <div className="mt-2 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden shadow-sm transition-colors duration-200 min-w-0 w-full">
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex items-center gap-2 bg-gray-50/50 dark:bg-[#161616]">
-          <Layers size={14} className="text-gray-400 shrink-0" />
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Последние операции</span>
-        </div>
-        {/* Desktop Table */}
-        <div className="hidden md:block overflow-x-auto w-full min-w-0">
-          <table className="w-full text-left text-xs text-gray-600 dark:text-[#888] whitespace-nowrap">
-            <thead className="bg-gray-50 dark:bg-[#161616] font-medium border-b border-gray-200 dark:border-[#333]">
-              <tr>
-                <th className="px-4 py-2">ID</th>
-                <th className="px-4 py-2">Дата (UTC)</th>
-                <th className="px-4 py-2">Менеджер</th>
-                <th className="px-4 py-2">ГЕО</th>
-                <th className="px-4 py-2">Метод</th>
-                <th className="px-4 py-2 text-right">Сумма (Loc)</th>
-                <th className="px-4 py-2 text-right">Сумма (EUR)</th>
-                <th className="px-4 py-2 text-right">Статус</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
-              {isLoading ? (
-                <tr><td colSpan="8" className="px-4 py-6 text-center text-xs">Загрузка...</td></tr>
-              ) : filteredData.slice(0, 10).map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
-                  <td className="px-4 py-2 font-mono text-[10px] text-gray-400" title={p.id}>
-                    #{p.id.slice(0, 8)}...
-                  </td>
-                  <td className="px-4 py-2 text-gray-500 font-mono">
-                    {formatUTCDate(p.transactionDate)} {formatUTCTime(p.transactionDate)}
-                  </td>
-                  <td className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">
-                    {p.manager}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-600 dark:text-gray-300">
-                      {getFlag(p.country)} {p.country}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getPaymentBadgeStyle(p.type)}`}>
-                      {p.type || 'Other'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-right font-bold text-gray-700 dark:text-gray-300">
-                    {p.amountLocal ? p.amountLocal.toLocaleString() : '-'}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono font-bold text-gray-900 dark:text-white">€{p.amountEUR}</td>
-                  <td className="px-4 py-2 text-right">
-                    <span className="text-emerald-500 text-[10px] font-bold uppercase">{p.status}</span>
-                  </td>
-                </tr>
-              ))}
-              {!isLoading && filteredData.length === 0 && (
-                <tr><td colSpan="8" className="px-4 py-6 text-center text-xs">Нет данных</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile Cards */}
-        <div className="md:hidden space-y-2 p-3">
-          {isLoading ? (
-            <div className="text-center py-6 text-xs text-gray-500">Загрузка...</div>
-          ) : filteredData.length === 0 ? (
-            <div className="text-center py-6 text-xs text-gray-500">Нет данных</div>
-          ) : (
-            filteredData.slice(0, 10).map((p) => {
-              const isExpanded = expandedId === p.id;
-              return (
-                <div key={p.id} className="border border-gray-200 dark:border-[#333] rounded-lg p-3 bg-white dark:bg-[#111] transition-all">
-                  <div className="flex justify-between items-center">
-                    <div className="flex-1">
-                      <div className="font-bold text-lg text-gray-900 dark:text-white">€{p.amountEUR}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        {formatUTCTime(p.transactionDate)}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setExpandedId(isExpanded ? null : p.id)}
-                      className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-bold transition-colors"
-                    >
-                      {isExpanded ? 'Скрыть' : 'Подробнее'}
-                    </button>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[#333] space-y-2 text-sm animate-in fade-in slide-in-from-top-2 duration-200">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">ID:</span>
-                        <span className="font-mono text-xs">#{p.id.slice(0, 8)}...</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Дата:</span>
-                        <span className="text-xs">{formatUTCDate(p.transactionDate)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Менеджер:</span>
-                        <span className="font-medium">{p.manager}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500">ГЕО:</span>
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-xs font-bold">
-                          {getFlag(p.country)} {p.country}
+            
+            {/* Desktop Table (Scrollable within container) */}
+            <div className="hidden md:block overflow-auto flex-1 custom-scrollbar w-full min-w-0 bg-white dark:bg-[#111]">
+              <table className="w-full text-left text-xs text-gray-600 dark:text-[#888] whitespace-nowrap relative">
+                <thead className="bg-gray-50 dark:bg-[#161616] font-medium border-b border-gray-200 dark:border-[#333] sticky top-0 z-10 shadow-sm">
+                  <tr>
+                    <th className="px-4 py-2">Дата (UTC)</th>
+                    <th className="px-4 py-2">Менеджер</th>
+                    <th className="px-4 py-2">ГЕО</th>
+                    <th className="px-4 py-2 w-[90px]">Метод</th>
+                    <th className="px-4 py-2">Сумма (Loc)</th>
+                    <th className="px-4 py-2">Сумма (EUR)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
+                  {isLoading ? (
+                    <tr><td colSpan="8" className="px-4 py-6 text-center text-xs">Загрузка...</td></tr>
+                  ) : (
+                    <>
+                      {/* 🟡 FILLING ROWS — managers currently opening AddPaymentModal */}
+                      {activeFilling.map((f) => (
+                        <tr key={`filling-${f.manager_id}`} className="bg-amber-50 dark:bg-amber-900/10 border-l-2 border-amber-400 animate-pulse-subtle">
+                          <td className="px-4 py-2 font-mono">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400 text-[10px]">
+                                {new Date(f.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-gray-700 dark:text-gray-300">{f.manager_name}</span>
+                              {getRoleTag(f.manager_role)}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2">
+                            <span className="text-gray-300 dark:text-gray-600 text-[10px]">—</span>
+                          </td>
+                          <td className="px-4 py-2" colSpan="3">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-400/20 border border-amber-400/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-widest">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block"></span>
+                              Заполнение...
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Normal rows */}
+                      {filteredData.slice(0, 100).map((p) => (
+                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
+                      <td className="px-4 py-2 font-mono flex items-center gap-2 h-[41px]">
+                        <span className="text-gray-500">
+                          {formatUTCDate(p.transactionDate).slice(0, 5)}
                         </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500">Метод:</span>
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${getPaymentBadgeStyle(p.type)}`}>
-                          {p.type || 'Other'}
+                        <span className="bg-gray-100 dark:bg-[#222] text-gray-800 dark:text-gray-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-gray-200 dark:border-[#333]">
+                          {formatUTCTime(p.transactionDate)}
                         </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Сумма (Loc):</span>
-                        <span className="font-bold">{p.amountLocal?.toLocaleString() || '-'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Статус:</span>
-                        <span className="text-emerald-500 text-xs font-bold uppercase">{p.status}</span>
-                      </div>
-                    </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{p.manager}</span>
+                          {getRoleTag(p.managerRole)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-600 dark:text-gray-300">
+                          {getFlag(p.country)} {getCountryName(p.country)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 w-[90px]">
+                        <span 
+                          className={`inline-block w-full max-w-[90px] px-2 py-0.5 rounded text-[10px] font-bold border truncate align-bottom text-center ${getPaymentBadgeStyle(p.type)}`}
+                          title={formatPaymentType(p.type)}
+                        >
+                          {formatPaymentType(p.type)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 font-bold text-gray-700 dark:text-gray-300">
+                        {p.amountLocal ? p.amountLocal.toLocaleString() : '-'}
+                        {p.amountLocal && p.country && (
+                          <span className="ml-1 text-[10px] font-normal text-gray-400">{getCurrencyCode(p.country)}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 font-mono font-bold text-gray-900 dark:text-white">
+                        {p.amountEUR}
+                        <span className="ml-1 text-[10px] font-normal text-gray-400">EUR</span>
+                      </td>
+                    </tr>
+                      ))}
+                      {!isLoading && filteredData.length === 0 && (
+                        <tr><td colSpan="6" className="px-4 py-6 text-center text-xs">Нет данных</td></tr>
+                      )}
+                    </>
                   )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards (Scrollable within container) */}
+            <div className="md:hidden overflow-y-auto flex-1 custom-scrollbar p-3 space-y-2 bg-gray-50 dark:bg-[#0F0F11]">
+              {isLoading ? (
+                <div className="text-center py-6 text-xs text-gray-500">Загрузка...</div>
+              ) : filteredData.length === 0 ? (
+                <div className="text-center py-6 text-xs text-gray-500">Нет данных</div>
+              ) : (
+                filteredData.slice(0, 50).map((p) => {
+                  const isExpanded = expandedId === p.id;
+                  return (
+                    <div key={p.id} className="border border-gray-200 dark:border-[#333] rounded-lg p-3 bg-white dark:bg-[#111] transition-all">
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="font-bold text-lg text-gray-900 dark:text-white">€{p.amountEUR}</div>
+                          <div className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
+                            <span>{formatUTCDate(p.transactionDate).slice(0, 5)}</span>
+                            <span className="bg-gray-100 dark:bg-[#222] text-gray-800 dark:text-gray-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-gray-200 dark:border-[#333]">
+                              {formatUTCTime(p.transactionDate)}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                          className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-bold transition-colors"
+                        >
+                          {isExpanded ? 'Скрыть' : 'Подробнее'}
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[#333] space-y-2 text-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">ID:</span>
+                            <span className="font-mono text-xs">#{p.id.slice(0, 8)}...</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Дата:</span>
+                            <span className="text-xs">{formatUTCDate(p.transactionDate)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Менеджер:</span>
+                            <span className="font-medium">{p.manager}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500">ГЕО:</span>
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-xs font-bold">
+                              {getFlag(p.country)} {getCountryName(p.country)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500">Метод:</span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getPaymentBadgeStyle(p.type)}`}>
+                              {formatPaymentType(p.type)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Сумма (Loc):</span>
+                            <span className="font-bold">{p.amountLocal?.toLocaleString() || '-'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Статус:</span>
+                            <span className="text-emerald-500 text-xs font-bold uppercase">{p.status}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* --- RIGHT COLUMN: METRICS & LEADERBOARDS --- */}
+        <div className="w-full lg:w-[45%] lg:min-w-[420px] shrink-0 flex flex-col gap-3 md:gap-4 order-1 lg:order-1 min-w-0">
+
+          {/* 1. КЛЮЧЕВЫЕ МЕТРИКИ */}
+          <div className="flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0 w-full shrink-0">
+            <div className="absolute inset-0 bg-white dark:bg-[#0F0F11] transition-colors duration-200"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5 pointer-events-none"></div>
+            <div className="relative z-10 flex flex-col h-full p-4 md:p-5 overflow-hidden">
+              <div className="mb-4 flex items-center justify-between min-w-0">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white tracking-wide flex items-center gap-2 truncate">
+                  <Activity size={16} className="text-blue-500 shrink-0" /> Ключевые метрики
+                </h3>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-px bg-gray-100 dark:bg-[#222] border border-gray-100 dark:border-[#222] rounded-lg overflow-hidden mb-4 transition-colors duration-200 w-full">
+                <TechStatItem icon={Users} label="Трафик" value={stats.traffic} />
+                <TechStatItem icon={CreditCard} label="Продажи" value={stats.count} />
+                <TechStatItem icon={Percent} label="Конверсия" value={`${stats.conversion}%`} valueColor={getCRColor(stats.conversion)} />
+                <TechStatItem icon={Trophy} label="Уникальные" value={stats.uniqueSales} highlight />
+                <TechStatItem icon={Layers} label="Повторные" value={stats.repeatSales} />
+                <TechStatItem icon={Activity} label="Конв. (Уник)" value={`${stats.conversionUnique}%`} valueColor={getCRColor(stats.conversionUnique)} />
+                <TechStatItem icon={DollarSign} label="Оборот" value={`€${Number(stats.totalEur).toLocaleString()}`} highlight />
+                <TechStatItem icon={DollarSign} label="Средний чек" value={`€${Number(stats.avgCheck).toLocaleString()}`} />
+              </div>
+
+              <div className="flex-1 min-h-[100px] w-full min-w-0">
+                <div className="text-[10px] font-bold text-gray-400 uppercase mb-2 truncate">Динамика продаж</div>
+                <div className="h-24 w-full min-w-0 overflow-hidden">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
+                      <defs>
+                        <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="date" hide />
+                      <RechartsTooltip contentStyle={{ backgroundColor: '#111', borderColor: '#333', fontSize: '12px', color: '#fff' }} itemStyle={{ color: '#fff' }} cursor={{ stroke: '#555', strokeWidth: 1 }} />
+                      <Area type="monotone" dataKey="count" stroke="#3B82F6" fillOpacity={1} fill="url(#colorCount)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
-              );
-            })
-          )}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. LEADERBOARDS */}
+          <div className="flex flex-col gap-3 md:gap-4 flex-1 min-w-0">
+            {/* Top Managers */}
+            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Trophy size={14} className="text-amber-500 shrink-0" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ менеджеры</span>
+                </div>
+              </div>
+              <div className="p-2 space-y-1 max-h-[160px] overflow-y-auto custom-scrollbar">
+                {topManagers.map((mgr, i) => (
+                  <div key={mgr.name} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate leading-none">{mgr.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-right">
+                      <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{mgr.count} Lead</span>
+                      <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[60px]">€{mgr.sum.toFixed(0)}</span>
+                    </div>
+                  </div>
+                ))}
+                {topManagers.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
+              </div>
+            </div>
+
+            {/* Top Geo */}
+            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Globe size={14} className="text-blue-500 shrink-0" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Топ ГЕО</span>
+                </div>
+              </div>
+              <div className="p-2 space-y-1 max-h-[160px] overflow-y-auto custom-scrollbar">
+                {topCountries.map((geo, i) => (
+                  <div key={geo.code} className="flex items-center justify-between py-2 px-3 rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] hover:border-gray-300 dark:hover:border-[#444] transition-all group">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-sm w-5 text-center shrink-0 font-bold leading-none">{getRankEmoji(i)}</span>
+                      <div className="flex items-center gap-1.5 leading-none">
+                        <span className="text-base">{getFlag(geo.code)}</span>
+                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{geo.code}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-right">
+                      <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{geo.salesCount} Lead</span>
+                      <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[50px]">€{geo.salesSum.toFixed(0)}</span>
+                      <span className={`text-[10px] font-bold w-[35px] text-right ${getCRColor(geo.cr)}`}>{geo.cr}%</span>
+                    </div>
+                  </div>
+                ))}
+                {topCountries.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div >

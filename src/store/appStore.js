@@ -29,17 +29,20 @@ const normalizeNick = (raw) => {
 
 
 // Helper for pagination (to bypass 1000 rows limit)
-const fetchAll = async (table, select, orderBy = 'created_at', ascending = false) => {
+const fetchAll = async (table, select, orderBy = 'created_at', ascending = false, filterDate = null) => {
   let allData = [];
   let from = 0;
   const step = 1000;
 
   while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(select)
-      .order(orderBy, { ascending })
-      .range(from, from + step - 1);
+    let query = supabase.from(table).select(select).order(orderBy, { ascending });
+    
+    if (filterDate) {
+      if (filterDate.gte) query = query.gte(filterDate.column || orderBy, filterDate.gte);
+      if (filterDate.lt) query = query.lt(filterDate.column || orderBy, filterDate.lt);
+    }
+    
+    const { data, error } = await query.range(from, from + step - 1);
 
     if (error) {
       console.error(`Error fetching ${table}:`, error);
@@ -56,7 +59,7 @@ const fetchAll = async (table, select, orderBy = 'created_at', ascending = false
     from += step;
   }
 
-  console.log(`📊 fetchAll('${table}'): загружено ${allData.length} записей`);
+  console.log(`📊 fetchAll('${table}'${filterDate ? JSON.stringify(filterDate) : ''}): загружено ${allData.length} записей`);
   return allData;
 };
 
@@ -608,8 +611,16 @@ export const useAppStore = create((set, get) => ({
 
       // PARALLEL FETCHING: Group independent requests including LEADS
       
-      // Запускаем загрузку платежей асинхронно, чтобы не блокировать интерфейс
-      const paymentsPromise = fetchAll('enriched_payments_view', '*', 'transaction_date', false);
+      // Начало текущей недели (Понедельник) в UTC
+      const startOfWeek = new Date();
+      const day = startOfWeek.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      startOfWeek.setDate(startOfWeek.getDate() + diff);
+      startOfWeek.setHours(0, 0, 0, 0);
+      const startOfWeekISO = startOfWeek.toISOString();
+
+      // Запускаем быструю загрузку платежей ТОЛЬКО за текущую неделю
+      const paymentsPromise = fetchAll('enriched_payments_view', '*', 'transaction_date', false, { column: 'transaction_date', gte: startOfWeekISO });
 
       // Запускаем загрузку второстепенных справочников асинхронно
       const secondaryDataPromise = Promise.all([
@@ -797,6 +808,60 @@ export const useAppStore = create((set, get) => ({
           stats: { totalEur: total.toFixed(2), count: formattedPayments.length },
           paymentsLoaded: true
         });
+
+        // Теперь фоном дотягиваем все остальные (старые) платежи
+        (async () => {
+          try {
+            const oldPaymentsData = await fetchAll('enriched_payments_view', '*', 'transaction_date', false, { column: 'transaction_date', lt: startOfWeekISO });
+            if (oldPaymentsData && oldPaymentsData.length > 0) {
+              const uniqueOldPayments = new Map();
+              oldPaymentsData.forEach(item => {
+                if (item.id && !uniqueOldPayments.has(item.id)) {
+                  uniqueOldPayments.set(item.id, item);
+                }
+              });
+
+              // Свежие менеджеры на случай, если они обновились
+              const currentMgrs = get().managers || [];
+              const mgrMap = {};
+              currentMgrs.forEach(m => mgrMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username });
+
+              const formattedOld = Array.from(uniqueOldPayments.values()).map(item => {
+                let source = item.derived_source || 'direct';
+                if (source === 'unknown') source = 'direct';
+                return {
+                  ...item,
+                  id: item.id,
+                  transactionDate: item.transaction_date || item.created_at,
+                  amountEUR: Number(item.amount_eur) || 0,
+                  amountLocal: Number(item.amount_local) || 0,
+                  amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
+                  manager: mgrMap[item.manager_id]?.name || 'Не назначен',
+                  managerId: item.manager_id,
+                  managerRole: mgrMap[item.manager_id]?.role || null,
+                  manager_tg: mgrMap[item.manager_id]?.telegram_username || null,
+                  type: item.payment_type || 'Other',
+                  status: item.status || 'pending',
+                  source: source
+                };
+              });
+
+              // Добавляем к текущим (сохраняя порядок)
+              set(state => {
+                const merged = [...state.payments, ...formattedOld];
+                merged.sort((a,b) => new Date(b.transactionDate) - new Date(a.transactionDate));
+                const newTotal = merged.reduce((sum, item) => sum + item.amountEUR, 0);
+                return {
+                  payments: merged,
+                  stats: { totalEur: newTotal.toFixed(2), count: merged.length }
+                };
+              });
+            }
+          } catch (e) {
+            console.error('Ошибка при фоновой загрузке старых платежей:', e);
+          }
+        })();
+
       }).catch(err => {
         console.error('Error in async payments load:', err);
         set({ paymentsLoaded: true });
@@ -810,7 +875,9 @@ export const useAppStore = create((set, get) => ({
 
   subscribeToRealtime: () => {
     const channel = supabase.channel('global-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => get().fetchAllData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+        setTimeout(() => get().fetchAllData(true), 1500);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'managers' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_products' }, () => get().fetchAllData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_learning' }, () => get().fetchAllData(true))
