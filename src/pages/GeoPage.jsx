@@ -434,7 +434,7 @@ const getManagerRoleMeta = (role) => {
 };
 
 const GeoPage = () => {
-  const { trafficStats, fetchTrafficStats, user: currentUser, countries, projects, isLoading } = useAppStore();
+  const { trafficStats, fetchTrafficStats, user: currentUser, countries, projects, isLoading, managers, schedules } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
@@ -575,12 +575,13 @@ const GeoPage = () => {
     if (fetchTrafficStats) {
       if (!startDate || !endDate) return;
 
-      // UTC: toYMD уже возвращает YYYY-MM-DD в UTC
-      const startStr = toYMD(startDate);
-      const endStr = toYMD(endDate);
-
-      const isoStart = `${startStr}T00:00:00.000Z`;
-      const isoEnd = `${endStr}T23:59:59.999Z`;
+      const startClone = new Date(startDate);
+      startClone.setHours(0, 0, 0, 0);
+      const isoStart = startClone.toISOString();
+      
+      const endClone = new Date(endDate);
+      endClone.setHours(23, 59, 59, 999);
+      const isoEnd = endClone.toISOString();
 
       fetchTrafficStats(isoStart, isoEnd);
     }
@@ -596,6 +597,25 @@ const GeoPage = () => {
     if (!currentUser) return false;
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
+
+  const shiftDatesMap = useMemo(() => {
+    if (!schedules || !managers) return new Map();
+    const map = new Map();
+    const nameMap = new Map();
+    managers.forEach(m => nameMap.set(m.id, m.name));
+
+    schedules.forEach(s => {
+      const name = nameMap.get(s.manager_id);
+      if (!name) return;
+      if (!map.has(name)) map.set(name, new Map());
+      
+      const managerDates = map.get(name);
+      const existing = managerDates.get(s.date) || [];
+      let geos = s.geo_code ? (Array.isArray(s.geo_code) ? s.geo_code : s.geo_code.split(',').map(g => g.trim().toUpperCase())) : [];
+      managerDates.set(s.date, [...new Set([...existing, ...geos])]);
+    });
+    return map;
+  }, [schedules, managers]);
 
   // Основная логика: агрегация Direct / Comm / Total
   const geoStats = useMemo(() => {
@@ -681,26 +701,63 @@ const GeoPage = () => {
     // 5. Трафик из trafficStats
     const trafficByGeo = {};
     (countries || []).forEach(c => {
-      trafficByGeo[c.code] = { direct: 0, comments: 0, all: 0 };
+      trafficByGeo[c.code] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
     });
     if (trafficStats) {
       Object.entries(trafficStats).forEach(([code, dates]) => {
         if (!validCodes.has(code)) return;
-        if (!trafficByGeo[code]) trafficByGeo[code] = { direct: 0, comments: 0, all: 0 };
+        if (!trafficByGeo[code]) trafficByGeo[code] = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
         Object.entries(dates).forEach(([dateStr, val]) => {
           if (dateStr < startStr || dateStr > endStr) return;
+          let direct = 0, comments = 0, whatsapp = 0, all = 0;
           if (typeof val === 'object') {
-            trafficByGeo[code].direct += val.direct || 0;
-            trafficByGeo[code].comments += val.comments || 0;
-            trafficByGeo[code].all += val.all || 0;
+            direct = val.direct || 0;
+            comments = val.comments || 0;
+            whatsapp = val.whatsapp || 0;
+            all = val.all || 0;
           } else {
-            const num = Number(val) || 0;
-            trafficByGeo[code].direct += num;
-            trafficByGeo[code].all += num;
+            direct = Number(val) || 0;
+            all = Number(val) || 0;
           }
+
+          trafficByGeo[code].direct += direct;
+          trafficByGeo[code].comments += comments;
+          trafficByGeo[code].whatsapp += whatsapp;
+          trafficByGeo[code].all += all;
+
+          // Assign traffic to individual managers who worked on this date in this geo
+          shiftDatesMap.forEach((datesMap, mgrName) => {
+            const workedGeos = datesMap.get(dateStr);
+            if (workedGeos && workedGeos.includes(code)) {
+              if (!managersByGeo[code]) managersByGeo[code] = {};
+              if (!managersByGeo[code][mgrName]) {
+                const mObj = managers?.find(m => m.name === mgrName);
+                managersByGeo[code][mgrName] = {
+                  direct: 0, comments: 0, whatsapp: 0, total: 0,
+                  traffic: { direct: 0, comments: 0, whatsapp: 0, all: 0 },
+                  role: mObj?.role || null,
+                  telegram_username: mObj?.telegram_username || null,
+                };
+              } else if (!managersByGeo[code][mgrName].traffic) {
+                managersByGeo[code][mgrName].traffic = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
+              }
+
+              managersByGeo[code][mgrName].traffic.direct += direct;
+              managersByGeo[code][mgrName].traffic.comments += comments;
+              managersByGeo[code][mgrName].traffic.whatsapp += whatsapp;
+              managersByGeo[code][mgrName].traffic.all += all;
+            }
+          });
         });
       });
     }
+
+    // Initialize traffic object for managers who only had sales but NO traffic recorded from schedule (to avoid undefined errors)
+    Object.values(managersByGeo).forEach(mgrMap => {
+        Object.values(mgrMap).forEach(mgr => {
+            if (!mgr.traffic) mgr.traffic = { direct: 0, comments: 0, whatsapp: 0, all: 0 };
+        });
+    });
 
     // 6. Финальный массив с CR
     const baseStats = Object.entries(statsByGeo).map(([code, data]) => {
@@ -766,7 +823,7 @@ const GeoPage = () => {
       if (pA !== pB) return pA.localeCompare(pB);
       return b.traffic.all - a.traffic.all;
     });
-  }, [localPayments, trafficStats, startDate, endDate, filters, isRestrictedUser, currentUser, countries, projects, activeProjectFilter, geoSortMode, deferredGeoQuery]);
+  }, [localPayments, trafficStats, startDate, endDate, filters, isRestrictedUser, currentUser, countries, projects, activeProjectFilter, geoSortMode, deferredGeoQuery, shiftDatesMap, managers]);
 
   const handleExportGeoTable = () => {
     if (!geoStats.length) {
@@ -1115,9 +1172,14 @@ const GeoPage = () => {
                       {/* Managers List */}
                       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                         {geo.managers.map(([name, stats], idx) => {
-                          const crDirect = geo.traffic.direct > 0 ? ((stats.direct / Math.max(geo.traffic.direct, 1)) * 100).toFixed(1) : 0;
-                          const crComments = geo.traffic.comments > 0 ? ((stats.comments / Math.max(geo.traffic.comments, 1)) * 100).toFixed(1) : 0;
-                          const crAll = geo.traffic.all > 0 ? ((stats.total / Math.max(geo.traffic.all, 1)) * 100).toFixed(1) : 0;
+                          const tDirect = stats.traffic.direct || 0;
+                          const tComments = stats.traffic.comments || 0;
+                          const tWA = stats.traffic.whatsapp || 0;
+                          const tAll = stats.traffic.all || 0;
+                          const crDirect = tDirect > 0 ? ((stats.direct / Math.max(tDirect, 1)) * 100).toFixed(1) : 0;
+                          const crComments = tComments > 0 ? ((stats.comments / Math.max(tComments, 1)) * 100).toFixed(1) : 0;
+                          const crWA = tWA > 0 ? ((stats.whatsapp / Math.max(tWA, 1)) * 100).toFixed(1) : 0;
+                          const crAll = tAll > 0 ? ((stats.total / Math.max(tAll, 1)) * 100).toFixed(1) : 0;
                           const rowBg = idx % 2 === 0 ? 'bg-transparent' : 'bg-gray-50/70 dark:bg-[#141414]';
                           const roleMeta = getManagerRoleMeta(stats.role);
                           const telegramUsername = formatTelegramUsername(stats.telegram_username);
@@ -1153,7 +1215,7 @@ const GeoPage = () => {
                                      <div className="flex items-stretch">
                                        <div className="flex flex-col flex-1 min-w-0">
                                            <div className="flex flex-col mb-1 2xl:mb-1.5">
-                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-700 dark:text-gray-400 leading-none">{geo.traffic.direct || 0}</span>
+                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-700 dark:text-gray-400 leading-none">{tDirect}</span>
                                              <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
                                            </div>
                                            <div className="flex flex-col">
@@ -1175,7 +1237,7 @@ const GeoPage = () => {
                                      <div className="flex items-stretch">
                                        <div className="flex flex-col flex-1 min-w-0">
                                            <div className="flex flex-col mb-1 2xl:mb-1.5">
-                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-700 dark:text-gray-400 leading-none">{geo.traffic.comments || 0}</span>
+                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-700 dark:text-gray-400 leading-none">{tComments}</span>
                                              <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
                                            </div>
                                            <div className="flex flex-col">
@@ -1197,7 +1259,7 @@ const GeoPage = () => {
                                      <div className="flex items-stretch">
                                        <div className="flex flex-col flex-1 min-w-0">
                                            <div className="flex flex-col mb-1 2xl:mb-1.5">
-                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-400 leading-none">0</span>
+                                             <span className="text-[11px] 2xl:text-[12px] font-bold text-gray-400 leading-none">{tWA}</span>
                                              <span className="text-[7px] 2xl:text-[8px] text-gray-400 uppercase tracking-tighter">заявок</span>
                                            </div>
                                            <div className="flex flex-col">
@@ -1206,7 +1268,7 @@ const GeoPage = () => {
                                            </div>
                                        </div>
                                        <div className="flex items-center justify-center pl-1.5 2xl:pl-2 border-l border-gray-50 dark:border-[#222]">
-                                           <span className="text-[9px] 2xl:text-[10px] font-black text-gray-400">0%</span>
+                                           <span className="text-[9px] 2xl:text-[10px] font-black text-gray-400">{crWA}%</span>
                                        </div>
                                      </div>
                                   </div>
@@ -1219,7 +1281,7 @@ const GeoPage = () => {
                                      <div className="flex items-stretch">
                                        <div className="flex flex-col flex-1 min-w-0">
                                            <div className="flex flex-col mb-1 2xl:mb-1.5">
-                                             <span className="text-[12px] 2xl:text-[13px] font-black text-gray-900 dark:text-white leading-none">{geo.traffic.all || 0}</span>
+                                             <span className="text-[12px] 2xl:text-[13px] font-black text-gray-900 dark:text-white leading-none">{tAll}</span>
                                              <span className="text-[7px] 2xl:text-[8px] text-gray-500 font-bold uppercase tracking-tighter">заявок</span>
                                            </div>
                                            <div className="flex flex-col">
