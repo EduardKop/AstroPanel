@@ -6,7 +6,7 @@ import {
   Users, TrendingUp, Globe,
   Calendar as CalendarIcon,
   Copy, Search, X, Download,
-  RotateCcw, RefreshCw
+  RotateCcw, RefreshCw, List
 } from 'lucide-react';
 
 import DatePicker from "react-datepicker";
@@ -445,6 +445,8 @@ const GeoPage = () => {
   const [filters, setFilters] = useState(createDefaultFilters);
   const deferredGeoQuery = useDeferredValue(geoQuery.trim().toLowerCase());
 
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'matrix'
+
   const [localPayments, setLocalPayments] = useState([]);
   const [localLoading, setLocalLoading] = useState(true);
 
@@ -872,6 +874,196 @@ const GeoPage = () => {
     showToast('Выгрузка готова', 'success');
   };
 
+  const matrixDates = useMemo(() => {
+    if (!startDate || !endDate) return [];
+    const dates = [];
+    let current = new Date(startDate);
+    current.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    
+    let count = 0;
+    while (current <= end && count < 365) {
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      dates.push(`${y}-${m}-${d}`);
+      current.setDate(current.getDate() + 1);
+      count++;
+    }
+    return dates;
+  }, [startDate, endDate]);
+
+  const { matrixData, matrixAverages, hasMatrixData } = useMemo(() => {
+    const dates = matrixDates;
+    if (!dates.length) return { matrixData: [], matrixAverages: {}, hasMatrixData: false };
+
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
+    const filteredPayments = localPayments.filter(item => {
+      if (item.status !== 'completed') return false;
+      const dbDateStr = extractUTCDate(item.transactionDate);
+      if (dbDateStr < startStr || dbDateStr > endStr) return false;
+      if (isRestrictedUser && item.manager !== currentUser?.name) return false;
+      if (!isRestrictedUser && filters.manager.length > 0 && !filters.manager.includes(item.manager)) return false;
+      if (filters.product.length > 0 && !filters.product.includes(item.product)) return false;
+      if (filters.type.length > 0 && !filters.type.includes(item.type)) return false;
+      if (filters.department !== 'all') {
+        if (filters.department === 'sales' && item.managerRole !== 'Sales' && item.managerRole !== 'SeniorSales') return false;
+        if (filters.department === 'consultant' && item.managerRole !== 'Consultant') return false;
+        if (filters.department === 'taro' && !/(?:Taro|Таро)\s*[2-9]/.test(item.product)) return false;
+      }
+      return true;
+    });
+
+    const validCodes = new Set((countries || []).map(c => c.code));
+    const statsByGeoDate = {};
+    const totalsByDate = {};
+    
+    dates.forEach(d => {
+      totalsByDate[d] = {
+        traffic: { direct: 0, whatsapp: 0, comments: 0, all: 0 },
+        sales: { direct: 0, whatsapp: 0, comments: 0, all: 0 }
+      };
+    });
+
+    validCodes.forEach(code => {
+      statsByGeoDate[code] = {};
+    });
+
+    filteredPayments.forEach(p => {
+      const code = p.country;
+      const tDate = extractUTCDate(p.transactionDate);
+      if (!code || !validCodes.has(code) || !dates.includes(tDate)) return;
+
+      if (!statsByGeoDate[code][tDate]) {
+        statsByGeoDate[code][tDate] = { traffic: {direct:0, whatsapp:0, comments:0, all:0}, sales: {direct:0, whatsapp:0, comments:0, all:0} };
+      }
+
+      const src = (p.source || 'direct').toLowerCase();
+      statsByGeoDate[code][tDate].sales.all += 1;
+      totalsByDate[tDate].sales.all += 1;
+
+      if (src === 'comments' || src === 'comment') {
+        statsByGeoDate[code][tDate].sales.comments += 1;
+        totalsByDate[tDate].sales.comments += 1;
+      } else if (src === 'whatsapp') {
+        statsByGeoDate[code][tDate].sales.whatsapp += 1;
+        statsByGeoDate[code][tDate].sales.direct += 1;
+        totalsByDate[tDate].sales.whatsapp += 1;
+        totalsByDate[tDate].sales.direct += 1;
+      } else {
+        statsByGeoDate[code][tDate].sales.direct += 1;
+        totalsByDate[tDate].sales.direct += 1;
+      }
+    });
+
+    if (trafficStats) {
+      Object.entries(trafficStats).forEach(([code, dVals]) => {
+        if (!validCodes.has(code)) return;
+        Object.entries(dVals).forEach(([dateStr, val]) => {
+          if (!dates.includes(dateStr)) return;
+          if (!statsByGeoDate[code][dateStr]) {
+            statsByGeoDate[code][dateStr] = { traffic: {direct:0, whatsapp:0, comments:0, all:0}, sales: {direct:0, whatsapp:0, comments:0, all:0} };
+          }
+          let direct = 0, comments = 0, whatsapp = 0, all = 0;
+          if (typeof val === 'object') {
+            direct = val.direct || 0;
+            comments = val.comments || 0;
+            whatsapp = val.whatsapp || 0;
+            all = val.all || 0;
+          } else {
+             direct = Number(val) || 0;
+             all = Number(val) || 0;
+          }
+          statsByGeoDate[code][dateStr].traffic.direct += direct;
+          statsByGeoDate[code][dateStr].traffic.comments += comments;
+          statsByGeoDate[code][dateStr].traffic.whatsapp += whatsapp;
+          statsByGeoDate[code][dateStr].traffic.all += all;
+
+          totalsByDate[dateStr].traffic.direct += direct;
+          totalsByDate[dateStr].traffic.comments += comments;
+          totalsByDate[dateStr].traffic.whatsapp += whatsapp;
+          totalsByDate[dateStr].traffic.all += all;
+        });
+      });
+    }
+
+    const mData = [];
+    validCodes.forEach(code => {
+      const dailyData = {};
+      let geoHasData = false;
+      let totalTraffic = 0;
+
+      dates.forEach(dateStr => {
+        const stats = statsByGeoDate[code][dateStr];
+        if (!stats) {
+          dailyData[dateStr] = { hasData: false };
+        } else {
+          geoHasData = true;
+          const s = stats.sales;
+          const t = stats.traffic;
+          totalTraffic += t.all;
+
+          const trueDirectSales = s.direct - s.whatsapp;
+          
+          const crDirect = t.direct > 0 ? (trueDirectSales / t.direct) * 100 : 0;
+          const crWhatsapp = t.whatsapp > 0 ? (s.whatsapp / t.whatsapp) * 100 : 0;
+          const crComments = t.comments > 0 ? (s.comments / t.comments) * 100 : 0;
+          const crTotal = t.all > 0 ? (s.all / t.all) * 100 : 0;
+
+          dailyData[dateStr] = { 
+             hasData: true, 
+             crDirect, crWhatsapp, crComments, crTotal,
+             tAll: t.all, tDirect: t.direct, tWhatsapp: t.whatsapp, tComments: t.comments
+          };
+        }
+      });
+
+      if (geoHasData) {
+        mData.push({ code, dailyData, totalTraffic });
+      }
+    });
+
+    const mAves = {};
+    let hasD = false;
+    dates.forEach(d => {
+      const s = totalsByDate[d].sales;
+      const t = totalsByDate[d].traffic;
+      const trueDirectSales = s.direct - s.whatsapp;
+
+      const crDirect = t.direct > 0 ? (trueDirectSales / t.direct) * 100 : 0;
+      const crWhatsapp = t.whatsapp > 0 ? (s.whatsapp / t.whatsapp) * 100 : 0;
+      const crComments = t.comments > 0 ? (s.comments / t.comments) * 100 : 0;
+      const crTotal = t.all > 0 ? (s.all / t.all) * 100 : 0;
+
+      if (t.all > 0 || s.all > 0) hasD = true;
+
+      mAves[d] = {
+        hasData: t.all > 0 || s.all > 0,
+        crDirect, crWhatsapp, crComments, crTotal,
+        tAll: t.all, tDirect: t.direct, tWhatsapp: t.whatsapp, tComments: t.comments
+      };
+    });
+
+    let filteredResult = mData;
+    if (deferredGeoQuery) {
+      filteredResult = filteredResult.filter((geo) => {
+        const country = (countries || []).find(c => c.code === geo.code);
+        const ccode = geo.code?.toLowerCase() || '';
+        const name = country?.name?.toLowerCase() || '';
+        return ccode.includes(deferredGeoQuery) || name.includes(deferredGeoQuery);
+      });
+    }
+
+    return { 
+      matrixData: filteredResult.sort((a, b) => b.totalTraffic - a.totalTraffic), 
+      matrixAverages: mAves,
+      hasMatrixData: hasD || filteredResult.length > 0
+    };
+  }, [localPayments, trafficStats, startDate, endDate, filters, isRestrictedUser, currentUser, countries, deferredGeoQuery, matrixDates]);
+
   const localIsLoading = localLoading || (!localPayments.length && isLoading);
 
   if (localIsLoading) {
@@ -1047,9 +1239,26 @@ const GeoPage = () => {
           </div>
         </div>
       </div>
+      
+      {/* VIEW TOGGLES */}
+      <div className="mt-4 flex bg-white dark:bg-[#111] p-1 rounded-lg border border-gray-200 dark:border-[#333] w-fit shadow-sm overflow-hidden mb-2">
+         <button 
+           onClick={() => setViewMode('list')}
+           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'list' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
+         >
+           <List size={14} /> Карточки
+         </button>
+         <button 
+           onClick={() => setViewMode('matrix')}
+           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'matrix' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
+         >
+           <CalendarIcon size={14} /> Сетка конверсий
+         </button>
+      </div>
 
-      {/* HORIZONTAL CARDS LIST */}
-      <div className="mt-4 space-y-2">
+      {viewMode === 'list' ? (
+      <div className="space-y-2">
+        {/* HORIZONTAL CARDS LIST */}
         {geoStats.length === 0 ? (
           <div className="text-center py-12 text-gray-400 text-sm bg-white dark:bg-[#111] rounded-xl border border-gray-200 dark:border-[#2a2a2a]">Нет данных за выбранный период</div>
         ) : (
@@ -1308,6 +1517,149 @@ const GeoPage = () => {
           })
         )}
       </div>
+      ) : (
+      <div className="w-full bg-white dark:bg-[#111] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-sm overflow-hidden">
+        {/* MATRIX VIEW */}
+        <div className="w-full overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse min-w-max">
+            <thead>
+              <tr className="bg-gray-50/80 dark:bg-[#161616] border-b border-gray-200 dark:border-[#2a2a2a]">
+                <th className="sticky text-center left-0 z-20 bg-gray-50/80 dark:bg-[#161616] border-r border-gray-200 dark:border-[#2a2a2a] py-2 px-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider backdrop-blur-md">
+                  ГЕО
+                </th>
+                {matrixDates.map(dateStr => {
+                  const [y, m, d] = dateStr.split('-');
+                  return (
+                    <th key={dateStr} className="py-2 px-3 text-center border-r border-gray-200 dark:border-[#2a2a2a] text-[10px] font-bold text-gray-500 uppercase">
+                      <div className="flex flex-col items-center">
+                        <span className="text-gray-900 dark:text-white mb-0.5">{`${d}.${m}`}</span>
+                        <span className="text-[9px] text-gray-400 font-mono tracking-tighter">ОБЩ / D / W / C</span>
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-[#2a2a2a]">
+              {matrixData.length === 0 ? (
+                <tr>
+                   <td colSpan={matrixDates.length + 1} className="py-8 text-center text-gray-400 text-sm">
+                     Нет данных за этот период
+                   </td>
+                </tr>
+              ) : (
+                matrixData.map(geo => {
+                  const countryDef = countries?.find(c => c.code === geo.code) || { name: geo.code, emoji: '🏳️' };
+                  return (
+                    <tr key={geo.code} className="hover:bg-gray-50/50 dark:hover:bg-[#1A1A1A] transition-colors group">
+                      <td className="sticky left-0 z-10 bg-white dark:bg-[#111] group-hover:bg-gray-50/50 dark:group-hover:bg-[#1A1A1A] border-r border-gray-100 dark:border-[#2a2a2a] py-2 px-3 w-[140px]">
+                        <div className="flex flex-col gap-1 items-center justify-center h-full">
+                           <div className="text-2xl">{countryDef.emoji}</div>
+                           <span className="text-[10px] font-bold text-gray-900 dark:text-white text-center leading-tight">{countryDef.name}</span>
+                        </div>
+                      </td>
+                      {matrixDates.map(dateStr => {
+                        const cell = geo.dailyData[dateStr];
+                        if (!cell || !cell.hasData) {
+                          return (
+                            <td key={dateStr} className="py-2 px-3 text-center border-r border-gray-100 dark:border-[#2a2a2a]">
+                               <span className="text-gray-300 dark:text-gray-700 text-xs">—</span>
+                            </td>
+                          );
+                        }
+                        
+                        const getCrColor = (val) => {
+                          if (val >= 8) return 'text-emerald-500 font-bold';
+                          if (val >= 3) return 'text-amber-500 font-semibold';
+                          if (val > 0) return 'text-red-400';
+                          return 'text-gray-400';
+                        };
+
+                        return (
+                          <td key={dateStr} className="py-1 px-2 text-center border-r border-gray-100 dark:border-[#2a2a2a] bg-gray-50/30 dark:bg-transparent">
+                            <div className="flex flex-col items-center justify-center gap-1">
+                               <div className="flex items-center gap-1.5">
+                                 <span className={`text-sm ${getCrColor(cell.crTotal)}`}>
+                                    {cell.crTotal.toFixed(1)}%
+                                 </span>
+                                 {cell.tAll > 0 && (
+                                   <span className="text-[10px] text-gray-500 font-medium bg-gray-200/50 dark:bg-[#222] px-1 rounded">
+                                     T: {cell.tAll}
+                                   </span>
+                                 )}
+                               </div>
+                               <div className="flex gap-1.5 text-[9px] font-mono whitespace-nowrap bg-white/50 dark:bg-black/20 px-1 py-0.5 rounded">
+                                  <span className={getCrColor(cell.crDirect)} title="Direct">{cell.crDirect.toFixed(1)}</span>
+                                  <span className="text-gray-300 dark:text-gray-600">/</span>
+                                  <span className={getCrColor(cell.crWhatsapp)} title="WhatsApp">{cell.crWhatsapp.toFixed(1)}</span>
+                                  <span className="text-gray-300 dark:text-gray-600">/</span>
+                                  <span className={getCrColor(cell.crComments)} title="Comments">{cell.crComments.toFixed(1)}</span>
+                               </div>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+            {matrixData.length > 0 && (
+              <tfoot className="bg-gray-50 dark:bg-[#161616] sticky bottom-0 z-10 border-t-2 border-gray-200 dark:border-[#3a3a3a]">
+                <tr>
+                  <td className="sticky left-0 z-20 bg-gray-50 dark:bg-[#161616] border-r border-gray-200 dark:border-[#2a2a2a] py-3 px-3 w-[140px]">
+                    <div className="flex flex-col gap-1 items-center justify-center">
+                       <span className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-wider">Итого (СРЕДН.)</span>
+                    </div>
+                  </td>
+                  {matrixDates.map(dateStr => {
+                    const cell = matrixAverages[dateStr];
+                    if (!cell || !cell.hasData) {
+                      return (
+                        <td key={`avg-${dateStr}`} className="py-2 px-3 text-center border-r border-gray-200 dark:border-[#2a2a2a]">
+                           <span className="text-gray-400 dark:text-gray-600 font-bold">—</span>
+                        </td>
+                      );
+                    }
+                    
+                    const getCrColor = (val) => {
+                      if (val >= 8) return 'text-emerald-500 font-bold';
+                      if (val >= 3) return 'text-amber-500 font-semibold';
+                      if (val > 0) return 'text-red-400 font-medium';
+                      return 'text-gray-500';
+                    };
+
+                    return (
+                      <td key={`avg-${dateStr}`} className="py-2 px-2 text-center border-r border-gray-200 dark:border-[#2a2a2a] bg-gray-100/50 dark:bg-[#111]/50">
+                        <div className="flex flex-col items-center justify-center gap-1.5">
+                           <div className="flex items-center gap-1.5">
+                             <span className={`text-[15px] ${getCrColor(cell.crTotal)}`}>
+                                {cell.crTotal.toFixed(1)}%
+                             </span>
+                             {cell.tAll > 0 && (
+                               <span className="text-[11px] text-gray-500 font-bold bg-white dark:bg-[#333] px-1.5 rounded shadow-sm">
+                                 T: {cell.tAll}
+                               </span>
+                             )}
+                           </div>
+                           <div className="flex gap-1.5 text-[10px] font-mono whitespace-nowrap bg-white dark:bg-black/40 px-1.5 py-0.5 rounded shadow-sm border border-gray-200 dark:border-[#333]">
+                              <span className={getCrColor(cell.crDirect)} title="Direct">{cell.crDirect.toFixed(1)}</span>
+                              <span className="text-gray-300 dark:text-gray-600">/</span>
+                              <span className={getCrColor(cell.crWhatsapp)} title="WhatsApp">{cell.crWhatsapp.toFixed(1)}</span>
+                              <span className="text-gray-300 dark:text-gray-600">/</span>
+                              <span className={getCrColor(cell.crComments)} title="Comments">{cell.crComments.toFixed(1)}</span>
+                           </div>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+      )}
     </div>
   );
 };
