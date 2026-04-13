@@ -8,7 +8,7 @@ import {
     BookOpen, Coins, Calendar, Clock, Lock, CheckSquare, Square, PieChart, Eye, ShieldAlert, Activity, TrendingUp, ClipboardList, Wallet
 } from 'lucide-react';
 
-const ROLES = ['C-level', 'Admin', 'HR', 'SeniorSales', 'Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSMM', 'SMM'];
+const ROLES = ['C-level', 'Admin', 'HR', 'SeniorSales', 'Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSMM', 'SMM', 'Marketing', 'Financial', 'HeadOfConsult', 'SeniorConsult', 'Dev'];
 
 // Configuration mapping sections to permissions with Icons
 const SECTIONS = [

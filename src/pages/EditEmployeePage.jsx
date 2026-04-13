@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import ProjectBadge from '../components/geo/ProjectBadge';
 
-const ROLES = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager'];
+const ROLES = ['Sales', 'SalesTaro', 'SalesTaroNew', 'Consultant', 'SeniorSales', 'SeniorSMM', 'SMM', 'HR', 'Admin', 'C-level', 'Manager', 'Marketing', 'Financial', 'HeadOfConsult', 'SeniorConsult', 'Dev'];
 const GEO_FREE_ROLES = ['Admin', 'C-level', 'HR', 'SeniorSMM'];
 
 const EditEmployeePage = () => {
