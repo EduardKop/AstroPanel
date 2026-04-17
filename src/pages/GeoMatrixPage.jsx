@@ -55,7 +55,26 @@ const getHeatColor = (count) => {
     return HEAT_COLORS[count];
 };
 
-// Returns true if the geo was ACTIVE on the given date (YYYY-MM-DD)
+// Returns abbreviation for a project name
+const getProjectShort = (name) => {
+    if (!name) return '';
+    const n = name.toLowerCase();
+    if (n.includes('astro') || n.includes('астро')) return 'Ast';
+    if (n.includes('taro') || n.includes('таро')) return 'Taro';
+    if (n.includes('орган') || n.includes('organ')) return 'Org';
+    return name.slice(0, 3);
+};
+
+// Returns sort priority 0=Astro, 1=Taro, 2=Органика, 3=other
+const getProjectOrder = (name) => {
+    if (!name) return 99;
+    const n = name.toLowerCase();
+    if (n.includes('astro') || n.includes('астро')) return 0;
+    if (n.includes('taro') || n.includes('таро')) return 1;
+    if (n.includes('орган') || n.includes('organ')) return 2;
+    return 3;
+};
+
 // Uses status_history: [ { action: 'activated'|'deactivated', at: ISO, by: string } ]
 const wasGeoActiveOnDate = (country, dateKey) => {
     const history = Array.isArray(country.status_history) ? country.status_history : [];
@@ -102,6 +121,7 @@ const getEurToUsd = () => {
 };
 
 import { DenseSelect } from '../components/ui/FilterSelect';
+import ProjectBadge from '../components/geo/ProjectBadge';
 
 // Custom Desktop Date Range Picker
 const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
@@ -334,7 +354,7 @@ const MobileDateRangePicker = ({ startDate, endDate, onChange }) => {
 
 const GeoMatrixPage = () => {
     // ✅ Достаем trafficStats и метод обновления
-    const { payments: storePayments, trafficStats, fetchTrafficStats, user } = useAppStore();
+    const { payments: storePayments, trafficStats, fetchTrafficStats, user, projects } = useAppStore();
 
     const isAdminOrCLevel = user?.role === 'Admin' || user?.role === 'C-Level';
 
@@ -667,24 +687,41 @@ const GeoMatrixPage = () => {
     const sortedCountries = useMemo(() => {
         let sorted = [...countriesList];
 
+        const isActive = (c) => c.is_active !== false;
+
         sorted.sort((a, b) => {
-            // 1. Pinned prioritization
-            const isPinnedA = pinnedGeos.includes(a.code);
-            const isPinnedB = pinnedGeos.includes(b.code);
+            const aActive = isActive(a);
+            const bActive = isActive(b);
+
+            // 1. Pinned always first (only among active)
+            const isPinnedA = aActive && pinnedGeos.includes(a.code);
+            const isPinnedB = bActive && pinnedGeos.includes(b.code);
             if (isPinnedA && !isPinnedB) return -1;
             if (!isPinnedA && isPinnedB) return 1;
 
-            // 2. Normal sorting
+            // 2. Inactive always at bottom
+            if (aActive !== bActive) return aActive ? -1 : 1;
+
+            // 3. Within active — if manual asc/desc sort chosen, sort just by sales
             if (sortOrder === 'desc') {
                 return (totalsByCountry[b.code] || 0) - (totalsByCountry[a.code] || 0);
             } else if (sortOrder === 'asc') {
                 return (totalsByCountry[a.code] || 0) - (totalsByCountry[b.code] || 0);
             }
-            return 0; // Default order (often alphabetical by code from DB if no other sort)
+
+            // 4. Default sort: by project order, then by sales desc within project
+            const pA = projects.find(p => p.id === a.project_id);
+            const pB = projects.find(p => p.id === b.project_id);
+            const orderA = getProjectOrder(pA?.name);
+            const orderB = getProjectOrder(pB?.name);
+            if (orderA !== orderB) return orderA - orderB;
+
+            // 5. Within same project group: sort by sales desc
+            return (totalsByCountry[b.code] || 0) - (totalsByCountry[a.code] || 0);
         });
 
         return sorted;
-    }, [countriesList, totalsByCountry, sortOrder, pinnedGeos]);
+    }, [countriesList, totalsByCountry, sortOrder, pinnedGeos, projects]);
 
     const uniqueProducts = useMemo(() => [...new Set(payments.map(p => p.product).filter(Boolean))], [payments]);
     const uniqueTypes = useMemo(() => [...new Set(payments.map(p => p.type).filter(Boolean))], [payments]);
@@ -965,19 +1002,6 @@ const GeoMatrixPage = () => {
 
                             {/* LEFT GROUP: Modes + Depts + Sort */}
                             <div className="flex flex-col xl:flex-row gap-2 w-full md:w-auto">
-                                {/* Sort Button (First) */}
-                                <div className="hidden md:flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
-                                    <button
-                                        onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? 'default' : 'desc')}
-                                        className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${sortOrder !== 'default' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                                    >
-                                        {sortOrder === 'default' && <List size={14} />}
-                                        {sortOrder === 'desc' && <ArrowDownWideNarrow size={14} />}
-                                        {sortOrder === 'asc' && <ArrowUpNarrowWide size={14} />}
-                                        <span>Сорт</span>
-                                    </button>
-                                </div>
-
                                 {/* Metric Mode Toggle */}
                                 <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center w-full md:w-auto justify-center">
                                     <button onClick={() => setMetricMode('sales')} className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${metricMode === 'sales' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Продажи</button>
@@ -1017,6 +1041,19 @@ const GeoMatrixPage = () => {
                                         onClick={() => setFilters(prev => ({ ...prev, department: prev.department.includes('taro') ? prev.department.filter(d => d !== 'taro') : [...prev.department, 'taro'] }))}
                                         className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all whitespace-nowrap ${filters.department.includes('taro') ? 'bg-white dark:bg-[#333] text-purple-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
                                     >Таро</button>
+                                </div>
+
+                                {/* Sort Button (Last) */}
+                                <div className="hidden md:flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[6px] h-[34px] items-center">
+                                    <button
+                                        onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? 'default' : 'desc')}
+                                        className={`px-2.5 h-full rounded-[4px] text-[10px] font-bold transition-all flex items-center gap-1 whitespace-nowrap ${sortOrder !== 'default' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                    >
+                                        {sortOrder === 'default' && <List size={14} />}
+                                        {sortOrder === 'desc' && <ArrowDownWideNarrow size={14} />}
+                                        {sortOrder === 'asc' && <ArrowUpNarrowWide size={14} />}
+                                        <span>Сорт</span>
+                                    </button>
                                 </div>
                             </div>
 
@@ -1182,7 +1219,7 @@ const GeoMatrixPage = () => {
                         <table className="min-w-full text-[10px] border-collapse">
                             <thead>
                                 <tr>
-                                    <th className="w-[120px] min-w-[120px] p-2 bg-gray-50 dark:bg-[#161616] border-b border-r border-gray-200 dark:border-[#333] text-left align-bottom z-20 sticky left-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                    <th className="w-[155px] min-w-[155px] p-2 bg-gray-50 dark:bg-[#161616] border-b border-r border-gray-200 dark:border-[#333] text-left align-bottom z-20 sticky left-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                         <span className="text-gray-400 font-medium pl-1 text-xs">ГЕО</span>
                                     </th>
                                     {dateList.map(date => (
@@ -1202,9 +1239,24 @@ const GeoMatrixPage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {sortedCountries.map(country => (
+                                {sortedCountries.map(country => {
+                                    const project = projects.find(p => p.id === country.project_id);
+                                    const isOrganic = project && (project.name.toLowerCase().includes('орган') || project.name.toLowerCase().includes('organ'));
+                                    const countryActive = country.is_active !== false;
+                                    const accentClass = !countryActive
+                                        ? 'border-l-[3px] border-l-red-400 dark:border-l-red-500'
+                                        : project
+                                            ? isOrganic
+                                                ? 'border-l-[3px] border-l-yellow-400 dark:border-l-yellow-500'
+                                                : 'border-l-[3px] border-l-blue-400 dark:border-l-blue-500'
+                                            : '';
+                                    const projectShort = getProjectShort(project?.name);
+                                    const projectColor = !countryActive ? 'text-red-400 dark:text-red-500'
+                                        : isOrganic ? 'text-yellow-600 dark:text-yellow-400'
+                                        : 'text-blue-500 dark:text-blue-400';
+                                    return (
                                     <tr key={country.code} className="group hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors relative hover:z-50">
-                                        <td className="px-3 py-1 border-b border-r border-gray-200 dark:border-[#333] bg-white dark:bg-[#111] group-hover:bg-gray-50 dark:group-hover:bg-[#1A1A1A] sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                        <td className={`px-3 py-1 border-b border-r border-gray-200 dark:border-[#333] bg-white dark:bg-[#111] group-hover:bg-gray-50 dark:group-hover:bg-[#1A1A1A] sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${accentClass}`}>
                                             <div className="flex items-center justify-between h-full w-full gap-2">
                                                 <div className="flex items-center gap-2 min-w-0">
                                                     <button
@@ -1214,12 +1266,11 @@ const GeoMatrixPage = () => {
                                                     >
                                                         <Pin size={10} className={pinnedGeos.includes(country.code) ? "fill-blue-500 text-blue-500" : "text-gray-300 dark:text-gray-600"} />
                                                     </button>
-                                                    <div className="group/tooltip relative flex items-center gap-1.5 cursor-help">
-                                                        <span className="text-xl leading-none shrink-0">{country.emoji}</span>
-                                                        <span className="font-bold text-gray-900 dark:text-gray-200 text-xs truncate">{country.code}</span>
-                                                        
-                                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-[110%] opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none bg-gray-900 dark:bg-gray-100 text-white dark:text-black text-xs font-bold py-1 px-2 rounded-md whitespace-nowrap z-50 shadow-lg border border-gray-700 dark:border-gray-200">
-                                                            {country.name}
+                                                    <div className="group/tooltip relative flex items-center gap-1.5 cursor-default">
+                                                        <span className="text-base leading-none shrink-0">{country.emoji}</span>
+                                                        <div className="flex items-center gap-1 min-w-0">
+                                                            <span className={`font-bold text-xs truncate ${!countryActive ? 'text-red-500 dark:text-red-400' : 'text-gray-900 dark:text-gray-200'}`}>{country.name}</span>
+                                                            {projectShort && <span className={`text-[8px] font-bold shrink-0 ${projectColor}`}>{projectShort}</span>}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1231,7 +1282,7 @@ const GeoMatrixPage = () => {
                                             const count = matrixData[dateKey]?.[country.code] || 0;
                                             const geoActiveOnDay = wasGeoActiveOnDate(country, dateKey);
                                             return (
-                                                <td key={`${country.code}-${dateKey}`} onClick={() => handleCellClick(country.code, dateKey, count)} className="p-0 border-b border-r border-gray-100 dark:border-[#222] text-center relative h-8 matrix-cell cursor-pointer-cell">
+                                                <td key={`${country.code}-${dateKey}`}  onClick={() => handleCellClick(country.code, dateKey, count)} className="p-0 border-b border-r border-gray-100 dark:border-[#222] text-center relative h-8 matrix-cell cursor-pointer-cell">
                                                     <div className={`w-full h-full flex items-center justify-center transition-all duration-300 text-[11px] font-medium rounded-none relative z-0
                                                         ${!geoActiveOnDay
                                                             ? 'geo-disabled-cell'
@@ -1250,7 +1301,8 @@ const GeoMatrixPage = () => {
                                             );
                                         })}
                                     </tr>
-                                ))}
+                                    );
+                                })}
                                 <tr className="bg-gray-50 dark:bg-[#161616]">
                                     <td className="px-3 py-1 border-t border-r border-gray-200 dark:border-[#333] bg-gray-100 dark:bg-[#222] sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                         <div className="flex items-center justify-between h-full">
