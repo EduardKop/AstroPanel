@@ -55,6 +55,22 @@ const getHeatColor = (count) => {
     return HEAT_COLORS[count];
 };
 
+// Returns true if the geo was ACTIVE on the given date (YYYY-MM-DD)
+// Uses status_history: [ { action: 'activated'|'deactivated', at: ISO, by: string } ]
+const wasGeoActiveOnDate = (country, dateKey) => {
+    const history = Array.isArray(country.status_history) ? country.status_history : [];
+    const sorted = [...history].sort((a, b) => a.at.localeCompare(b.at));
+    const relevant = sorted.filter(e => e.at && e.at.slice(0, 10) <= dateKey);
+    if (relevant.length === 0) {
+        // No events on or before this date — infer from the first-ever event:
+        // if first event was 'deactivated', the geo was active before that
+        if (sorted.length > 0) return sorted[0].action === 'deactivated';
+        // No history at all — use current state
+        return country.is_active !== false;
+    }
+    return relevant[relevant.length - 1].action === 'activated';
+};
+
 const getCurrentMonthRange = () => {
     const date = new Date();
     const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -915,6 +931,8 @@ const GeoMatrixPage = () => {
         .dark .matrix-cell:hover::after { background-color: rgba(255, 255, 255, 0.05); }
         .react-datepicker-popper { z-index: 9999 !important; }
         .cursor-pointer-cell { cursor: pointer; }
+        .geo-disabled-cell { background-image: repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px); }
+        .dark .geo-disabled-cell { background-image: repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,0.04) 3px, rgba(255,255,255,0.04) 4px); }
       `}</style>
 
             {/* HEADER */}
@@ -1211,11 +1229,22 @@ const GeoMatrixPage = () => {
                                         {dateList.map(date => {
                                             const dateKey = getLocalDateKey(date);
                                             const count = matrixData[dateKey]?.[country.code] || 0;
+                                            const geoActiveOnDay = wasGeoActiveOnDate(country, dateKey);
                                             return (
                                                 <td key={`${country.code}-${dateKey}`} onClick={() => handleCellClick(country.code, dateKey, count)} className="p-0 border-b border-r border-gray-100 dark:border-[#222] text-center relative h-8 matrix-cell cursor-pointer-cell">
-                                                    <div className={`w-full h-full flex items-center justify-center transition-all duration-300 text-[11px] font-medium rounded-none relative z-0 ${metricMode === 'revenue' || metricMode === 'revenue-local' ? '' : getHeatColor(count)} ${metricMode === 'revenue' && count > 0 ? 'text-amber-600 dark:text-amber-400 font-bold' : ''} ${metricMode === 'revenue-local' && count > 0 ? 'text-pink-600 dark:text-pink-400 font-bold' : ''}`}>
-                                                        {count > 0 && <span className="hidden xl:inline">{metricMode === 'revenue' ? '$' : ''}{(metricMode === 'revenue' || metricMode === 'revenue-local') ? Number(count).toFixed(2) : count}{metricMode === 'conversion' ? '%' : ''}</span>}
-                                                        {count > 0 && <span className="xl:hidden w-1.5 h-1.5 bg-black/30 dark:bg-white/30 rounded-full"></span>}
+                                                    <div className={`w-full h-full flex items-center justify-center transition-all duration-300 text-[11px] font-medium rounded-none relative z-0
+                                                        ${!geoActiveOnDay
+                                                            ? 'geo-disabled-cell'
+                                                            : (metricMode === 'revenue' || metricMode === 'revenue-local' ? '' : getHeatColor(count))}
+                                                        ${metricMode === 'revenue' && count > 0 && geoActiveOnDay ? 'text-amber-600 dark:text-amber-400 font-bold' : ''}
+                                                        ${metricMode === 'revenue-local' && count > 0 && geoActiveOnDay ? 'text-pink-600 dark:text-pink-400 font-bold' : ''}`}>
+                                                        {/* Geo disabled indicator — subtle dash */}
+                                                        {!geoActiveOnDay && count === 0 && (
+                                                            <span className="text-gray-300 dark:text-[#333] text-[10px] select-none">—</span>
+                                                        )}
+                                                        {count > 0 && geoActiveOnDay && <span className="hidden xl:inline">{metricMode === 'revenue' ? '$' : ''}{(metricMode === 'revenue' || metricMode === 'revenue-local') ? Number(count).toFixed(2) : count}{metricMode === 'conversion' ? '%' : ''}</span>}
+                                                        {count > 0 && geoActiveOnDay && <span className="xl:hidden w-1.5 h-1.5 bg-black/30 dark:bg-white/30 rounded-full"></span>}
+                                                        {count > 0 && !geoActiveOnDay && <span className="hidden xl:inline opacity-40 text-gray-400">{count}</span>}
                                                     </div>
                                                 </td>
                                             );
