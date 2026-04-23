@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
 import {
@@ -433,6 +433,570 @@ const getManagerRoleMeta = (role) => {
   }
 };
 
+// ─── Product Funnel Diagram ───────────────────────────────────────────────────
+const extractNickname = (crm_link) => {
+  if (!crm_link) return null;
+  return crm_link.replace(/^https?:\/\/[^/]+\//, '').replace(/^@/, '').trim() || null;
+};
+
+const FunnelSalesModal = ({ payments, title, mgrMap, countries: countriesList, onClose }) => {
+  const [copiedId, setCopiedId] = useState(null);
+  if (!payments) return null;
+
+  const copyNick = (id, nick) => {
+    if (!nick) return;
+    navigator.clipboard?.writeText(nick).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1500);
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div
+        className="relative bg-[#0d0d0d] border border-[#222] rounded-2xl shadow-2xl w-full max-w-5xl mx-4 max-h-[82vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1a1a1a] shrink-0">
+          <div>
+            <div className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-0.5">Продажи</div>
+            <div className="text-[14px] font-black text-white">{title}</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#1a1a1a] hover:bg-[#252525] text-gray-400 hover:text-white transition-colors"
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 1.5L9.5 9.5M9.5 1.5L1.5 9.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-y-auto flex-1">
+          <table className="w-full">
+            <thead className="sticky top-0 bg-[#0d0d0d] border-b border-[#1a1a1a]">
+              <tr className="text-gray-600 font-bold uppercase tracking-wider text-[9px]">
+                <th className="px-3 py-2 text-left w-7">#</th>
+                <th className="px-3 py-2 text-left">Дата</th>
+                <th className="px-3 py-2 text-left">Менеджер</th>
+                <th className="px-3 py-2 text-left">Роль</th>
+                <th className="px-3 py-2 text-left">ГЕО</th>
+                <th className="px-3 py-2 text-right">€</th>
+                <th className="px-3 py-2 text-left">Тип</th>
+                <th className="px-3 py-2 text-center">Покупка</th>
+                <th className="px-3 py-2 text-left">Никнейм</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((p, i) => {
+                const mgr = mgrMap?.[p.manager_id];
+                const cDef = countriesList?.find(c => c.code === p.country);
+                const roleMeta = getManagerRoleMeta(mgr?.role);
+                const nick = extractNickname(p.crm_link);
+                const copied = copiedId === (p.id || i);
+                return (
+                  <tr key={p.id || i} className="border-b border-[#111] hover:bg-[#111] transition-colors">
+                    <td className="px-3 py-1.5 text-[10px] text-gray-600">{i + 1}</td>
+                    <td className="px-3 py-1.5 text-[11px] text-gray-400 whitespace-nowrap">{p.transaction_date?.slice(0, 10) || '—'}</td>
+                    <td className="px-3 py-1.5 text-[11px] text-gray-200 whitespace-nowrap max-w-[140px] truncate">{mgr?.name || '—'}</td>
+                    <td className="px-3 py-1.5">
+                      {roleMeta
+                        ? <span className={`inline-block px-1.5 py-0.5 rounded-md text-[9px] font-bold whitespace-nowrap ${roleMeta.className}`}>{roleMeta.label}</span>
+                        : <span className="text-[10px] text-gray-600">—</span>
+                      }
+                    </td>
+                    <td className="px-3 py-1.5 text-[11px] whitespace-nowrap">
+                      {cDef?.emoji && <span className="mr-1">{cDef.emoji}</span>}
+                      <span className="text-gray-300">{p.country || '—'}</span>
+                    </td>
+                    <td className="px-3 py-1.5 text-[11px] text-right font-bold text-emerald-400 whitespace-nowrap">
+                      {p.amount_eur ? `€${Number(p.amount_eur).toFixed(0)}` : '—'}
+                    </td>
+                    <td className="px-3 py-1.5 text-[11px] text-gray-500 whitespace-nowrap">{p.payment_type || '—'}</td>
+                    <td className="px-3 py-1.5 text-[11px] text-center">
+                      <span className="inline-block px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 font-bold text-[10px]">#{p.purchaseNum}</span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {nick ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); copyNick(p.id || i, nick); }}
+                          className="flex items-center gap-1 group"
+                          title="Копировать никнейм"
+                        >
+                          <span className={`text-[11px] font-mono transition-colors ${copied ? 'text-emerald-400' : 'text-gray-500 group-hover:text-gray-200'}`}>
+                            {nick.slice(0, 22)}
+                          </span>
+                          {copied
+                            ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-emerald-400 shrink-0"><path d="M1.5 5L4 7.5L8.5 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            : <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-gray-700 group-hover:text-gray-400 shrink-0 transition-colors"><rect x="1" y="3" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M3 3V2a1 1 0 011-1h3a1 1 0 011 1v5a1 1 0 01-1 1H7" stroke="currentColor" strokeWidth="1.2"/></svg>
+                          }
+                        </button>
+                      ) : <span className="text-[10px] text-gray-600">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {payments.length === 0 && (
+            <div className="text-center py-12 text-gray-600 text-[12px]">Нет данных</div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-2 border-t border-[#1a1a1a] shrink-0">
+          <span className="text-[10px] text-gray-600">{payments.length} записей</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const FunnelNodeCard = React.forwardRef(({ rank, name, count, cr, nextCount, selected, onClick, onCountClick, style, className }, ref) => (
+  <div
+    ref={ref}
+    onClick={onClick}
+    style={style}
+    className={`absolute flex items-stretch bg-white dark:bg-[#111] rounded-lg border transition-all select-none overflow-hidden ${
+      selected
+        ? 'border-blue-400 shadow-md ring-1 ring-blue-400/20'
+        : 'border-gray-200 dark:border-[#2a2a2a]'
+    } ${onClick ? 'cursor-pointer hover:border-blue-300 dark:hover:border-blue-700' : ''} ${className || ''}`}
+  >
+    <div className="shrink-0 w-6 flex items-center justify-center bg-blue-50 dark:bg-blue-500/10 border-r border-gray-200 dark:border-[#2a2a2a]">
+      <span className="text-[10px] font-black text-blue-500 dark:text-blue-400">{rank}</span>
+    </div>
+    <div className="flex-1 min-w-0 px-2.5 py-2 text-[12px] font-semibold text-gray-900 dark:text-white truncate flex items-center">{name}</div>
+    {cr != null && (
+      <>
+        <div className="shrink-0 w-px self-stretch bg-gray-100 dark:bg-[#222]" />
+        <div className="shrink-0 px-2 py-2 text-[11px] font-bold text-blue-500 dark:text-blue-400 whitespace-nowrap flex items-center">{cr}%</div>
+      </>
+    )}
+    <div className="shrink-0 w-px self-stretch bg-gray-100 dark:bg-[#222]" />
+    <div
+      className={`shrink-0 px-2.5 py-2 text-[15px] font-black text-gray-800 dark:text-white flex items-center ${onCountClick ? 'cursor-pointer hover:text-blue-500 dark:hover:text-blue-400 transition-colors' : ''}`}
+      onClick={onCountClick ? (e) => { e.stopPropagation(); onCountClick(); } : undefined}
+    >{count}</div>
+    {nextCount != null && (
+      <>
+        <div className="shrink-0 w-px self-stretch bg-gray-100 dark:bg-[#222]" />
+        <div className={`shrink-0 flex items-center gap-1 px-2 ${nextCount > 0 ? 'text-blue-500 dark:text-blue-400' : 'text-gray-300 dark:text-[#555]'}`}>
+          <span className="text-[10px] font-bold leading-none">{nextCount}</span>
+          <svg width="7" height="10" viewBox="0 0 7 10" fill="none">
+            <path d="M1.5 1.5L5.5 5L1.5 8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      </>
+    )}
+  </div>
+));
+
+const CR_THRESHOLDS = [
+  { min: 25, label: 'Отлично', className: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
+  { min: 15, label: 'Хорошо', className: 'bg-blue-500/20 text-blue-400 border-blue-500/40' },
+  { min: 8,  label: 'Средне', className: 'bg-amber-500/20 text-amber-400 border-amber-500/40' },
+  { min: 0,  label: 'Низко',  className: 'bg-gray-500/10 text-gray-500 border-gray-500/20' },
+];
+const crMeta = (cr) => CR_THRESHOLDS.find(t => cr >= t.min) || CR_THRESHOLDS[CR_THRESHOLDS.length - 1];
+
+const ProductConversionSummary = ({ stats }) => {
+  const [sortBy, setSortBy] = useState('topCR'); // 'topCR' | 'count'
+
+  const rows = useMemo(() => {
+    if (!stats) return [];
+    const { stage1, transNM } = stats;
+    const trans0 = transNM?.[0] || {};
+    return Object.entries(stage1)
+      .sort(([, a], [, b]) => b - a)
+      .map(([prod, total]) => {
+        const nexts = Object.entries(trans0[prod] || {})
+          .map(([nextProd, cnt]) => ({
+            prod: nextProd,
+            count: cnt,
+            cr: total > 0 ? (cnt / total) * 100 : 0,
+          }))
+          .sort((a, b) => sortBy === 'topCR' ? b.cr - a.cr : b.count - a.count);
+        const totalConverted = nexts.reduce((s, n) => s + n.count, 0);
+        const overallCR = total > 0 ? (totalConverted / total) * 100 : 0;
+        return { prod, total, nexts, totalConverted, overallCR };
+      })
+      .filter(r => r.nexts.length > 0);
+  }, [stats, sortBy]);
+
+  if (!rows.length) return <div className="text-center py-12 text-gray-400 text-sm">Нет данных</div>;
+
+  return (
+    <div>
+      {/* Sort controls */}
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Сортировка:</span>
+        {[{ id: 'topCR', label: 'По CR%' }, { id: 'count', label: 'По кол-ву' }].map(opt => (
+          <button
+            key={opt.id}
+            onClick={() => setSortBy(opt.id)}
+            className={`px-3 py-1 rounded text-[11px] font-bold border transition-colors ${
+              sortBy === opt.id ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-400'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Grid of source products */}
+      <div className="flex flex-col gap-3">
+        {rows.map(({ prod, total, nexts, totalConverted, overallCR }) => {
+          const topNext = nexts[0];
+          const meta = crMeta(overallCR);
+          return (
+            <div key={prod} className="bg-[#0d0d0d] border border-[#1e1e1e] rounded-xl overflow-hidden">
+              {/* Header row */}
+              <div className="flex items-center gap-4 px-4 py-2.5 border-b border-[#1a1a1a]">
+                <div className="flex-1 flex items-center gap-3">
+                  <span className="text-[13px] font-black text-white">{prod}</span>
+                  <span className="text-[11px] text-gray-500">{total} покупок</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500">конверсия в 2-й:</span>
+                  <span className={`text-[12px] font-black px-2 py-0.5 rounded border ${meta.className}`}>
+                    {overallCR.toFixed(1)}%
+                  </span>
+                  <span className="text-[10px] text-gray-600">({totalConverted} чел.)</span>
+                </div>
+              </div>
+
+              {/* Next products bar */}
+              <div className="px-4 py-3 flex flex-wrap gap-2 items-center">
+                {nexts.slice(0, 8).map((n, i) => {
+                  const nm = crMeta(n.cr);
+                  const isTop = i === 0;
+                  return (
+                    <div
+                      key={n.prod}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all ${
+                        isTop
+                          ? 'bg-emerald-500/10 border-emerald-500/40'
+                          : 'bg-[#151515] border-[#252525]'
+                      }`}
+                    >
+                      {isTop && (
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-emerald-400 shrink-0">
+                          <path d="M5 1L6.2 3.8L9 4.1L7 6.1L7.6 9L5 7.5L2.4 9L3 6.1L1 4.1L3.8 3.8Z" fill="currentColor"/>
+                        </svg>
+                      )}
+                      <span className={`text-[11px] font-semibold ${isTop ? 'text-emerald-300' : 'text-gray-300'}`}>{n.prod}</span>
+                      <span className={`text-[11px] font-black px-1.5 py-0.5 rounded border text-[10px] ${nm.className}`}>
+                        {n.cr.toFixed(1)}%
+                      </span>
+                      <span className="text-[10px] text-gray-600">{n.count}</span>
+                    </div>
+                  );
+                })}
+                {nexts.length > 8 && (
+                  <span className="text-[10px] text-gray-600">+{nexts.length - 8} ещё</span>
+                )}
+              </div>
+
+              {/* Visual CR bar */}
+              {nexts.length > 1 && (
+                <div className="px-4 pb-3 flex gap-0.5">
+                  {nexts.slice(0, 10).map((n, i) => {
+                    const widthPct = totalConverted > 0 ? (n.count / totalConverted) * 100 : 0;
+                    const colors = ['bg-emerald-500', 'bg-blue-500', 'bg-amber-500', 'bg-orange-500', 'bg-purple-500', 'bg-pink-500', 'bg-cyan-500', 'bg-red-500', 'bg-lime-500', 'bg-indigo-500'];
+                    return (
+                      <div
+                        key={n.prod}
+                        className={`h-1.5 rounded-full ${colors[i % colors.length]} opacity-60`}
+                        style={{ width: `${widthPct}%`, minWidth: widthPct > 0 ? 4 : 0 }}
+                        title={`${n.prod}: ${n.cr.toFixed(1)}%`}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const ProductFunnelDiagram = ({ stage1Entries, transNM, byCustomer, mgrMap, countries: countriesList }) => {
+  const containerRef = useRef(null);
+  const scrollbarRef = useRef(null);
+  const nodeRefs = useRef({});
+  const [selectedPath, setSelectedPath] = useState([]); // selectedPath[i] = selected prod in column i
+  const [svgData, setSvgData] = useState({ paths: [], labels: [], w: 0, h: 0 });
+  const [modalData, setModalData] = useState(null);
+  const isSyncingRef = useRef(false);
+
+  const NODE_W = 230;
+  const NODE_H = 38;
+  const ROW_GAP = 10;
+  const COL_SPACE = 130;
+
+  const columns = useMemo(() => {
+    let rankCounter = 1;
+    const cols = [];
+
+    // col0: first-purchase products with path-independent nextCount
+    const col0Next = {};
+    if (byCustomer) {
+      Object.values(byCustomer).forEach(purchases => {
+        const p0 = purchases[0]?.product;
+        if (p0 && purchases[1]?.product) col0Next[p0] = (col0Next[p0] || 0) + 1;
+      });
+    }
+    cols.push((stage1Entries || []).map(([p, c]) => ({
+      prod: p, count: c, nextCount: col0Next[p] || 0, rank: rankCounter++,
+    })));
+
+    if (!byCustomer || selectedPath.length === 0) return cols;
+
+    // Walk byCustomer with path filtering — each depth filters down eligible customers
+    // so counts are always path-conditional (matching the exact upstream selection)
+    let eligible = Object.values(byCustomer);
+    for (let depth = 0; depth < selectedPath.length; depth++) {
+      const selProd = selectedPath[depth];
+      if (!selProd) break;
+
+      eligible = eligible.filter(purchases => purchases[depth]?.product === selProd);
+
+      const nextCounts = {};  // count at depth+1
+      const nextNext = {};    // of those, how many also have depth+2
+
+      eligible.forEach(purchases => {
+        const p = purchases[depth + 1]?.product;
+        if (!p) return;
+        nextCounts[p] = (nextCounts[p] || 0) + 1;
+        if (purchases[depth + 2]?.product) nextNext[p] = (nextNext[p] || 0) + 1;
+      });
+
+      const entries = Object.entries(nextCounts).sort(([, a], [, b]) => b - a);
+      cols.push(entries.map(([p, c]) => ({
+        prod: p, count: c, nextCount: nextNext[p] || 0, rank: rankCounter++,
+      })));
+    }
+
+    return cols;
+  }, [stage1Entries, selectedPath, byCustomer]);
+
+  const handleSelect = (colIdx, prod) => {
+    setSelectedPath(prev => {
+      if (prev[colIdx] === prod) return prev.slice(0, colIdx); // deselect collapses from here
+      return [...prev.slice(0, colIdx), prod];
+    });
+  };
+
+  const getParentCount = useCallback((colIdx, cols, selPath) => {
+    if (colIdx === 0) return null;
+    const parentProd = selPath[colIdx - 1];
+    return cols[colIdx - 1]?.find(n => n.prod === parentProd)?.count || 1;
+  }, []);
+
+  const maxNodes = Math.max(...columns.map(c => c.length), 1);
+  const containerH = maxNodes * NODE_H + Math.max(0, maxNodes - 1) * ROW_GAP + 80;
+  const totalContentW = columns.length * (NODE_W + COL_SPACE);
+
+  const colLayouts = columns.map((col, colIdx) => {
+    const startY = 0;
+    return {
+      colIdx,
+      x: colIdx * (NODE_W + COL_SPACE),
+      nodes: col.map((node, i) => ({ ...node, y: startY + i * (NODE_H + ROW_GAP) })),
+    };
+  });
+
+  const calcSvg = useCallback((cols, selPath) => {
+    if (!containerRef.current) return;
+    const cR = containerRef.current.getBoundingClientRect();
+    const scrollLeft = containerRef.current.scrollLeft;
+    const scrollTop = containerRef.current.scrollTop;
+    const paths = [];
+    const labels = [];
+
+    cols.forEach((col, colIdx) => {
+      if (colIdx === 0) return;
+      const parentProd = selPath[colIdx - 1];
+      if (!parentProd) return;
+      const parentRef = nodeRefs.current[`${colIdx - 1}:${parentProd}`];
+      if (!parentRef) return;
+      const pR = parentRef.getBoundingClientRect();
+      const pRx = pR.right - cR.left + scrollLeft;
+      const pCy = (pR.top + pR.bottom) / 2 - cR.top + scrollTop;
+      const parentCount = getParentCount(colIdx, cols, selPath);
+
+      col.forEach(({ prod, count }) => {
+        const nRef = nodeRefs.current[`${colIdx}:${prod}`];
+        if (!nRef) return;
+        const nR = nRef.getBoundingClientRect();
+        const nLx = nR.left - cR.left + scrollLeft;
+        const nCy = (nR.top + nR.bottom) / 2 - cR.top + scrollTop;
+        const midX = (pRx + nLx) / 2;
+        paths.push({ key: `p${colIdx}:${prod}`, d: `M ${pRx} ${pCy} C ${midX} ${pCy}, ${midX} ${nCy}, ${nLx} ${nCy}` });
+        const cr = parentCount > 0 ? ((count / parentCount) * 100).toFixed(1) : '0.0';
+        labels.push({ key: `l${colIdx}:${prod}`, x: midX, y: (pCy + nCy) / 2, text: `${cr}%` });
+      });
+    });
+
+    setSvgData({
+      paths,
+      labels,
+      w: containerRef.current.scrollWidth,
+      h: containerRef.current.scrollHeight,
+    });
+  }, [getParentCount]);
+
+  useLayoutEffect(() => {
+    const t = setTimeout(() => calcSvg(columns, selectedPath), 30);
+    return () => clearTimeout(t);
+  }, [columns, selectedPath, calcSvg]);
+
+  const handleContainerScroll = () => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    if (scrollbarRef.current && containerRef.current) {
+      scrollbarRef.current.scrollLeft = containerRef.current.scrollLeft;
+    }
+    calcSvg(columns, selectedPath);
+    isSyncingRef.current = false;
+  };
+
+  const handleScrollbarScroll = () => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    if (containerRef.current && scrollbarRef.current) {
+      containerRef.current.scrollLeft = scrollbarRef.current.scrollLeft;
+      calcSvg(columns, selectedPath);
+    }
+    isSyncingRef.current = false;
+  };
+
+  const scroll = (dir) => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollLeft += dir * 360;
+    if (scrollbarRef.current) scrollbarRef.current.scrollLeft = el.scrollLeft;
+    calcSvg(columns, selectedPath);
+  };
+
+  return (
+    <div>
+      {/* Top scrollbar + arrow buttons */}
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          ref={scrollbarRef}
+          onScroll={handleScrollbarScroll}
+          className="flex-1 overflow-x-scroll"
+          style={{ height: 14 }}
+        >
+          <div style={{ width: totalContentW, height: 1 }} />
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => scroll(-1)}
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#111] hover:border-blue-400 dark:hover:border-blue-600 text-gray-400 hover:text-blue-500 transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L6 8L10 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <button
+            onClick={() => scroll(1)}
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#111] hover:border-blue-400 dark:hover:border-blue-600 text-gray-400 hover:text-blue-500 transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3L10 8L6 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Main diagram */}
+      <div
+        ref={containerRef}
+        onScroll={handleContainerScroll}
+        className="relative overflow-x-auto pb-6 pt-4"
+        style={{ minHeight: containerH + 24 }}
+      >
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          width={svgData.w || '100%'}
+          height={svgData.h || '100%'}
+          style={{ overflow: 'visible' }}
+        >
+          <defs>
+            <marker id="funnel-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L6,3 z" fill="#6b7280" />
+            </marker>
+          </defs>
+          {svgData.paths.map(p => (
+            <path key={p.key} d={p.d} fill="none" stroke="#6b7280" strokeWidth={1.5} markerEnd="url(#funnel-arrow)" />
+          ))}
+          {svgData.labels.map(l => (
+            <g key={l.key}>
+              <circle cx={l.x} cy={l.y} r={13} fill="#1a1a1a" stroke="#374151" strokeWidth={1} />
+              <text x={l.x} y={l.y + 4} textAnchor="middle" style={{ fontSize: 10, fontWeight: 800, fill: '#9ca3af', fontFamily: 'inherit' }}>
+                {l.text}
+              </text>
+            </g>
+          ))}
+        </svg>
+
+        {colLayouts.map(({ colIdx, x, nodes }) =>
+          nodes.map(({ prod, count, nextCount: nxt, rank, y }) => {
+            const isSelected = selectedPath[colIdx] === prod;
+            const parentCount = getParentCount(colIdx, columns, selectedPath);
+            const crVal = colIdx === 0 ? null : (parentCount > 0 ? ((count / parentCount) * 100).toFixed(1) : '0.0');
+
+            const handleCountClick = byCustomer ? () => {
+              const results = [];
+              Object.values(byCustomer).forEach(purchases => {
+                // match the full selected path up to this column
+                for (let i = 0; i < colIdx; i++) {
+                  if (purchases[i]?.product !== selectedPath[i]) return;
+                }
+                if (purchases[colIdx]?.product !== prod) return;
+                const p = purchases[colIdx];
+                if (p) results.push({ ...p, purchaseNum: colIdx + 1 });
+              });
+              results.sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
+              setModalData({ payments: results, title: `${prod} — ${colIdx + 1}-я покупка` });
+            } : undefined;
+
+            return (
+              <FunnelNodeCard
+                key={`${colIdx}:${prod}`}
+                ref={el => { nodeRefs.current[`${colIdx}:${prod}`] = el; }}
+                rank={rank}
+                name={prod}
+                count={count}
+                cr={crVal}
+                nextCount={nxt}
+                selected={isSelected}
+                onClick={() => handleSelect(colIdx, prod)}
+                onCountClick={handleCountClick}
+                style={{ left: x, top: y, width: NODE_W }}
+              />
+            );
+          })
+        )}
+
+        <div style={{ height: containerH, width: totalContentW }} />
+      </div>
+
+      {modalData && (
+        <FunnelSalesModal
+          payments={modalData.payments}
+          title={modalData.title}
+          mgrMap={mgrMap}
+          countries={countriesList}
+          onClose={() => setModalData(null)}
+        />
+      )}
+    </div>
+  );
+};
+
 const GeoPage = () => {
   const { trafficStats, fetchTrafficStats, user: currentUser, countries, projects, isLoading, managers, schedules } = useAppStore();
 
@@ -445,10 +1009,18 @@ const GeoPage = () => {
   const [filters, setFilters] = useState(createDefaultFilters);
   const deferredGeoQuery = useDeferredValue(geoQuery.trim().toLowerCase());
 
-  const [viewMode, setViewMode] = useState('list'); // 'list' | 'matrix'
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'matrix' | 'products'
+  const [productsSubView, setProductsSubView] = useState('funnel'); // 'funnel' | 'summary'
 
   const [localPayments, setLocalPayments] = useState([]);
   const [localLoading, setLocalLoading] = useState(true);
+
+  const [funnelPayments, setFunnelPayments] = useState([]);
+  const [funnelLoading, setFunnelLoading] = useState(false);
+  const [funnelGeo, setFunnelGeo] = useState('');
+  const [funnelStage1, setFunnelStage1] = useState(null);
+  const [funnelStage2, setFunnelStage2] = useState(null);
+  const funnelFetchedRef = React.useRef(false);
 
   const fetchLocalPayments = async (fromDate, toDate) => {
     try {
@@ -536,6 +1108,39 @@ const GeoPage = () => {
       fetchLocalPayments(startDate, endDate);
     }
   }, [startDate?.toISOString(), endDate?.toISOString()]);
+
+  const fetchFunnelPayments = async () => {
+    if (funnelFetchedRef.current) return;
+    funnelFetchedRef.current = true;
+    setFunnelLoading(true);
+    try {
+      let all = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('payments')
+          .select('id, transaction_date, product, country, crm_link, amount_eur, manager_id, payment_type')
+          .eq('status', 'completed')
+          .not('crm_link', 'is', null)
+          .neq('crm_link', '')
+          .order('transaction_date', { ascending: true })
+          .range(offset, offset + 999);
+        if (error || !data?.length) break;
+        all = [...all, ...data];
+        if (data.length < 1000) break;
+        offset += 1000;
+      }
+      setFunnelPayments(all);
+    } catch (e) {
+      console.error('fetchFunnelPayments error:', e);
+    } finally {
+      setFunnelLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === 'products') fetchFunnelPayments();
+  }, [viewMode]);
 
 
   const hasActiveFilters = useMemo(() => {
@@ -827,6 +1432,67 @@ const GeoPage = () => {
     });
   }, [localPayments, trafficStats, startDate, endDate, filters, isRestrictedUser, currentUser, countries, projects, activeProjectFilter, geoSortMode, deferredGeoQuery, shiftDatesMap, managers]);
 
+  // Product-level aggregation
+  const productFunnelStats = useMemo(() => {
+    if (!funnelPayments.length) return null;
+
+    const filtered = funnelGeo
+      ? funnelPayments.filter(p => p.country === funnelGeo)
+      : funnelPayments;
+
+    const byCustomer = {};
+    filtered.forEach(p => {
+      if (!p.crm_link || !p.product) return;
+      if (!byCustomer[p.crm_link]) byCustomer[p.crm_link] = [];
+      byCustomer[p.crm_link].push(p);
+    });
+
+    Object.values(byCustomer).forEach(arr => {
+      arr.sort((a, b) => new Date(a.transaction_date) - new Date(b.transaction_date));
+    });
+
+    const stage1 = {};
+    const stage2 = {};
+    const stage3 = {};
+    const stage4 = {};
+    const stage5 = {};
+    // transNM[n][prod] = { nextProd: count } — transition from (n+1)th to (n+2)th purchase
+    const transNM = [];
+
+    Object.values(byCustomer).forEach(purchases => {
+      const p1 = purchases[0]?.product;
+      if (!p1) return;
+      stage1[p1] = (stage1[p1] || 0) + 1;
+      if (purchases[1]?.product) stage2[purchases[1].product] = (stage2[purchases[1].product] || 0) + 1;
+      if (purchases[2]?.product) stage3[purchases[2].product] = (stage3[purchases[2].product] || 0) + 1;
+      if (purchases[3]?.product) stage4[purchases[3].product] = (stage4[purchases[3].product] || 0) + 1;
+      if (purchases[4]?.product) stage5[purchases[4].product] = (stage5[purchases[4].product] || 0) + 1;
+      for (let i = 0; i < purchases.length - 1; i++) {
+        const p = purchases[i]?.product;
+        const pNext = purchases[i + 1]?.product;
+        if (!p || !pNext) continue;
+        if (!transNM[i]) transNM[i] = {};
+        if (!transNM[i][p]) transNM[i][p] = {};
+        transNM[i][p][pNext] = (transNM[i][p][pNext] || 0) + 1;
+      }
+    });
+
+    const trans12 = transNM[0] || {};
+    const trans23 = transNM[1] || {};
+    const totalWith1st = Object.values(stage1).reduce((s, v) => s + v, 0);
+    const totalWith2nd = Object.values(stage2).reduce((s, v) => s + v, 0);
+    const totalWith3rd = Object.values(stage3).reduce((s, v) => s + v, 0);
+    const totalWith4th = Object.values(stage4).reduce((s, v) => s + v, 0);
+    const totalWith5th = Object.values(stage5).reduce((s, v) => s + v, 0);
+    return { stage1, stage2, stage3, stage4, stage5, trans12, trans23, transNM, byCustomer, totalWith1st, totalWith2nd, totalWith3rd, totalWith4th, totalWith5th };
+  }, [funnelPayments, funnelGeo]);
+
+  const funnelMgrMap = useMemo(() => {
+    const m = {};
+    (managers || []).forEach(mgr => { m[mgr.id] = mgr; });
+    return m;
+  }, [managers]);
+
   const handleExportGeoTable = () => {
     if (!geoStats.length) {
       showToast('Нет данных для выгрузки', 'error');
@@ -1085,7 +1751,7 @@ const GeoPage = () => {
         <div className="flex flex-col md:flex-row items-start md:items-center gap-3 mb-4">
           <h2 className="text-base 2xl:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 pr-4 shrink-0">
             <Globe size={17} className="text-blue-500 shrink-0 2xl:w-[18px] 2xl:h-[18px]" />
-            <span className="truncate">География</span>
+            <span className="truncate">Конверсии</span>
           </h2>
 
           <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[8px] h-[30px] 2xl:h-[32px] items-center shrink-0 w-full md:w-auto">
@@ -1246,7 +1912,7 @@ const GeoPage = () => {
            onClick={() => setViewMode('list')}
            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'list' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
          >
-           <List size={14} /> Карточки
+           <List size={14} /> По ГЕО
          </button>
          <button 
            onClick={() => setViewMode('matrix')}
@@ -1254,8 +1920,16 @@ const GeoPage = () => {
          >
            <CalendarIcon size={14} /> Сетка конверсий
          </button>
+         <button 
+           onClick={() => setViewMode('products')}
+           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'products' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
+         >
+           По Продуктам
+         </button>
       </div>
 
+      {viewMode === 'list' || viewMode === 'matrix' ? (
+      <>
       {viewMode === 'list' ? (
       <div className="space-y-2">
         {/* HORIZONTAL CARDS LIST */}
@@ -1658,6 +2332,128 @@ const GeoPage = () => {
             )}
           </table>
         </div>
+      </div>
+      )}
+      </>
+      ) : null}
+
+      {/* PRODUCTS TAB CONTENT */}
+      {viewMode === 'products' && (
+      <div className="mt-4">
+
+        {/* Sub-tabs */}
+        <div className="flex gap-2 mb-5">
+          <button
+            onClick={() => setProductsSubView('funnel')}
+            className={`px-4 py-1.5 rounded-lg text-[12px] font-bold transition-colors border ${
+              productsSubView === 'funnel'
+                ? 'bg-blue-500 border-blue-500 text-white'
+                : 'bg-transparent border-gray-200 dark:border-[#333] text-gray-400 hover:border-blue-400 hover:text-blue-400'
+            }`}
+          >
+            Конверсии по Продуктах
+          </button>
+          <button
+            onClick={() => setProductsSubView('summary')}
+            className={`px-4 py-1.5 rounded-lg text-[12px] font-bold transition-colors border ${
+              productsSubView === 'summary'
+                ? 'bg-blue-500 border-blue-500 text-white'
+                : 'bg-transparent border-gray-200 dark:border-[#333] text-gray-400 hover:border-blue-400 hover:text-blue-400'
+            }`}
+          >
+            Сводка конверсий
+          </button>
+        </div>
+
+        {/* GEO Filter */}
+        <div className="mb-5 flex flex-wrap gap-1.5 items-center">
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mr-1">ГЕО:</span>
+          <button
+            onClick={() => setFunnelGeo('')}
+            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-colors border ${
+              funnelGeo === '' ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white dark:bg-[#111] border-gray-200 dark:border-[#333] text-gray-500 hover:border-blue-400'
+            }`}
+          >
+            Все
+          </button>
+          {(countries || []).slice().sort((a, b) => (a.code || '').localeCompare(b.code || '')).map(c => (
+            <button
+              key={c.code}
+              onClick={() => setFunnelGeo(c.code === funnelGeo ? '' : c.code)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors border ${
+                funnelGeo === c.code ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white dark:bg-[#111] border-gray-200 dark:border-[#333] text-gray-500 hover:border-blue-400 dark:hover:border-[#555]'
+              }`}
+            >
+              {c.emoji && <span className="text-[13px] leading-none">{c.emoji}</span>}
+              <span>{c.name || c.code}</span>
+            </button>
+          ))}
+        </div>
+
+        {funnelLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <RefreshCw size={26} className="text-blue-500 animate-spin mb-3" />
+            <p className="text-gray-400 text-sm">Загрузка данных...</p>
+          </div>
+        ) : !productFunnelStats ? (
+          <div className="text-center py-12 text-gray-400 text-sm">Нет данных</div>
+        ) : (() => {
+          const stage1Entries = Object.entries(productFunnelStats.stage1).sort(([, a], [, b]) => b - a);
+          if (!stage1Entries.length) return (
+            <div className="text-center py-12 text-gray-400 text-sm">Нет данных</div>
+          );
+
+          return (
+            <div>
+              {productsSubView === 'summary' ? (
+                <ProductConversionSummary stats={productFunnelStats} />
+              ) : (<>
+              {/* Stats chain */}
+              {(() => {
+                const stages = [
+                  { label: '1-я оплата', value: productFunnelStats.totalWith1st, color: 'text-blue-500', border: 'border-blue-500/30' },
+                  { label: '2-я оплата', value: productFunnelStats.totalWith2nd, color: 'text-emerald-400', border: 'border-emerald-500/30' },
+                  { label: '3-я оплата', value: productFunnelStats.totalWith3rd, color: 'text-amber-400', border: 'border-amber-500/30' },
+                  { label: '4-я оплата', value: productFunnelStats.totalWith4th, color: 'text-orange-400', border: 'border-orange-500/30' },
+                  { label: '5-я оплата', value: productFunnelStats.totalWith5th, color: 'text-purple-400', border: 'border-purple-500/30' },
+                ];
+                return (
+                  <div className="flex items-center gap-0 mb-6 flex-wrap">
+                    {stages.map((s, i) => (
+                      <div key={i} className="flex items-center">
+                        <div className={`bg-[#111] border ${s.border} rounded-lg px-4 py-2.5 min-w-[90px]`}>
+                          <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-1">{s.label}</div>
+                          <div className={`text-[22px] font-black ${s.color} leading-none`}>{s.value}</div>
+                          {i > 0 && stages[i - 1].value > 0 && (
+                            <div className="text-[10px] font-bold text-gray-500 mt-0.5">
+                              {((s.value / stages[i - 1].value) * 100).toFixed(1)}%
+                            </div>
+                          )}
+                        </div>
+                        {i < stages.length - 1 && (
+                          <div className="flex items-center px-1.5 text-gray-600">
+                            <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
+                              <path d="M0 6H14M14 6L9 1M14 6L9 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              <ProductFunnelDiagram
+                stage1Entries={stage1Entries}
+                transNM={productFunnelStats.transNM}
+                byCustomer={productFunnelStats.byCustomer}
+                mgrMap={funnelMgrMap}
+                countries={countries}
+              />
+              </>)}
+            </div>
+          );
+        })()}
       </div>
       )}
     </div>
