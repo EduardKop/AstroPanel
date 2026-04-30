@@ -63,6 +63,58 @@ const fetchAll = async (table, select, orderBy = 'created_at', ascending = false
   return allData;
 };
 
+const isGeoMatrixRoute = () => {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname === '/geo-matrix';
+};
+
+const PAYMENT_SELECT_COLUMNS = '*';
+
+const resolvePaymentSource = (item) => {
+  const explicit = String(item?.derived_source || item?.source || '').trim().toLowerCase();
+  if (explicit === 'whatsapp') return 'whatsapp';
+  if (explicit === 'comments' || explicit === 'comment') return 'comments';
+  if (explicit === 'direct' || explicit === 'instagram') return 'direct';
+
+  const rawLink = String(item?.crm_link || item?.crmLink || '').trim().toLowerCase();
+  if (!rawLink) return 'direct';
+  if (rawLink.includes('wa.me') || rawLink.includes('whatsapp') || /^\+?\d[\d\s().-]{5,}$/.test(rawLink)) {
+    return 'whatsapp';
+  }
+  return 'direct';
+};
+
+const formatPayments = (paymentsData, managersMap = {}) => {
+  const uniquePaymentsMap = new Map();
+  (paymentsData || []).forEach(item => {
+    if (item.id && !uniquePaymentsMap.has(item.id)) {
+      uniquePaymentsMap.set(item.id, item);
+    }
+  });
+
+  return Array.from(uniquePaymentsMap.values()).map(item => {
+    const rawDate = item.transaction_date || item.created_at;
+
+    return {
+      ...item,
+      id: item.id,
+      transactionDate: rawDate,
+      amountEUR: Number(item.amount_eur) || 0,
+      amountLocal: Number(item.amount_local) || 0,
+      amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
+      manager: managersMap[item.manager_id]?.name || 'Не назначен',
+      managerId: item.manager_id,
+      managerRole: managersMap[item.manager_id]?.role || null,
+      manager_tg: managersMap[item.manager_id]?.telegram_username || null,
+      type: item.payment_type || 'Other',
+      status: item.status || 'pending',
+      source: resolvePaymentSource(item),
+      crmLink: item.crm_link || '',
+      screenshotUrl: item.screenshot_url || '',
+    };
+  });
+};
+
 export const useAppStore = create((set, get) => ({
   // --- STATE ---
   user: null,
@@ -324,7 +376,17 @@ export const useAppStore = create((set, get) => ({
 
   fetchTrafficStats: async (dateFrom, dateTo) => {
     try {
-      const map = get().channelsMap;
+      let map = get().channelsMap;
+      if (!map || Object.keys(map).length === 0) {
+        const channelsData = await fetchAll('channels', '*', 'id', true);
+        const newChannelsMap = {};
+        (channelsData || []).forEach(ch => {
+          newChannelsMap[ch.wazzup_id] = ch.country_code;
+          newChannelsMap[ch.id] = ch.country_code;
+        });
+        map = newChannelsMap;
+        set({ channels: channelsData || [], channelsMap: newChannelsMap });
+      }
 
       // Paginate RPC to bypass the 1000-row PostgREST limit
       let all = [];
@@ -597,6 +659,54 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  fetchGeoMatrixBootstrapData: async (forceUpdate = false) => {
+    if (get().isLoading && !forceUpdate) return;
+
+    set({ isLoading: true });
+    try {
+      const [
+        channelsData,
+        managersData,
+        projectsData,
+        countriesData,
+        appSettingsData
+      ] = await Promise.all([
+        fetchAll('channels', '*', 'id', true),
+        fetchAll('managers', '*', 'created_at', false),
+        fetchAll('projects', '*', 'name', true).catch(() => []),
+        fetchAll('countries', '*', 'code', true),
+        fetchAll('app_settings', '*', 'key', true),
+      ]);
+
+      const newChannelsMap = {};
+      (channelsData || []).forEach(ch => {
+        newChannelsMap[ch.wazzup_id] = ch.country_code;
+        newChannelsMap[ch.id] = ch.country_code;
+      });
+
+      const permissionsMap = (appSettingsData || []).find(s => s.key === 'role_permissions')?.value || {};
+      const roleDocsMap = (appSettingsData || []).find(s => s.key === 'role_documentation')?.value || {};
+
+      localStorage.setItem('astroPermissions', JSON.stringify(permissionsMap));
+      localStorage.setItem('astroRoleDocs', JSON.stringify(roleDocsMap));
+
+      set({
+        channels: channelsData || [],
+        channelsMap: newChannelsMap,
+        managers: managersData || [],
+        projects: projectsData || [],
+        countries: countriesData || [],
+        permissions: permissionsMap,
+        roleDocs: roleDocsMap,
+        isLoading: false,
+        isInitialized: true
+      });
+    } catch (error) {
+      console.error('Error fetching Geo Matrix bootstrap data:', error);
+      set({ isLoading: false });
+    }
+  },
+
   fetchAllData: async (forceUpdate = false) => {
     if (get().isLoading && !forceUpdate) return;
     // ... existing implementation ...
@@ -619,8 +729,9 @@ export const useAppStore = create((set, get) => ({
       startOfWeek.setHours(0, 0, 0, 0);
       const startOfWeekISO = startOfWeek.toISOString();
 
-      // Запускаем быструю загрузку платежей ТОЛЬКО за текущую неделю
-      const paymentsPromise = fetchAll('enriched_payments_view', '*', 'transaction_date', false, { column: 'transaction_date', gte: startOfWeekISO });
+      // Быстрая загрузка платежей напрямую из payments.
+      // enriched_payments_view периодически отдаёт 500 при параллельных переходах между страницами.
+      const paymentsPromise = fetchAll('payments', PAYMENT_SELECT_COLUMNS, 'transaction_date', false, { column: 'transaction_date', gte: startOfWeekISO });
 
       // Запускаем загрузку второстепенных справочников асинхронно
       const secondaryDataPromise = Promise.all([
@@ -765,41 +876,11 @@ export const useAppStore = create((set, get) => ({
 
       // Е. Форматируем платежи асинхронно после получения
       paymentsPromise.then(paymentsData => {
-        const uniquePaymentsMap = new Map();
-        (paymentsData || []).forEach(item => {
-          if (item.id && !uniquePaymentsMap.has(item.id)) {
-            uniquePaymentsMap.set(item.id, item);
-          }
-        });
-
-        // Берем менеджеров из глобального стейта
         const currentManagers = get().managers || [];
         const currentManagersMap = {};
         currentManagers.forEach(m => currentManagersMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username });
 
-        const formattedPayments = Array.from(uniquePaymentsMap.values()).map(item => {
-          const rawDate = item.transaction_date || item.created_at;
-
-          // Определяем источник из View
-          let source = item.derived_source || 'direct'; // Default to direct if missing
-          if (source === 'unknown') source = 'direct';
-
-          return {
-            ...item,
-            id: item.id,
-            transactionDate: rawDate,
-            amountEUR: Number(item.amount_eur) || 0,
-            amountLocal: Number(item.amount_local) || 0,
-            amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
-            manager: currentManagersMap[item.manager_id]?.name || 'Не назначен',
-            managerId: item.manager_id,
-            managerRole: currentManagersMap[item.manager_id]?.role || null,
-            manager_tg: currentManagersMap[item.manager_id]?.telegram_username || null,
-            type: item.payment_type || 'Other',
-            status: item.status || 'pending',
-            source: source // 'direct', 'comments', 'whatsapp', 'unknown'
-          };
-        });
+        const formattedPayments = formatPayments(paymentsData, currentManagersMap);
 
         const total = formattedPayments.reduce((sum, item) => sum + item.amountEUR, 0);
 
@@ -812,43 +893,22 @@ export const useAppStore = create((set, get) => ({
         // Теперь фоном дотягиваем все остальные (старые) платежи
         (async () => {
           try {
-            const oldPaymentsData = await fetchAll('enriched_payments_view', '*', 'transaction_date', false, { column: 'transaction_date', lt: startOfWeekISO });
+            const oldPaymentsData = await fetchAll('payments', PAYMENT_SELECT_COLUMNS, 'transaction_date', false, { column: 'transaction_date', lt: startOfWeekISO });
             if (oldPaymentsData && oldPaymentsData.length > 0) {
-              const uniqueOldPayments = new Map();
-              oldPaymentsData.forEach(item => {
-                if (item.id && !uniqueOldPayments.has(item.id)) {
-                  uniqueOldPayments.set(item.id, item);
-                }
-              });
-
               // Свежие менеджеры на случай, если они обновились
               const currentMgrs = get().managers || [];
               const mgrMap = {};
               currentMgrs.forEach(m => mgrMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username });
 
-              const formattedOld = Array.from(uniqueOldPayments.values()).map(item => {
-                let source = item.derived_source || 'direct';
-                if (source === 'unknown') source = 'direct';
-                return {
-                  ...item,
-                  id: item.id,
-                  transactionDate: item.transaction_date || item.created_at,
-                  amountEUR: Number(item.amount_eur) || 0,
-                  amountLocal: Number(item.amount_local) || 0,
-                  amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
-                  manager: mgrMap[item.manager_id]?.name || 'Не назначен',
-                  managerId: item.manager_id,
-                  managerRole: mgrMap[item.manager_id]?.role || null,
-                  manager_tg: mgrMap[item.manager_id]?.telegram_username || null,
-                  type: item.payment_type || 'Other',
-                  status: item.status || 'pending',
-                  source: source
-                };
-              });
+              const formattedOld = formatPayments(oldPaymentsData, mgrMap);
 
               // Добавляем к текущим (сохраняя порядок)
               set(state => {
-                const merged = [...state.payments, ...formattedOld];
+                const uniqueMerged = new Map();
+                [...state.payments, ...formattedOld].forEach(payment => {
+                  if (payment?.id && !uniqueMerged.has(payment.id)) uniqueMerged.set(payment.id, payment);
+                });
+                const merged = Array.from(uniqueMerged.values());
                 merged.sort((a,b) => new Date(b.transactionDate) - new Date(a.transactionDate));
                 const newTotal = merged.reduce((sum, item) => sum + item.amountEUR, 0);
                 return {
@@ -874,25 +934,40 @@ export const useAppStore = create((set, get) => ({
   },
 
   subscribeToRealtime: () => {
+    let lightRefreshTimer = null;
+    const refreshForCurrentRoute = ({ bootstrapGeoMatrix = true } = {}) => {
+      if (isGeoMatrixRoute()) {
+        if (!bootstrapGeoMatrix) return;
+        clearTimeout(lightRefreshTimer);
+        lightRefreshTimer = setTimeout(() => get().fetchGeoMatrixBootstrapData(true), 500);
+        return;
+      }
+
+      get().fetchAllData(true);
+    };
+
     const channel = supabase.channel('global-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
-        setTimeout(() => get().fetchAllData(true), 1500);
+        setTimeout(() => refreshForCurrentRoute({ bootstrapGeoMatrix: false }), 1500);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'managers' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_products' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_learning' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_product_rates' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_settings' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'countries' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_audit_exceptions' }, () => get().fetchAllData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'manager_rates' }, () => get().fetchAllData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'managers' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_products' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'knowledge_learning' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => refreshForCurrentRoute({ bootstrapGeoMatrix: false }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_product_rates' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpi_settings' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'countries' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_audit_exceptions' }, refreshForCurrentRoute)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'manager_rates' }, refreshForCurrentRoute)
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      clearTimeout(lightRefreshTimer);
+      supabase.removeChannel(channel);
+    };
   },
 
   // --- ONLINE PRESENCE ---

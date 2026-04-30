@@ -114,6 +114,7 @@ const TARO_NEW_PRODUCTS = [
 
 export const PAYMENT_METHODS = [
     'Lava', 'JETFEX', 'IBAN', 'Прямые реквизиты', 'MyFatoorah', 'INSTAPAY',
+    'Stripe (AstroPayments)', 'PayPal (AstroPayments)',
     'Мексика Барбадос (дроп)', 'Турция астрология (дроп)', 'астрология Грузия (дроп)', 'Horizon Азб - Узб (дроп)', 'Бразилия (дроп)', 'Реквизиты Аз (дроп)'
 ];
 
@@ -285,7 +286,7 @@ const AddPaymentModal = ({ isOpen, onClose, onSuccess }) => {
 
             let derivedSource = 'direct';
             const rawLink = (payload.crm_link || '').toLowerCase();
-            if (rawLink.includes('instagram')) derivedSource = 'instagram';
+            if (rawLink.includes('instagram')) derivedSource = 'direct';
             else if (rawLink.includes('wa.me') || /^\+?\d+$/.test(rawLink)) derivedSource = 'whatsapp';
 
             const newItem = data[0];

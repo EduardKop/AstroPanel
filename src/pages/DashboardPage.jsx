@@ -4,9 +4,10 @@ import { supabase } from '../services/supabaseClient';
 import {
   Filter, RotateCcw, XCircle, X,
   Users, DollarSign, Percent, CreditCard, LayoutDashboard,
-  Activity, Trophy, Globe, Layers, MessageCircle, MessageSquare, Phone, Calendar as CalendarIcon, RefreshCw
+  Activity, Trophy, Globe, Layers, MessageCircle, MessageSquare, Phone, Calendar as CalendarIcon
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -103,6 +104,13 @@ const toYMD = (date) => {
 };
 
 import { DenseSelect } from '../components/ui/FilterSelect';
+
+const DASHBOARD_LOADING_STEPS = [
+  'Загружаем справочники',
+  'Загружаем оплаты',
+  'Считаем трафик',
+  'Готовим обзор',
+];
 
 // Mobile Date Range Picker
 const MobileDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
@@ -407,7 +415,7 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
 };
 
 const DashboardPage = () => {
-  const { payments, user: currentUser, isLoading, trafficStats, fetchTrafficStats, fetchAllData, countries, managers } = useAppStore();
+  const { payments, user: currentUser, isLoading, paymentsLoaded, trafficStats, fetchTrafficStats, fetchAllData, countries, managers, channelsMap, isInitialized } = useAppStore();
   const getCountryName = (code) => countries?.find?.(c => c.code === code)?.name || code;
 
   const [dateRange, setDateRange] = useState(getTodayRange());
@@ -488,18 +496,22 @@ const DashboardPage = () => {
 
   // 🔄 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ДАННЫХ ПРИ МОНТИРОВАНИИ
   useEffect(() => {
-    if (fetchAllData) {
-      fetchAllData(true); // force update
+    if (fetchAllData && !isInitialized) {
+      fetchAllData();
     }
-  }, [fetchAllData]);
+  }, [fetchAllData, isInitialized]);
 
   useEffect(() => {
-    if (fetchTrafficStats) {
-      const isoStart = startDate ? new Date(startDate.setHours(0, 0, 0, 0)).toISOString() : undefined;
-      const isoEnd = endDate ? new Date(endDate.setHours(23, 59, 59, 999)).toISOString() : undefined;
+    if (fetchTrafficStats && channelsMap && Object.keys(channelsMap).length > 0) {
+      const start = startDate ? new Date(startDate) : null;
+      const end = endDate ? new Date(endDate) : null;
+      if (start) start.setHours(0, 0, 0, 0);
+      if (end) end.setHours(23, 59, 59, 999);
+      const isoStart = start ? start.toISOString() : undefined;
+      const isoEnd = end ? end.toISOString() : undefined;
       fetchTrafficStats(isoStart, isoEnd);
     }
-  }, [fetchTrafficStats, startDate, endDate]);
+  }, [fetchTrafficStats, startDate, endDate, channelsMap]);
 
   const isRestrictedUser = useMemo(() => {
     if (!currentUser) return false;
@@ -803,12 +815,23 @@ const DashboardPage = () => {
     setDateRange(getTodayRange());
   };
 
-  if (isLoading) {
+  const dashboardLoadingStep = useMemo(() => {
+    if (!managers?.length || !countries?.length || !channelsMap || Object.keys(channelsMap).length === 0) return 0;
+    if (!paymentsLoaded) return 1;
+    if (!trafficStats || Object.keys(trafficStats).length === 0) return 2;
+    return 3;
+  }, [managers, countries, channelsMap, paymentsLoaded, trafficStats]);
+
+  if (isLoading || !paymentsLoaded) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] border-transparent h-[calc(100vh-80px)]">
-        <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
-        <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка дашборда...</p>
-      </div>
+      <AstroLoadingStatus
+        variant="page"
+        title="Загружаем обзор"
+        message="Получаем оплаты, трафик и справочники для общего дашборда"
+        steps={DASHBOARD_LOADING_STEPS}
+        activeStep={dashboardLoadingStep}
+        className="h-[calc(100vh-80px)] bg-[#F5F5F5] dark:bg-[#0A0A0A]"
+      />
     );
   }
 
@@ -1184,7 +1207,7 @@ const DashboardPage = () => {
               <div className="flex-1 min-h-[100px] w-full min-w-0">
                 <div className="text-[10px] font-bold text-gray-400 uppercase mb-2 truncate">Динамика продаж</div>
                 <div className="h-24 w-full min-w-0 overflow-hidden">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <AreaChart data={chartData}>
                       <defs>
                         <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">

@@ -67,6 +67,7 @@ import ManagerActivityEfficiencyPage from './pages/ManagerActivityEfficiencyPage
 import ManagerDevicesPage from './pages/ManagerDevicesPage';
 import AddPaymentButton from './components/payments/AddPaymentButton';
 import PublicSharedPage from './pages/public/PublicSharedPage';
+import AstroLoadingPreviewPage from './pages/AstroLoadingPreviewPage';
 
 
 const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild, children, isOpen, onToggle, activePaths = [] }) => {
@@ -189,7 +190,17 @@ function App() {
     });
   };
 
-  const { user, setUser, logout, fetchAllData, isLoading, permissions } = useAppStore();
+  const { user, setUser, logout, fetchAllData, fetchGeoMatrixBootstrapData, isLoading, permissions } = useAppStore();
+
+  const refreshCurrentRouteData = (forceUpdate = false) => {
+    if (window.location.pathname === '/geo-matrix') {
+      fetchGeoMatrixBootstrapData(forceUpdate);
+      window.dispatchEvent(new Event('geo-matrix-refresh'));
+      return;
+    }
+
+    fetchAllData(forceUpdate);
+  };
 
   useEffect(() => {
     if (darkMode) {
@@ -246,6 +257,11 @@ function App() {
 
   useEffect(() => {
     const initAuth = async () => {
+      if (window.location.pathname === '/loading-preview') {
+        setIsAuthChecking(false);
+        return;
+      }
+
       // 1. Initialize permissions from LocalStorage (Instant)
       useAppStore.getState().initializeFromCache();
 
@@ -273,7 +289,7 @@ function App() {
           console.error("User refresh failed", e);
         }
 
-        fetchAllData();
+        refreshCurrentRouteData();
       }
       setIsAuthChecking(false);
     };
@@ -290,7 +306,7 @@ function App() {
   const handleLoginSuccess = (managerData) => {
     localStorage.setItem('astroUser', JSON.stringify(managerData));
     setUser(managerData);
-    fetchAllData();
+    refreshCurrentRouteData();
   }
 
   // Helper for dynamic access
@@ -333,8 +349,19 @@ function App() {
   const showPeopleSection = hasAccess('schedule') || hasAccess('time_log') || hasAccess('employees_manage') || hasAccess('employees_list') || hasAccess('stats');
 
   const isPublicRoute = window.location.pathname.startsWith('/s/');
+  const isLoadingPreviewRoute = window.location.pathname === '/loading-preview';
 
   if (isAuthChecking) return <div className="min-h-screen bg-[#0A0A0A]" />
+
+  if (isLoadingPreviewRoute) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/loading-preview" element={<AstroLoadingPreviewPage />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
 
   // ✅ PUBLIC ROUTE EXCEPTION: Bypass login and render shared page directly
   if (isPublicRoute) {
@@ -606,7 +633,7 @@ function App() {
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle isDark={darkMode} toggle={toggleTheme} />
-              <button onClick={() => fetchAllData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
+              <button onClick={() => refreshCurrentRouteData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
                 <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />
               </button>
             </div>

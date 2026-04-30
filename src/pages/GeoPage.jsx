@@ -6,7 +6,7 @@ import {
   Users, TrendingUp, Globe,
   Calendar as CalendarIcon,
   Copy, Search, X, Download,
-  RotateCcw, RefreshCw, List
+  RotateCcw, List
 } from 'lucide-react';
 
 import DatePicker from "react-datepicker";
@@ -17,6 +17,22 @@ import { showToast } from '../utils/toastEvents';
 // --- КОМПОНЕНТЫ ---
 import ProjectBadge from '../components/geo/ProjectBadge';
 import { DenseSelect } from '../components/ui/FilterSelect';
+import CrmStagesTab from '../components/geo/CrmStagesTab';
+import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
+
+const GEO_LOADING_STEPS = [
+  'Загружаем менеджеров',
+  'Загружаем оплаты',
+  'Определяем источники',
+  'Считаем конверсии',
+];
+
+const GEO_PRODUCTS_LOADING_STEPS = [
+  'Загружаем оплаты',
+  'Группируем клиентов',
+  'Строим цепочки',
+  'Готовим воронку',
+];
 
 
 // Mobile Date Range Picker
@@ -998,7 +1014,7 @@ const ProductFunnelDiagram = ({ stage1Entries, transNM, byCustomer, mgrMap, coun
 };
 
 const GeoPage = () => {
-  const { trafficStats, fetchTrafficStats, user: currentUser, countries, projects, isLoading, managers, schedules } = useAppStore();
+  const { trafficStats, fetchTrafficStats, user: currentUser, countries, projects, isLoading, managers, schedules, channels } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
@@ -1009,11 +1025,15 @@ const GeoPage = () => {
   const [filters, setFilters] = useState(createDefaultFilters);
   const deferredGeoQuery = useDeferredValue(geoQuery.trim().toLowerCase());
 
-  const [viewMode, setViewMode] = useState('list'); // 'list' | 'matrix' | 'products'
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'matrix' | 'products' | 'crm'
   const [productsSubView, setProductsSubView] = useState('funnel'); // 'funnel' | 'summary'
 
   const [localPayments, setLocalPayments] = useState([]);
   const [localLoading, setLocalLoading] = useState(true);
+  const [trafficLoading, setTrafficLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const paymentsFetchSeqRef = useRef(0);
+  const trafficFetchSeqRef = useRef(0);
 
   const [funnelPayments, setFunnelPayments] = useState([]);
   const [funnelLoading, setFunnelLoading] = useState(false);
@@ -1023,8 +1043,10 @@ const GeoPage = () => {
   const funnelFetchedRef = React.useRef(false);
 
   const fetchLocalPayments = async (fromDate, toDate) => {
+    const seq = ++paymentsFetchSeqRef.current;
     try {
       setLocalLoading(true);
+      setLoadingStep(0);
 
       // Границы по face-value дат календаря (YYYY-MM-DD)
       const startYMD = toYMD(fromDate);
@@ -1034,12 +1056,14 @@ const GeoPage = () => {
 
       // Шаг 1: Менеджеры
       const mgrsRes = await supabase.from('managers').select('id, name, role, telegram_username');
+      if (mgrsRes.error) throw mgrsRes.error;
       const mgrMap = {};
       (mgrsRes.data || []).forEach(m => {
         mgrMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username };
       });
 
       // Шаг 2: Платежи из таблицы payments (БЕЗ JOIN — точные данные, без дубликатов)
+      setLoadingStep(1);
       let allPayments = [];
       let offset = 0;
       while (true) {
@@ -1048,6 +1072,7 @@ const GeoPage = () => {
           .select('id, transaction_date, status, product, payment_type, manager_id, country, amount_eur, amount_local, crm_link')
           .gte('transaction_date', startISO)
           .lte('transaction_date', endISO)
+          .order('transaction_date', { ascending: false })
           .range(offset, offset + 999);
         if (error || !page || page.length === 0) break;
         allPayments = allPayments.concat(page);
@@ -1057,6 +1082,7 @@ const GeoPage = () => {
 
       // Шаг 3: Получаем derived_source из вьюхи отдельно (только id + derived_source)
       // Берём первое вхождение по каждому id чтобы избежать дублей JOIN
+      setLoadingStep(2);
       const sourceMap = {}; // payment_id -> derived_source
       let srcOffset = 0;
       const seenIds = new Set();
@@ -1066,6 +1092,7 @@ const GeoPage = () => {
           .select('id, derived_source')
           .gte('transaction_date', startISO)
           .lte('transaction_date', endISO)
+          .order('transaction_date', { ascending: false })
           .range(srcOffset, srcOffset + 999);
         if (error || !srcPage || srcPage.length === 0) break;
         srcPage.forEach(row => {
@@ -1081,6 +1108,7 @@ const GeoPage = () => {
       }
 
       // Шаг 4: Нормализация
+      setLoadingStep(3);
       const normalized = allPayments.map(p => ({
         ...p,
         transactionDate: p.transaction_date,
@@ -1095,11 +1123,12 @@ const GeoPage = () => {
         managerTelegram: mgrMap[p.manager_id]?.telegram_username || null,
       }));
 
+      if (seq !== paymentsFetchSeqRef.current) return;
       setLocalPayments(normalized);
     } catch (e) {
       console.error('fetchLocalPayments error:', e);
     } finally {
-      setLocalLoading(false);
+      if (seq === paymentsFetchSeqRef.current) setLocalLoading(false);
     }
   };
 
@@ -1181,6 +1210,7 @@ const GeoPage = () => {
   useEffect(() => {
     if (fetchTrafficStats) {
       if (!startDate || !endDate) return;
+      const seq = ++trafficFetchSeqRef.current;
 
       const startClone = new Date(startDate);
       startClone.setHours(0, 0, 0, 0);
@@ -1190,7 +1220,10 @@ const GeoPage = () => {
       endClone.setHours(23, 59, 59, 999);
       const isoEnd = endClone.toISOString();
 
-      fetchTrafficStats(isoStart, isoEnd);
+      setTrafficLoading(true);
+      fetchTrafficStats(isoStart, isoEnd).finally(() => {
+        if (seq === trafficFetchSeqRef.current) setTrafficLoading(false);
+      });
     }
   }, [fetchTrafficStats, startDate, endDate]);
 
@@ -1730,14 +1763,19 @@ const GeoPage = () => {
     };
   }, [localPayments, trafficStats, startDate, endDate, filters, isRestrictedUser, currentUser, countries, deferredGeoQuery, matrixDates]);
 
-  const localIsLoading = localLoading || (!localPayments.length && isLoading);
+  const localIsLoading = localLoading || trafficLoading || (!localPayments.length && isLoading);
+  const geoLoadingStep = !localLoading && trafficLoading ? 3 : loadingStep;
 
   if (localIsLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
-        <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
-        <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка данных...</p>
-      </div>
+      <AstroLoadingStatus
+        variant="page"
+        title="Загружаем конверсии"
+        message="Получаем оплаты, источники лидов и трафик за выбранный период"
+        steps={GEO_LOADING_STEPS}
+        activeStep={geoLoadingStep}
+        className="min-h-[calc(100vh-120px)]"
+      />
     );
   }
 
@@ -1925,6 +1963,12 @@ const GeoPage = () => {
            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'products' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
          >
            По Продуктам
+         </button>
+         <button 
+           onClick={() => setViewMode('crm')}
+           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'crm' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
+         >
+           По Этапах CRM
          </button>
       </div>
 
@@ -2337,6 +2381,11 @@ const GeoPage = () => {
       </>
       ) : null}
 
+      {/* CRM STAGES TAB CONTENT */}
+      {viewMode === 'crm' && (
+        <CrmStagesTab channels={channels || []} />
+      )}
+
       {/* PRODUCTS TAB CONTENT */}
       {viewMode === 'products' && (
       <div className="mt-4">
@@ -2391,10 +2440,14 @@ const GeoPage = () => {
         </div>
 
         {funnelLoading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <RefreshCw size={26} className="text-blue-500 animate-spin mb-3" />
-            <p className="text-gray-400 text-sm">Загрузка данных...</p>
-          </div>
+          <AstroLoadingStatus
+            variant="page"
+            title="Загружаем продукты"
+            message="Собираем цепочки повторных оплат по клиентам"
+            steps={GEO_PRODUCTS_LOADING_STEPS}
+            activeStep={1}
+            className="min-h-[360px]"
+          />
         ) : !productFunnelStats ? (
           <div className="text-center py-12 text-gray-400 text-sm">Нет данных</div>
         ) : (() => {

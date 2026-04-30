@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { useAppStore } from '../store/appStore';
 import { showToast } from '../utils/toastEvents';
 import {
     Calendar, Plus, X, Globe, LayoutGrid, AlertCircle, Trash2, Filter,
     ArrowDownWideNarrow, ArrowUpNarrowWide, List, DollarSign, User, Activity, Coins,
-    ChevronUp, ChevronDown, Pin, MessageCircle, MessageSquare, Phone, Copy, Check, RefreshCw
+    ChevronUp, ChevronDown, Pin, MessageCircle, MessageSquare, Phone, Copy, Check
 } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -75,6 +75,13 @@ const getProjectOrder = (name) => {
     return 3;
 };
 
+const getFallbackSource = (crmLink) => {
+    const raw = String(crmLink || '').trim().toLowerCase();
+    if (!raw) return 'direct';
+    if (raw.includes('wa.me') || raw.includes('whatsapp') || /^\+?\d[\d\s().-]{5,}$/.test(raw)) return 'whatsapp';
+    return 'direct';
+};
+
 // Uses status_history: [ { action: 'activated'|'deactivated', at: ISO, by: string } ]
 const wasGeoActiveOnDate = (country, dateKey) => {
     const history = Array.isArray(country.status_history) ? country.status_history : [];
@@ -122,6 +129,14 @@ const getEurToUsd = () => {
 
 import { DenseSelect } from '../components/ui/FilterSelect';
 import ProjectBadge from '../components/geo/ProjectBadge';
+import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
+
+const MATRIX_LOADING_STEPS = [
+    'Загружаем ГЕО',
+    'Загружаем оплаты',
+    'Связываем менеджеров',
+    'Строим матрицу',
+];
 
 // Custom Desktop Date Range Picker
 const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
@@ -354,18 +369,29 @@ const MobileDateRangePicker = ({ startDate, endDate, onChange }) => {
 
 const GeoMatrixPage = () => {
     // ✅ Достаем trafficStats и метод обновления
-    const { payments: storePayments, trafficStats, fetchTrafficStats, user, projects } = useAppStore();
+    const {
+        payments: storePayments,
+        trafficStats,
+        fetchTrafficStats,
+        user,
+        projects,
+        countries: storeCountries,
+        channelsMap
+    } = useAppStore();
 
-    const isAdminOrCLevel = user?.role === 'Admin' || user?.role === 'C-Level';
+    const isAdminOrCLevel = user?.role === 'Admin' || user?.role === 'C-level';
 
     const [countriesList, setCountriesList] = useState([]);
+    const [countriesLoaded, setCountriesLoaded] = useState(false);
     const [localPayments, setLocalPayments] = useState(null);
     const [localLoading, setLocalLoading] = useState(true);
+    const [loadingStep, setLoadingStep] = useState(0);
+    const fetchSeqRef = useRef(0);
 
     // Use local payments if available (fast load), fallback to store
     const payments = localPayments ?? storePayments ?? [];
 
-    const loading = localLoading;
+    const loading = localLoading || !countriesLoaded;
     const [isDemoMode, setIsDemoMode] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCell, setSelectedCell] = useState(null);
@@ -398,17 +424,31 @@ const GeoMatrixPage = () => {
 
     // Загрузка стран (справочник)
     const fetchCountries = async () => {
+        if (storeCountries?.length) {
+            setCountriesList(storeCountries);
+            setCountriesLoaded(true);
+            return;
+        }
+
         try {
+            setLoadingStep(0);
             const { data, error } = await supabase.from('countries').select('*').order('code', { ascending: true }).range(0, 9999);
             if (error) throw error;
             setCountriesList(data || []);
-        } catch (error) { console.error(error); }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setCountriesLoaded(true);
+        }
     };
 
     // Быстрая загрузка payments напрямую — только нужные поля, фильтр по дате, не ждём store
     const fetchLocalPayments = async (fromDate, toDate) => {
+        const seq = ++fetchSeqRef.current;
         try {
+            const startedAt = performance.now();
             setLocalLoading(true);
+            setLoadingStep(1);
 
             // Build UTC date range.
             // extractUTCDate() in the matrix reads the UTC date from ISO strings,
@@ -432,12 +472,18 @@ const GeoMatrixPage = () => {
             const [mgrsRes, firstPage] = await Promise.all([
                 supabase.from('managers').select('id, name, role, telegram_username'),
                 supabase
-                    .from('enriched_payments_view')
-                    .select('transaction_date, status, product, payment_type, manager_id, derived_source, country, amount_eur, amount_local')
+                    .from('payments')
+                    .select('id, transaction_date, status, product, payment_type, manager_id, country, amount_eur, amount_local, crm_link')
                     .gte('transaction_date', startISO)
                     .lt('transaction_date', endISO)   // exclusive: lt next day = full last day
+                    .order('transaction_date', { ascending: false })
                     .range(0, 999)
             ]);
+
+            if (mgrsRes.error) throw mgrsRes.error;
+            if (firstPage.error) throw firstPage.error;
+
+            setLoadingStep(2);
 
             const mgrMap = {};
             (mgrsRes.data || []).forEach(m => {
@@ -455,10 +501,11 @@ const GeoMatrixPage = () => {
                 let offset = 1000;
                 while (true) {
                     const { data: page, error } = await supabase
-                        .from('enriched_payments_view')
-                        .select('transaction_date, status, product, payment_type, manager_id, derived_source, country, amount_eur, amount_local')
+                        .from('payments')
+                        .select('id, transaction_date, status, product, payment_type, manager_id, country, amount_eur, amount_local, crm_link')
                         .gte('transaction_date', startISO)
                         .lt('transaction_date', endISO)
+                        .order('transaction_date', { ascending: false })
                         .range(offset, offset + 999);
                     if (error || !page || page.length === 0) break;
                     all = all.concat(page);
@@ -469,8 +516,6 @@ const GeoMatrixPage = () => {
 
             // Normalize field names for matrix useMemo
             const normalized = all.map(p => {
-                let source = p.derived_source || 'direct';
-                if (source === 'unknown') source = 'direct';
                 return {
                     ...p,
                     transactionDate: p.transaction_date,
@@ -481,21 +526,31 @@ const GeoMatrixPage = () => {
                     manager_tg: mgrMap[p.manager_id]?.telegram_username || null,
                     type: p.payment_type || 'Other',
                     status: p.status || 'pending',
-                    source,
+                    source: getFallbackSource(p.crm_link),
                     managerRole: mgrMap[p.manager_id]?.role || null,
                 };
             });
+
+            if (seq !== fetchSeqRef.current) return;
+            setLoadingStep(3);
             setLocalPayments(normalized);
+            console.log(`⚡ GeoMatrix payments: ${normalized.length} rows from payments in ${Math.round(performance.now() - startedAt)}ms`);
         } catch (e) {
             console.error('fetchLocalPayments error:', e);
         } finally {
-            setLocalLoading(false);
+            if (seq === fetchSeqRef.current) setLocalLoading(false);
         }
     };
 
     useEffect(() => {
+        if (storeCountries?.length) {
+            setCountriesList(storeCountries);
+            setCountriesLoaded(true);
+            return;
+        }
+
         fetchCountries();
-    }, []);
+    }, [storeCountries]);
 
     // Reload payments when date range changes
     useEffect(() => {
@@ -506,12 +561,45 @@ const GeoMatrixPage = () => {
 
     // ✅ Подгружаем трафик при смене дат (для расчета конверсии в модалке)
     useEffect(() => {
-        if (fetchTrafficStats) {
+        if (fetchTrafficStats && channelsMap && Object.keys(channelsMap).length > 0) {
             const isoStart = startDate ? new Date(startDate.getTime()).toISOString() : undefined;
             const isoEnd = endDate ? new Date(endDate.getTime()).toISOString() : undefined;
             fetchTrafficStats(isoStart, isoEnd);
         }
-    }, [fetchTrafficStats, startDate, endDate]);
+    }, [fetchTrafficStats, startDate, endDate, channelsMap]);
+
+    useEffect(() => {
+        if (!startDate || !endDate) return;
+
+        let refreshTimer = null;
+        const refreshLocalRange = () => {
+            clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(() => {
+                if (!storeCountries?.length) fetchCountries();
+                fetchLocalPayments(startDate, endDate);
+
+                if (fetchTrafficStats && channelsMap && Object.keys(channelsMap).length > 0) {
+                    fetchTrafficStats(startDate.toISOString(), endDate.toISOString());
+                }
+            }, 700);
+        };
+
+        const channel = supabase
+            .channel('geo-matrix-local-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, refreshLocalRange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, refreshLocalRange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'countries' }, refreshLocalRange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'managers' }, refreshLocalRange)
+            .subscribe();
+
+        window.addEventListener('geo-matrix-refresh', refreshLocalRange);
+
+        return () => {
+            clearTimeout(refreshTimer);
+            window.removeEventListener('geo-matrix-refresh', refreshLocalRange);
+            supabase.removeChannel(channel);
+        };
+    }, [startDate?.toISOString(), endDate?.toISOString(), fetchTrafficStats, channelsMap, storeCountries]);
 
     const dateList = useMemo(() => {
         if (!startDate || !endDate) return [];
@@ -954,10 +1042,14 @@ const GeoMatrixPage = () => {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
-                <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
-                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка матрицы...</p>
-            </div>
+            <AstroLoadingStatus
+                variant="page"
+                title="Загружаем матрицу ГЕО"
+                message="Получаем ГЕО, оплаты и менеджеров за выбранный период"
+                steps={MATRIX_LOADING_STEPS}
+                activeStep={countriesLoaded ? loadingStep : 0}
+                className="min-h-[calc(100vh-120px)]"
+            />
         );
     }
 

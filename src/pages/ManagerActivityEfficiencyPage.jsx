@@ -144,6 +144,26 @@ const fetchTimelineInDev = async (userIds, fromDt, toDt) => {
     return { results, errors };
 };
 
+const fetchTimelineViaEdgeFunction = async (userIds, fromDt, toDt) => {
+    const { data, error } = await supabase.functions.invoke('novalumen-sent-messages', {
+        body: {
+            fromDt,
+            toDt,
+            offset: API_OFFSET,
+            userIds,
+        },
+    });
+
+    if (error || data?.error) {
+        throw new Error(error?.message || data?.error || 'Не удалось загрузить интервалы сообщений');
+    }
+
+    return {
+        results: data?.results || {},
+        errors: data?.errors || {},
+    };
+};
+
 const ManagerActivityEfficiencyPage = () => {
     const storeManagers = useAppStore((state) => state.managers);
     const channelsMap = useAppStore((state) => state.channelsMap);
@@ -314,31 +334,21 @@ const ManagerActivityEfficiencyPage = () => {
                 return;
             }
 
-            if (import.meta.env.DEV) {
-                const timelineData = await fetchTimelineInDev(userIds, rangeStartForApi, rangeEndForApi);
+            try {
+                const timelineData = await fetchTimelineViaEdgeFunction(userIds, rangeStartForApi, rangeEndForApi);
                 setTimelinePayloads(timelineData.results || {});
                 setTimelineErrors(timelineData.errors || {});
                 return;
+            } catch (timelineError) {
+                if (!import.meta.env.DEV) {
+                    throw timelineError;
+                }
+                console.warn('Timeline Edge Function failed, falling back to local proxy:', timelineError);
             }
 
-            const { data, error: invokeError } = await supabase.functions.invoke('novalumen-sent-messages', {
-                body: {
-                    fromDt: rangeStartForApi,
-                    toDt: rangeEndForApi,
-                    offset: API_OFFSET,
-                    userIds,
-                },
-            });
-
-            if (invokeError) {
-                console.error('Timeline invoke error:', invokeError);
-                setTimelinePayloads({});
-                setTimelineErrors({ global: invokeError.message || 'Не удалось загрузить интервалы сообщений' });
-                return;
-            }
-
-            setTimelinePayloads(data?.results || {});
-            setTimelineErrors(data?.errors || {});
+            const timelineData = await fetchTimelineInDev(userIds, rangeStartForApi, rangeEndForApi);
+            setTimelinePayloads(timelineData.results || {});
+            setTimelineErrors(timelineData.errors || {});
         } catch (fetchError) {
             console.error('Efficiency fetch error:', fetchError);
             setError(fetchError.message || 'Не удалось загрузить данные');
