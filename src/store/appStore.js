@@ -68,7 +68,13 @@ const isGeoMatrixRoute = () => {
   return window.location.pathname === '/geo-matrix';
 };
 
+const isStatsRoute = () => {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname === '/stats';
+};
+
 const PAYMENT_SELECT_COLUMNS = '*';
+const PAYMENTS_LOAD_TIMEOUT_MS = 15000;
 
 const resolvePaymentSource = (item) => {
   const explicit = String(item?.derived_source || item?.source || '').trim().toLowerCase();
@@ -732,6 +738,18 @@ export const useAppStore = create((set, get) => ({
       // Быстрая загрузка платежей напрямую из payments.
       // enriched_payments_view периодически отдаёт 500 при параллельных переходах между страницами.
       const paymentsPromise = fetchAll('payments', PAYMENT_SELECT_COLUMNS, 'transaction_date', false, { column: 'transaction_date', gte: startOfWeekISO });
+      let paymentsResolved = false;
+      const paymentsTimeoutId = setTimeout(() => {
+        if (paymentsResolved || get().paymentsLoaded) return;
+
+        const currentPayments = get().payments || [];
+        const currentTotal = currentPayments.reduce((sum, item) => sum + (Number(item.amountEUR) || 0), 0);
+        console.warn(`Dashboard payments load timed out after ${PAYMENTS_LOAD_TIMEOUT_MS}ms; opening dashboard with currently cached payments.`);
+        set({
+          paymentsLoaded: true,
+          stats: { totalEur: currentTotal.toFixed(2), count: currentPayments.length }
+        });
+      }, PAYMENTS_LOAD_TIMEOUT_MS);
 
       // Запускаем загрузку второстепенных справочников асинхронно
       const secondaryDataPromise = Promise.all([
@@ -876,6 +894,9 @@ export const useAppStore = create((set, get) => ({
 
       // Е. Форматируем платежи асинхронно после получения
       paymentsPromise.then(paymentsData => {
+        paymentsResolved = true;
+        clearTimeout(paymentsTimeoutId);
+
         const currentManagers = get().managers || [];
         const currentManagersMap = {};
         currentManagers.forEach(m => currentManagersMap[m.id] = { name: m.name, role: m.role, telegram_username: m.telegram_username });
@@ -923,6 +944,8 @@ export const useAppStore = create((set, get) => ({
         })();
 
       }).catch(err => {
+        paymentsResolved = true;
+        clearTimeout(paymentsTimeoutId);
         console.error('Error in async payments load:', err);
         set({ paymentsLoaded: true });
       });
@@ -940,6 +963,15 @@ export const useAppStore = create((set, get) => ({
         if (!bootstrapGeoMatrix) return;
         clearTimeout(lightRefreshTimer);
         lightRefreshTimer = setTimeout(() => get().fetchGeoMatrixBootstrapData(true), 500);
+        return;
+      }
+
+      if (isStatsRoute()) {
+        clearTimeout(lightRefreshTimer);
+        lightRefreshTimer = setTimeout(() => {
+          get().fetchReferenceData();
+          window.dispatchEvent(new Event('stats-refresh'));
+        }, 500);
         return;
       }
 

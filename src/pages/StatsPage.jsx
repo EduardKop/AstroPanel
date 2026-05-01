@@ -1,15 +1,40 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
+import { supabase } from '../services/supabaseClient';
 import { ResponsiveSunburst } from '@nivo/sunburst';
 import { ResponsivePie } from '@nivo/pie';
 
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { Calendar as CalendarIcon, BarChart2, PieChart, RotateCcw, Maximize2, X, Filter, LayoutDashboard, MessageCircle, MessageSquare, Phone } from 'lucide-react';
+import { Calendar as CalendarIcon, BarChart2, PieChart, RotateCcw, Maximize2, X, Filter, MessageCircle, MessageSquare, Phone } from 'lucide-react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { extractUTCDate, getKyivDateString } from '../utils/kyivTime';
+import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
+
+const STATS_LOADING_STEPS = [
+  'Загружаем менеджеров',
+  'Загружаем оплаты за период',
+  'Загружаем трафик',
+  'Готовим графики',
+];
+
+const STATS_PAYMENT_SELECT = 'id, transaction_date, created_at, status, product, payment_type, manager_id, country, amount_eur, amount_local, crm_link, screenshot_url';
+
+const resolvePaymentSource = (item) => {
+  const explicit = String(item?.derived_source || item?.source || '').trim().toLowerCase();
+  if (explicit === 'whatsapp') return 'whatsapp';
+  if (explicit === 'comments' || explicit === 'comment') return 'comments';
+  if (explicit === 'direct' || explicit === 'instagram') return 'direct';
+
+  const rawLink = String(item?.crm_link || item?.crmLink || '').trim().toLowerCase();
+  if (!rawLink) return 'direct';
+  if (rawLink.includes('wa.me') || rawLink.includes('whatsapp') || /^\+?\d[\d\s().-]{5,}$/.test(rawLink)) {
+    return 'whatsapp';
+  }
+  return 'direct';
+};
 
 const THEME_COLORS = [
   { main: '#6366F1', gradient: ['#6366F1', '#818CF8'] }, // Indigo
@@ -355,12 +380,45 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
 };
 
 const StatsPage = () => {
-  const { payments, user: currentUser, trafficStats, fetchTrafficStats } = useAppStore();
+  const { user: currentUser, trafficStats, fetchTrafficStats } = useAppStore();
   const [dateRange, setDateRange] = useState(getCurrentMonthRange());
   const [startDate, endDate] = dateRange;
   const [expandedChart, setExpandedChart] = useState(null);
   const [filters, setFilters] = useState({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all', showMobileFilters: false });
-  const [isDemo, setIsDemo] = useState(false);
+  const [isDemo] = useState(false);
+  const [periodPayments, setPeriodPayments] = useState([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [loadedPaymentsKey, setLoadedPaymentsKey] = useState('');
+  const [paymentsLoadingStep, setPaymentsLoadingStep] = useState(0);
+  const [trafficLoading, setTrafficLoading] = useState(false);
+  const [loadedTrafficKey, setLoadedTrafficKey] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const statsRange = useMemo(() => {
+    const rangeStart = startDate || endDate;
+    const rangeEnd = endDate || startDate;
+
+    const toUTCMidnight = (date) => {
+      if (!date) return undefined;
+      const d = new Date(date);
+      return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString();
+    };
+
+    const toUTCNextDay = (date) => {
+      if (!date) return undefined;
+      const d = new Date(date);
+      return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate() + 1)).toISOString();
+    };
+
+    const isoStart = toUTCMidnight(rangeStart);
+    const isoEnd = toUTCNextDay(rangeEnd);
+
+    return {
+      isoStart,
+      isoEnd,
+      key: `${isoStart || 'start'}:${isoEnd || 'end'}`,
+    };
+  }, [startDate, endDate]);
 
   // --- DEMO DATA GENERATOR ---
   const demoData = useMemo(() => {
@@ -449,31 +507,159 @@ const StatsPage = () => {
     return ['Sales', 'Retention', 'Consultant'].includes(currentUser.role);
   }, [currentUser]);
 
+  useEffect(() => {
+    const handleStatsRefresh = () => setRefreshTick(tick => tick + 1);
+    window.addEventListener('stats-refresh', handleStatsRefresh);
+    return () => window.removeEventListener('stats-refresh', handleStatsRefresh);
+  }, []);
+
+  // --- ЛОКАЛЬНАЯ ЗАГРУЗКА ОПЛАТ ДЛЯ АНАЛИТИКИ ---
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPeriodPayments = async () => {
+      setPaymentsLoading(true);
+      setPaymentsLoadingStep(0);
+
+      if (!statsRange.isoStart || !statsRange.isoEnd) {
+        setPeriodPayments([]);
+        setLoadedPaymentsKey(statsRange.key);
+        setPaymentsLoading(false);
+        return;
+      }
+
+      try {
+        const startedAt = performance.now();
+        const { data: managersData, error: managersError } = await supabase
+          .from('managers')
+          .select('id, name, role, telegram_username');
+
+        if (managersError) throw managersError;
+        if (cancelled) return;
+
+        const managersMap = {};
+        (managersData || []).forEach(m => {
+          managersMap[m.id] = {
+            name: m.name,
+            role: m.role,
+            telegram_username: m.telegram_username,
+          };
+        });
+
+        setPaymentsLoadingStep(1);
+
+        let allPayments = [];
+        let offset = 0;
+
+        while (true) {
+          let paymentsQuery = supabase
+            .from('payments')
+            .select(STATS_PAYMENT_SELECT)
+            .gte('transaction_date', statsRange.isoStart)
+            .lt('transaction_date', statsRange.isoEnd)
+            .order('transaction_date', { ascending: false });
+
+          if (isRestrictedUser && currentUser?.id) {
+            paymentsQuery = paymentsQuery.eq('manager_id', currentUser.id);
+          }
+
+          const { data: page, error } = await paymentsQuery.range(offset, offset + 999);
+
+          if (error) throw error;
+          if (!page || page.length === 0) break;
+
+          allPayments = allPayments.concat(page);
+          if (page.length < 1000) break;
+          offset += 1000;
+        }
+
+        if (cancelled) return;
+
+        const normalized = allPayments.map(item => ({
+          ...item,
+          id: item.id,
+          transactionDate: item.transaction_date || item.created_at,
+          amountEUR: Number(item.amount_eur) || 0,
+          amountLocal: Number(item.amount_local) || 0,
+          amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
+          manager: managersMap[item.manager_id]?.name || 'Не назначен',
+          managerId: item.manager_id,
+          managerRole: managersMap[item.manager_id]?.role || null,
+          manager_tg: managersMap[item.manager_id]?.telegram_username || null,
+          type: item.payment_type || 'Other',
+          status: item.status || 'pending',
+          source: resolvePaymentSource(item),
+          crmLink: item.crm_link || '',
+          screenshotUrl: item.screenshot_url || '',
+        }));
+
+        setPeriodPayments(normalized);
+        setLoadedPaymentsKey(statsRange.key);
+        console.log(`⚡ Stats payments: ${normalized.length} rows from payments in ${Math.round(performance.now() - startedAt)}ms`);
+      } catch (error) {
+        console.error('Error fetching stats payments:', error);
+        if (!cancelled) {
+          setPeriodPayments([]);
+          setLoadedPaymentsKey(statsRange.key);
+        }
+      } finally {
+        if (!cancelled) setPaymentsLoading(false);
+      }
+    };
+
+    loadPeriodPayments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [statsRange.isoStart, statsRange.isoEnd, statsRange.key, refreshTick, isRestrictedUser, currentUser?.id]);
+
   // --- ЗАГРУЗКА ТРАФИКА ---
   useEffect(() => {
-    if (fetchTrafficStats) {
-      const isoStart = startDate ? new Date(startDate.setHours(0, 0, 0, 0)).toISOString() : undefined;
-      const isoEnd = endDate ? new Date(endDate.setHours(23, 59, 59, 999)).toISOString() : undefined;
-      fetchTrafficStats(isoStart, isoEnd);
-    }
-  }, [startDate, endDate, fetchTrafficStats]);
+    let cancelled = false;
+
+    const loadTraffic = async () => {
+      if (!fetchTrafficStats) {
+        setLoadedTrafficKey(statsRange.key);
+        setTrafficLoading(false);
+        return;
+      }
+
+      setTrafficLoading(true);
+
+      try {
+        await fetchTrafficStats(statsRange.isoStart, statsRange.isoEnd);
+      } finally {
+        if (!cancelled) {
+          setLoadedTrafficKey(statsRange.key);
+          setTrafficLoading(false);
+        }
+      }
+    };
+
+    loadTraffic();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchTrafficStats, statsRange.isoStart, statsRange.isoEnd, statsRange.key, refreshTick]);
 
   const uniqueValues = useMemo(() => {
-    const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
+    const getUnique = (key) => [...new Set(periodPayments.map(p => p[key]).filter(Boolean))].sort();
     return {
       managers: getUnique('manager'),
       countries: getUnique('country'),
       products: getUnique('product'),
       types: getUnique('type')
     };
-  }, [payments]);
+  }, [periodPayments]);
 
   // --- ФИЛЬТРАЦИЯ (RAW MODE) ---
   const filteredData = useMemo(() => {
     const startStr = startDate ? toYMD(startDate) : '0000-00-00';
     const endStr = endDate ? toYMD(endDate) : '9999-99-99';
 
-    let data = payments.filter(item => {
+    let data = periodPayments.filter(item => {
       if (!item.transactionDate) return false;
 
       // Берем дату из базы в Kyiv timezone
@@ -510,7 +696,7 @@ const StatsPage = () => {
 
     // Сортировка (строковая)
     return data.sort((a, b) => (a.transactionDate || '').localeCompare(b.transactionDate || ''));
-  }, [payments, startDate, endDate, isRestrictedUser, currentUser, filters]);
+  }, [periodPayments, startDate, endDate, isRestrictedUser, currentUser, filters]);
 
   // --- ГРУППИРОВКА ДЛЯ ГРАФИКОВ ---
   const prepareData = (dataKey, sourceData) => {
@@ -546,30 +732,32 @@ const StatsPage = () => {
     setDateRange(getCurrentMonthRange());
   };
 
+  const paymentsReady = loadedPaymentsKey === statsRange.key && !paymentsLoading;
+  const trafficReady = loadedTrafficKey === statsRange.key && !trafficLoading;
+  const statsLoadingStep = (() => {
+    if (!paymentsReady) return paymentsLoadingStep;
+    if (!trafficReady) return 2;
+    return 3;
+  })();
+
+  if (!paymentsReady || !trafficReady) {
+    return (
+      <AstroLoadingStatus
+        variant="page"
+        title="Загружаем аналитику"
+        message="Получаем оплаты за выбранный период и трафик для графиков"
+        steps={STATS_LOADING_STEPS}
+        activeStep={statsLoadingStep}
+        className="h-[calc(100vh-80px)] bg-[#F5F5F5] dark:bg-[#0A0A0A]"
+      />
+    );
+  }
+
   return (
     <div className="pb-10 transition-colors duration-200 w-full max-w-full overflow-x-hidden">
 
       {/* HEADER + FILTERS */}
-      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 md:py-3 border-b border-transparent transition-colors duration-200">
-
-        {/* Заголовок */}
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
-            <LayoutDashboard size={18} className="text-blue-600 dark:text-blue-500 shrink-0" />
-            <span className="truncate">Аналитика трендов</span>
-          </h2>
-
-          <div className="flex items-center gap-2">
-            {/* DEMO BUTTON */}
-            <button
-              onClick={() => setIsDemo(!isDemo)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${isDemo ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-[#333]'}`}
-            >
-              <RotateCcw size={12} className={isDemo ? 'animate-spin-slow' : ''} />
-              Demo
-            </button>
-          </div>
-        </div>
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 lg:py-0 border-b border-transparent transition-colors duration-200">
 
         {/* Все фильтры - wrapper только для мобильных */}
         <div className="mx-auto max-w-[90%] md:max-w-none">
@@ -714,7 +902,7 @@ const StatsPage = () => {
 
       {/* NEW CHARTS ROW: SUNBURST + PIE */}
       {/* ROW 1: Product & Type (BARS) */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6 mt-4">
         <ChartWidget id="product" title="Популярность Продуктов" subtitle="Сравнение объемов продаж" type="bar" data={isDemo ? demoData.product : productData.chartData} keys={isDemo ? demoData.productKeys : productData.keys} onExpand={() => setExpandedChart('product')} />
         <ChartWidget id="type" title="Методы Оплаты" subtitle="Предпочтения клиентов" type="bar" data={isDemo ? demoData.type : typeData.chartData} keys={isDemo ? demoData.typeKeys : typeData.keys} onExpand={() => setExpandedChart('type')} />
       </div>

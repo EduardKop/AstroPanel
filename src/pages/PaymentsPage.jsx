@@ -1,18 +1,26 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/appStore';
 import {
   Filter, ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-  XCircle, RotateCcw, LayoutList,
-  LayoutDashboard, MessageCircle, MessageSquare, Phone, X, Edit2, Trash2, Pencil
+  XCircle, RotateCcw,
+  LayoutDashboard, MessageCircle, MessageSquare, Phone, X, Trash2, Pencil
 } from 'lucide-react';
 import PaymentsTable from '../components/PaymentsTable';
 import { SearchModal, SearchButton } from '../components/ui/SearchInput';
+import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { extractUTCDate, getKyivDateString } from '../utils/kyivTime';
 
 // --- КОМПОНЕНТЫ ---
 import { DenseSelect } from '../components/ui/FilterSelect';
+
+const TRANSACTIONS_LOADING_STEPS = [
+  'Загружаем справочники',
+  'Загружаем оплаты',
+  'Собираем транзакции',
+  'Готовим таблицу',
+];
 
 const getLastWeekRange = () => {
   const end = new Date();
@@ -154,7 +162,7 @@ const toYMD = (date) => {
 };
 
 const PaymentsPage = () => {
-  const { payments, user: currentUser, isLoading, fetchAllData, managers, updatePayment, bulkUpdatePayments, bulkDeletePayments, permissions } = useAppStore();
+  const { payments, user: currentUser, isLoading, paymentsLoaded, fetchAllData, managers, countries, updatePayment, bulkUpdatePayments, bulkDeletePayments, permissions } = useAppStore();
 
   const [dateRange, setDateRange] = useState(getLastWeekRange());
   const [startDate, endDate] = dateRange;
@@ -176,15 +184,42 @@ const PaymentsPage = () => {
   const [bulkEditField, setBulkEditField] = useState('manager_id');
   const [bulkEditValue, setBulkEditValue] = useState('');
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const hasStartedRefreshRef = useRef(false);
+  const hasSeenPendingPaymentsRef = useRef(false);
+  const pageLoadTimeoutRef = useRef(null);
 
   // Check if user has edit permission (C-Level always has access OR role has transactions_edit permission)
   const isCLevel = currentUser?.role === 'C-level';
   const canEditTransactions = isCLevel || (permissions?.[currentUser?.role]?.transactions_edit === true);
 
-  // Авто-обновление при маунте для получения свежих данных
   useEffect(() => {
-    fetchAllData();
+    if (!fetchAllData) return;
+    hasStartedRefreshRef.current = true;
+    hasSeenPendingPaymentsRef.current = false;
+    setPageLoading(true);
+    clearTimeout(pageLoadTimeoutRef.current);
+    pageLoadTimeoutRef.current = setTimeout(() => {
+      setPageLoading(false);
+    }, 15000);
+    fetchAllData(true);
+
+    return () => {
+      clearTimeout(pageLoadTimeoutRef.current);
+    };
   }, [fetchAllData]);
+
+  useEffect(() => {
+    if (!hasStartedRefreshRef.current) return;
+    if (!paymentsLoaded) {
+      hasSeenPendingPaymentsRef.current = true;
+      return;
+    }
+    if (hasSeenPendingPaymentsRef.current) {
+      clearTimeout(pageLoadTimeoutRef.current);
+      setPageLoading(false);
+    }
+  }, [paymentsLoaded]);
 
   const hasActiveFilters = useMemo(() => {
     return !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all');
@@ -387,44 +422,52 @@ const PaymentsPage = () => {
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+  const transactionsReady = paymentsLoaded && !isLoading && !pageLoading;
+  const loadingStep = !managers?.length || !countries?.length ? 0 : !paymentsLoaded ? 1 : processedData.length > 0 ? 2 : 3;
+
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('transactions-header-meta', { detail: null }));
+    };
+  }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('transactions-header-meta', {
+      detail: {
+        count: transactionsReady ? processedData.length : null,
+        canEdit: canEditTransactions,
+        disabled: !transactionsReady,
+        isEditMode,
+        onToggleEdit: () => setIsEditMode(prev => !prev)
+      }
+    }));
+  }, [processedData.length, canEditTransactions, transactionsReady, isEditMode]);
 
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
 
+  if (pageLoading) {
+    return (
+      <AstroLoadingStatus
+        variant="page"
+        title="Загружаем транзакции"
+        message="Собираем оплаты, менеджеров и справочники"
+        steps={TRANSACTIONS_LOADING_STEPS}
+        activeStep={loadingStep}
+        className="h-[calc(100vh-80px)] bg-[#F5F5F5] dark:bg-[#0A0A0A]"
+      />
+    );
+  }
+
   return (
     <div className="animate-in fade-in zoom-in duration-300 pb-4 w-full max-w-full overflow-x-hidden">
 
-      {/* HEADER + FILTERS */}
-      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-3 md:-mx-6 md:px-6 py-2 border-b border-transparent transition-colors duration-200 flex flex-col gap-3">
-
-        {/* Заголовок */}
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 truncate min-w-0">
-            <LayoutList size={20} className="text-blue-500 shrink-0" />
-            <span className="truncate">Список оплат</span>
-          </h2>
-          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-200 dark:bg-[#1A1A1A] text-gray-500 dark:text-gray-400">
-            {processedData.length}
-          </span>
-
-          {/* C-Level Edit Mode Toggle */}
-          {canEditTransactions && (
-            <button
-              onClick={() => setIsEditMode(!isEditMode)}
-              className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[10px] font-bold transition-all ${isEditMode
-                ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20'
-                : 'bg-gray-200 dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-300 hover:bg-amber-100 dark:hover:bg-amber-900/20 hover:text-amber-600'
-                }`}
-            >
-              <Edit2 size={12} />
-              {isEditMode ? 'Выключить редактирование' : 'Режим редактирования'}
-            </button>
-          )}
-        </div>
-
-        {/* Все фильтры в один ряд */}
-        <div className="flex flex-wrap items-center gap-2 justify-between">
+      {/* FILTERS */}
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 lg:py-0 border-b border-transparent transition-colors duration-200">
+        <div className="mx-auto max-w-[90%] md:max-w-none w-full">
+          {/* Все фильтры в один ряд */}
+          <div className="flex flex-wrap items-center gap-2 justify-between">
 
           {/* Левая часть: Кнопки источников и Департаментов */}
           <div className="flex flex-col md:flex-row gap-2">
@@ -498,11 +541,12 @@ const PaymentsPage = () => {
             </button>
           </div>
         </div>
+        </div>
       </div>
 
       {/* Bulk Actions Toolbar */}
       {isEditMode && selectedIds.size > 0 && (
-        <div className="sticky top-[120px] z-10 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2 mb-3 flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="sticky top-[84px] z-10 mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2 mb-3 flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
           <span className="text-sm font-bold text-blue-700 dark:text-blue-300">
             Выбрано: {selectedIds.size}
           </span>
@@ -530,10 +574,10 @@ const PaymentsPage = () => {
         </div>
       )}
 
-      <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm overflow-hidden">
+      <div className={`${isEditMode && selectedIds.size > 0 ? '' : 'mt-4'} bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm overflow-hidden`}>
         <PaymentsTable
           payments={currentData}
-          loading={isLoading}
+          loading={!paymentsLoaded || isLoading}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
           paymentRanks={paymentRanks}
@@ -542,6 +586,7 @@ const PaymentsPage = () => {
           onSort={handleSort}
           isEditMode={isEditMode}
           managers={managers}
+          countries={countries}
           onPaymentUpdate={updatePayment}
           selectedIds={selectedIds}
           onSelectionChange={handleSelectionChange}

@@ -3,7 +3,7 @@ import { supabase } from '../services/supabaseClient';
 import { useAppStore } from '../store/appStore';
 import { showToast } from '../utils/toastEvents';
 import {
-    Calendar, Plus, X, Globe, LayoutGrid, AlertCircle, Trash2, Filter,
+    Calendar, X, Globe, AlertCircle, Trash2, Filter,
     ArrowDownWideNarrow, ArrowUpNarrowWide, List, DollarSign, User, Activity, Coins,
     ChevronUp, ChevronDown, Pin, MessageCircle, MessageSquare, Phone, Copy, Check
 } from 'lucide-react';
@@ -149,6 +149,10 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
     const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
         'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+    useEffect(() => {
+        if (startDate) setViewDate(startDate);
+    }, [startDate]);
 
     const formatDate = (date) => {
         if (!date) return '';
@@ -392,7 +396,7 @@ const GeoMatrixPage = () => {
     const payments = localPayments ?? storePayments ?? [];
 
     const loading = localLoading || !countriesLoaded;
-    const [isDemoMode, setIsDemoMode] = useState(false);
+    const [isDemoMode] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCell, setSelectedCell] = useState(null);
     const [dateRange, setDateRange] = useState(getCurrentMonthRange());
@@ -1064,32 +1068,9 @@ const GeoMatrixPage = () => {
         .dark .geo-disabled-cell { background-image: repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,0.04) 3px, rgba(255,255,255,0.04) 4px); }
       `}</style>
 
-            {/* HEADER */}
-            <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 md:py-3 border-b border-transparent transition-colors duration-200">
-                <div className="flex flex-col gap-3">
-                    {/* Title & Demo/GEO buttons */}
-                    <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3">
-                        <div>
-                            <h2 className="text-lg font-bold dark:text-white flex items-center gap-2">
-                                <LayoutGrid size={20} className="text-purple-500" />
-                                Матрица ГЕО
-                                {isDemoMode && <span className="text-[9px] bg-purple-500 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">Demo</span>}
-                            </h2>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
-                            <button onClick={() => setIsDemoMode(!isDemoMode)} className={`text-[10px] font-bold px-3 py-1.5 rounded-[6px] border transition-all ${isDemoMode ? 'bg-purple-500 border-purple-500 text-white' : 'bg-white dark:bg-[#111] border-gray-200 dark:border-[#333] text-gray-600 dark:text-gray-300 hover:bg-gray-50'}`}>
-                                {isDemoMode ? 'Off Demo' : 'On Demo'}
-                            </button>
-
-                            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-1 bg-black dark:bg-white text-white dark:text-black text-[10px] font-bold px-3 py-1.5 rounded-[6px] hover:opacity-80 transition-opacity">
-                                <Plus size={12} /> ГЕО
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Filters Section */}
-                    <div className="mx-auto max-w-[90%] md:max-w-none w-full">
+            {/* HEADER + FILTERS */}
+            <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 lg:py-0 border-b border-transparent transition-colors duration-200">
+                <div className="mx-auto max-w-[90%] md:max-w-none w-full">
                         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:justify-between">
 
                             {/* LEFT GROUP: Modes + Depts + Sort */}
@@ -1266,12 +1247,11 @@ const GeoMatrixPage = () => {
                                 </div>
                             </div>
                         </div>
-                    </div>
                 </div>
             </div>
 
             {/* MOBILE VIEW */}
-            <div className="md:hidden space-y-4 px-2 pb-20">
+            <div className="md:hidden space-y-4 px-2 pb-20 mt-4">
                 {/* General Header Stats */}
                 {mobileStats && (
                     <div className="grid grid-cols-2 gap-2">
@@ -1303,7 +1283,7 @@ const GeoMatrixPage = () => {
             </div>
 
             {/* DESKTOP TABLE */}
-            <div className="hidden md:block bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm relative z-0 w-full max-w-[90vw] xl:max-w-[calc(100vw-300px)] overflow-hidden">
+            <div className="hidden md:block bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm relative z-0 w-full max-w-[90vw] xl:max-w-[calc(100vw-300px)] overflow-hidden mt-4">
                 <div className="overflow-x-auto overflow-y-hidden custom-scrollbar">
                     {loading ? (
                         <div className="p-10 text-center text-xs text-gray-400">Загрузка данных...</div>

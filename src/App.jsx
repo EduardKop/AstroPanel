@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp, Monitor, Wallet
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp, Monitor, Wallet, Edit2
 } from 'lucide-react'
 
 import ThemeToggle from './components/ThemeToggle';
@@ -104,6 +104,74 @@ const SidebarItem = ({ icon: Icon, label, path, className, onClick, isChild, chi
   )
 }
 
+const HEADER_PAGE_TITLES = [
+  { path: '/', label: 'Обзор', icon: LayoutDashboard, exact: true },
+  { path: '/stats', label: 'Аналитика', icon: BarChart3, exact: true },
+  { path: '/geo', label: 'Конверсии', icon: Globe, exact: true },
+  { path: '/geo-matrix', label: 'Матрица', icon: LayoutGrid, exact: true },
+  { path: '/geo-monitoring', label: 'ГЕО / Проекты', icon: Globe, exact: true },
+  { path: '/payment-times', label: 'Время оплат', icon: Clock, exact: true },
+  { path: '/list', label: 'Транзакции', icon: CreditCard, exact: true },
+  { path: '/pnl', label: 'P&L', icon: TrendingUp, exact: true },
+  { path: '/payment-methods', label: 'Методы оплаты', icon: Wallet, exact: true },
+  { path: '/manager-activity/lateness', label: 'Опоздания', icon: Clock, exact: true },
+  { path: '/manager-activity/efficiency', label: 'Эффективность', icon: BarChart3, exact: true },
+  { path: '/manager-activity/devices', label: 'Устройства', icon: Monitor, exact: true },
+  { path: '/sales/dashboard', label: 'Дашборд продаж', icon: LayoutDashboard, exact: true },
+  { path: '/cons/dashboard', label: 'Дашборд консультаций', icon: LayoutDashboard, exact: true },
+];
+
+const HeaderPageTitle = ({ transactionsHeaderMeta }) => {
+  const location = useLocation();
+  const page = HEADER_PAGE_TITLES.find((item) => (
+    item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path)
+  )) || { label: 'AstroPanel', icon: LayoutDashboard };
+  const Icon = page.icon;
+  const showPaymentsCount = location.pathname === '/list' && Number.isFinite(transactionsHeaderMeta?.count);
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <Icon size={17} className="shrink-0 text-blue-600 dark:text-blue-500" />
+      <span className="truncate text-sm font-black tracking-tight text-gray-900 dark:text-white">
+        {page.label}
+      </span>
+      {showPaymentsCount && (
+        <span className="shrink-0 rounded border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10px] font-black text-gray-500 dark:border-[#333] dark:bg-[#1A1A1A] dark:text-gray-400">
+          {transactionsHeaderMeta.count} оплат
+        </span>
+      )}
+    </div>
+  );
+};
+
+const TransactionsHeaderAction = ({ meta }) => {
+  const location = useLocation();
+  if (location.pathname !== '/list' || !meta?.canEdit) return null;
+
+  const disabled = !!meta.disabled;
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => !disabled && meta.onToggleEdit?.()}
+      className={`flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[10px] font-black transition-all ${
+        disabled
+          ? 'cursor-not-allowed bg-gray-100 text-gray-400 opacity-45 dark:bg-[#181818] dark:text-gray-600'
+          : meta.isEditMode
+            ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20'
+            : 'bg-gray-100 text-gray-600 hover:bg-amber-100 hover:text-amber-600 dark:bg-[#222] dark:text-gray-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-400'
+      }`}
+      title={disabled ? 'Дождитесь загрузки транзакций' : 'Переключить режим редактирования'}
+    >
+      <Edit2 size={12} />
+      <span className="hidden xl:inline">
+        {meta.isEditMode ? 'Выключить редактирование' : 'Режим редактирования'}
+      </span>
+    </button>
+  );
+};
+
 const ProtectedRoute = ({ allowedRoles, resource, children }) => {
   const { user, permissions } = useAppStore();
   const { id } = useParams(); // Get ID from URL if present
@@ -145,6 +213,7 @@ function App() {
   const [isCLevelOpen, setIsCLevelOpen] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [transactionsHeaderMeta, setTransactionsHeaderMeta] = useState(null);
 
   // Collapsible sidebar sections with localStorage persistence
   // Default open sections based on role
@@ -190,12 +259,27 @@ function App() {
     });
   };
 
-  const { user, setUser, logout, fetchAllData, fetchGeoMatrixBootstrapData, isLoading, permissions } = useAppStore();
+  useEffect(() => {
+    const handleTransactionsHeaderMeta = (event) => {
+      setTransactionsHeaderMeta(event.detail || null);
+    };
+
+    window.addEventListener('transactions-header-meta', handleTransactionsHeaderMeta);
+    return () => window.removeEventListener('transactions-header-meta', handleTransactionsHeaderMeta);
+  }, []);
+
+  const { user, setUser, logout, fetchAllData, fetchReferenceData, fetchGeoMatrixBootstrapData, isLoading, permissions } = useAppStore();
 
   const refreshCurrentRouteData = (forceUpdate = false) => {
     if (window.location.pathname === '/geo-matrix') {
       fetchGeoMatrixBootstrapData(forceUpdate);
       window.dispatchEvent(new Event('geo-matrix-refresh'));
+      return;
+    }
+
+    if (window.location.pathname === '/stats') {
+      fetchReferenceData();
+      window.dispatchEvent(new Event('stats-refresh'));
       return;
     }
 
@@ -626,12 +710,9 @@ function App() {
 
         <main className="flex-1 ml-0 lg:ml-[220px] transition-all duration-300 pt-14 lg:pt-0">
           <header className="h-12 border-b border-gray-200 dark:border-[#222] bg-white/50 dark:bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 lg:top-0 z-20 hidden lg:flex items-center justify-between px-4 lg:px-6">
-            <div className="flex items-center gap-3">
-              <div className="text-xs font-medium text-gray-500 dark:text-[#666]">
-                {/* Status bar */}
-              </div>
-            </div>
+            <HeaderPageTitle transactionsHeaderMeta={transactionsHeaderMeta} />
             <div className="flex items-center gap-2">
+              <TransactionsHeaderAction meta={transactionsHeaderMeta} />
               <ThemeToggle isDark={darkMode} toggle={toggleTheme} />
               <button onClick={() => refreshCurrentRouteData(true)} className="p-1.5 bg-gray-100 dark:bg-[#222] text-black dark:text-white rounded hover:opacity-80 transition-opacity">
                 <RefreshCcw size={14} className={isLoading ? 'animate-spin' : ''} />

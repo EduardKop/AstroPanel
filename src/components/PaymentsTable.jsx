@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { DollarSign, Coins, Copy, Check, Filter, ArrowUpDown, Save, X, Square, CheckSquare } from 'lucide-react';
 import Toast from './ui/Toast';
 import { formatUTCDate, formatUTCTime } from '../utils/kyivTime';
@@ -8,9 +8,48 @@ const FLAGS = {
   BG: '🇧🇬', CZ: '🇨🇿', RO: '🇷🇴', LT: '🇱🇹',
   TR: '🇹🇷', FR: '🇫🇷', PT: '🇵🇹', DE: '🇩🇪',
   US: '🇺🇸', ES: '🇪🇸', SK: '🇸🇰', HU: '🇭🇺',
-  KZ: '🇰🇿', UZ: '🇺🇿', MD: '🇲🇩'
+  KZ: '🇰🇿', UZ: '🇺🇿', MD: '🇲🇩', AZ: '🇦🇿',
+  LV: '🇱🇻', MX: '🇲🇽', NO: '🇳🇴', AM: '🇦🇲',
+  GB: '🇬🇧', NL: '🇳🇱', CH: '🇨🇭', SE: '🇸🇪', EG: '🇪🇬'
 };
 const getFlag = (code) => FLAGS[code] || '🏳️';
+
+const GEO_NAMES = {
+  UA: 'Украина',
+  PL: 'Польша',
+  IT: 'Италия',
+  HR: 'Хорватия',
+  BG: 'Болгария',
+  CZ: 'Чехия',
+  RO: 'Румыния',
+  LT: 'Литва',
+  TR: 'Турция',
+  FR: 'Франция',
+  PT: 'Португалия',
+  DE: 'Германия',
+  US: 'США',
+  ES: 'Испания',
+  SK: 'Словакия',
+  HU: 'Венгрия',
+  KZ: 'Казахстан',
+  UZ: 'Узбекистан',
+  MD: 'Молдова',
+  AZ: 'Азербайджан',
+  LV: 'Латвия',
+  MX: 'Мексика',
+  NO: 'Норвегия',
+  AM: 'Армения'
+};
+
+const getInitials = (name = '') => (
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0])
+    .join('')
+    .toUpperCase() || '?'
+);
 
 const getPaymentBadgeStyle = (type) => {
   const t = (type || '').toLowerCase();
@@ -19,6 +58,21 @@ const getPaymentBadgeStyle = (type) => {
   if (t.includes('iban')) return 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20';
   if (t.includes('req') || t.includes('рек') || t.includes('прям')) return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
   return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20';
+};
+
+const getRoleBadgeStyle = (role) => {
+  const r = (role || '').toLowerCase();
+  if (r.includes('consult')) return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+  if (r.includes('taro')) return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+  if (r.includes('senior')) return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+  if (r.includes('sales')) return 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20';
+  if (r.includes('c-level')) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+  return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20';
+};
+
+const getShortPaymentType = (type) => {
+  const text = type || 'Other';
+  return text.length > 10 ? `${text.slice(0, 9)}…` : text;
 };
 
 const PaymentsTable = ({
@@ -32,6 +86,7 @@ const PaymentsTable = ({
   onSort,
   isEditMode = false,
   managers = [],
+  countries = [],
   onPaymentUpdate,
   // Bulk selection props
   selectedIds = new Set(),
@@ -42,6 +97,29 @@ const PaymentsTable = ({
   const [editingRow, setEditingRow] = useState(null); // ID of row being edited
   const [editData, setEditData] = useState({});
   const [saving, setSaving] = useState(false);
+
+  const managersByKey = useMemo(() => {
+    const map = new Map();
+    managers.forEach(manager => {
+      if (manager?.id) map.set(manager.id, manager);
+      if (manager?.name) map.set(manager.name, manager);
+    });
+    return map;
+  }, [managers]);
+
+  const countryMetaByCode = useMemo(() => {
+    const map = new Map();
+    countries.forEach(country => {
+      const code = country?.code?.toUpperCase?.();
+      if (!code) return;
+      map.set(code, {
+        code,
+        name: country.name || GEO_NAMES[code] || code,
+        emoji: country.emoji || getFlag(code)
+      });
+    });
+    return map;
+  }, [countries]);
 
   const handleCopy = (text) => {
     if (!text) return;
@@ -128,7 +206,6 @@ const PaymentsTable = ({
                     </button>
                   </th>
                 )}
-                <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">
                   <button
                     onClick={() => onSort?.('date')}
@@ -141,24 +218,25 @@ const PaymentsTable = ({
                 </th>
                 <th className="px-4 py-3">Менеджер</th>
                 <th className="px-4 py-3">ГЕО</th>
+                <th className="px-4 py-3">Роль</th>
                 <th className="px-4 py-3">Продукт</th>
-                <th className="px-4 py-3">Метод</th>
                 <th className="px-4 py-3">Контакт</th>
-                <th className="px-4 py-3 text-center" title="Какая по счету оплата от клиента">№ Оплаты</th>
-                <th className="px-4 py-3 text-right">
+                <th className="px-4 py-3">Метод</th>
+                <th className="px-4 py-3 text-center" title="Какая по счету оплата от клиента">№</th>
+                <th className="px-4 py-3 text-left">
                   <button
                     onClick={() => onSort?.('amountLocal')}
-                    className={`flex items-center gap-1.5 justify-end hover:text-blue-500 transition-colors cursor-pointer group w-full ${sortField === 'amountLocal' ? 'text-blue-500' : ''}`}
+                    className={`flex items-center gap-1.5 justify-start hover:text-blue-500 transition-colors cursor-pointer group w-full ${sortField === 'amountLocal' ? 'text-blue-500' : ''}`}
                     title="Сортировать по сумме (Local)"
                   >
                     Сумма (Local)
                     <ArrowUpDown size={12} className={`opacity-50 group-hover:opacity-100 transition-all ${sortField === 'amountLocal' ? 'opacity-100' : ''} ${sortField === 'amountLocal' && sortOrder === 'asc' ? 'rotate-180' : ''}`} />
                   </button>
                 </th>
-                <th className="px-4 py-3 text-right">
+                <th className="px-4 py-3 text-left">
                   <button
                     onClick={() => onSort?.('amountEUR')}
-                    className={`flex items-center gap-1.5 justify-end hover:text-blue-500 transition-colors cursor-pointer group w-full ${sortField === 'amountEUR' ? 'text-blue-500' : ''}`}
+                    className={`flex items-center gap-1.5 justify-start hover:text-blue-500 transition-colors cursor-pointer group w-full ${sortField === 'amountEUR' ? 'text-blue-500' : ''}`}
                     title="Сортировать по сумме (EUR)"
                   >
                     Сумма (EUR)
@@ -175,17 +253,27 @@ const PaymentsTable = ({
                   </button>
                 </th>
                 {isEditMode && <th className="px-4 py-3 text-center">Действия</th>}
+                <th className="px-4 py-3 text-right">ID</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-[#222]">
               {loading ? (
-                <tr><td colSpan={isEditMode ? "12" : "11"} className="px-4 py-8 text-center">Загрузка...</td></tr>
-              ) : payments.length === 0 ? (
-                <tr><td colSpan={isEditMode ? "12" : "11"} className="px-4 py-8 text-center">Нет данных</td></tr>
+	                <tr><td colSpan={isEditMode ? "14" : "12"} className="px-4 py-8 text-center">Загрузка...</td></tr>
+	              ) : payments.length === 0 ? (
+	                <tr><td colSpan={isEditMode ? "14" : "12"} className="px-4 py-8 text-center">Нет данных</td></tr>
               ) : (
                 payments.map((p) => {
                   const isEditing = editingRow === p.id;
                   const isSelected = selectedIds.has(p.id);
+                  const manager = managersByKey.get(p.managerId) || managersByKey.get(p.manager);
+                  const countryCode = (p.country || '').toUpperCase();
+                  const countryMeta = countryMetaByCode.get(countryCode) || {
+                    code: countryCode || '—',
+                    name: GEO_NAMES[countryCode] || countryCode || '—',
+                    emoji: getFlag(countryCode)
+                  };
+                  const selectedManager = isEditing ? managersByKey.get(editData.manager_id) : null;
+                  const role = selectedManager?.role || manager?.role || p.managerRole || '—';
 
                   return (
                     <tr key={p.id} className={`hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors group ${isEditing ? 'bg-amber-50 dark:bg-amber-900/10' : ''} ${isSelected ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
@@ -204,10 +292,6 @@ const PaymentsTable = ({
                           </button>
                         </td>
                       )}
-                      <td className="px-4 py-2 font-mono text-[10px] text-gray-400 max-w-[80px] truncate" title={p.id}>
-                        #{p.id.slice(0, 8)}
-                      </td>
-
                       {/* Date */}
                       <td className="px-4 py-2">
                         {isEditing ? (
@@ -218,11 +302,11 @@ const PaymentsTable = ({
                             className={inputClass}
                           />
                         ) : (
-                          <div className="flex flex-col">
-                            <span className="font-medium text-gray-700 dark:text-gray-300">
-                              {formatUTCDate(p.transactionDate)}
+                          <div className="flex items-center gap-2 font-mono">
+                            <span className="text-[13px] font-medium text-gray-500 dark:text-gray-400">
+                              {formatUTCDate(p.transactionDate).slice(0, 5)}
                             </span>
-                            <span className="text-[10px] text-gray-400">
+                            <span className="rounded-[5px] border border-gray-200 bg-gray-100 px-1.5 py-0.5 text-[12px] font-black text-gray-800 dark:border-[#333] dark:bg-[#222] dark:text-gray-300">
                               {formatUTCTime(p.transactionDate)}
                             </span>
                           </div>
@@ -243,18 +327,24 @@ const PaymentsTable = ({
                             ))}
                           </select>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-gray-800 dark:text-gray-200">{p.manager}</span>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-gray-100 text-[8px] font-black text-gray-500 dark:border-[#333] dark:bg-[#1A1A1A] dark:text-gray-400">
+                              {manager?.avatar_url ? (
+                                <img src={manager.avatar_url} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                <span>{getInitials(p.manager)}</span>
+                              )}
+                            </div>
+                            <span className="max-w-[150px] truncate font-bold text-gray-800 dark:text-gray-200">{p.manager}</span>
                             {(() => {
-                              const mgr = managers.find(m => m.name === p.manager || m.id === p.managerId);
-                              if (mgr?.telegram_username) {
+                              if (manager?.telegram_username) {
                                 return (
                                   <button
-                                    onClick={() => handleCopy('@' + mgr.telegram_username.replace('@', ''))}
+                                    onClick={() => handleCopy('@' + manager.telegram_username.replace('@', ''))}
                                     className="text-gray-400 hover:text-blue-500 text-[10px] flex items-center gap-0.5 transition-colors"
                                     title="Копировать @username"
                                   >
-                                    @{mgr.telegram_username.replace('@', '')}
+                                    @{manager.telegram_username.replace('@', '')}
                                     <Copy size={9} />
                                   </button>
                                 );
@@ -277,14 +367,23 @@ const PaymentsTable = ({
                             placeholder="UA"
                           />
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-600 dark:text-gray-300">
-                            {getFlag(p.country)} {p.country}
+                          <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-600 dark:text-gray-300">
+                            <span>{countryMeta.emoji}</span>
+                            <span>{countryMeta.name}</span>
+                            <span className="font-mono text-[9px] text-gray-400 dark:text-gray-500">{countryMeta.code}</span>
                           </span>
                         )}
                       </td>
 
-                      {/* Product */}
+	                      {/* Product */}
                       <td className="px-4 py-2">
+                        <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-black ${getRoleBadgeStyle(role)}`}>
+                          {role}
+                        </span>
+                      </td>
+
+	                      {/* Product */}
+	                      <td className="px-4 py-2">
                         {isEditing ? (
                           <input
                             type="text"
@@ -294,22 +393,6 @@ const PaymentsTable = ({
                           />
                         ) : (
                           <span className="text-gray-900 dark:text-white font-medium">{p.product}</span>
-                        )}
-                      </td>
-
-                      {/* Payment Type */}
-                      <td className="px-4 py-2">
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            value={editData.type}
-                            onChange={(e) => updateField('type', e.target.value)}
-                            className={`${inputClass} w-20`}
-                          />
-                        ) : (
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getPaymentBadgeStyle(p.type)}`}>
-                            {p.type || 'Other'}
-                          </span>
                         )}
                       </td>
 
@@ -339,6 +422,22 @@ const PaymentsTable = ({
                         )}
                       </td>
 
+                      {/* Payment Type */}
+                      <td className="px-4 py-2">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editData.type}
+                            onChange={(e) => updateField('type', e.target.value)}
+                            className={`${inputClass} w-20`}
+                          />
+	                        ) : (
+	                          <span title={p.type || 'Other'} className={`inline-flex max-w-[92px] px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getPaymentBadgeStyle(p.type)}`}>
+	                            {getShortPaymentType(p.type)}
+	                          </span>
+	                        )}
+	                      </td>
+
                       {/* Rank */}
                       <td className="px-4 py-2 text-center">
                         {(() => {
@@ -360,16 +459,16 @@ const PaymentsTable = ({
                       </td>
 
                       {/* Amount Local */}
-                      <td className="px-4 py-2 text-right">
-                        {isEditing ? (
+	                      <td className="px-4 py-2 text-left">
+	                        {isEditing ? (
                           <input
                             type="number"
                             value={editData.amountLocal}
                             onChange={(e) => updateField('amountLocal', parseFloat(e.target.value) || 0)}
-                            className={`${inputClass} w-24 text-right`}
-                          />
-                        ) : (
-                          <div className="flex items-center justify-end gap-1 font-bold text-gray-900 dark:text-white">
+	                            className={`${inputClass} w-24 text-left`}
+	                          />
+	                        ) : (
+	                          <div className="flex items-center justify-start gap-1 font-bold text-gray-900 dark:text-white">
                             <Coins size={10} className="text-gray-400" />
                             {(p.amountLocal || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
                           </div>
@@ -377,17 +476,17 @@ const PaymentsTable = ({
                       </td>
 
                       {/* Amount EUR */}
-                      <td className="px-4 py-2 text-right">
-                        {isEditing ? (
+	                      <td className="px-4 py-2 text-left">
+	                        {isEditing ? (
                           <input
                             type="number"
                             step="0.01"
                             value={editData.amountEUR}
                             onChange={(e) => updateField('amountEUR', parseFloat(e.target.value) || 0)}
-                            className={`${inputClass} w-24 text-right`}
-                          />
-                        ) : (
-                          <div className="flex items-center justify-end gap-1 font-bold text-gray-900 dark:text-white">
+	                            className={`${inputClass} w-24 text-left`}
+	                          />
+	                        ) : (
+	                          <div className="flex items-center justify-start gap-1 font-bold text-gray-900 dark:text-white">
                             <DollarSign size={10} className="text-gray-400" />
                             {Number(p.amountEUR).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}
                           </div>
@@ -438,6 +537,9 @@ const PaymentsTable = ({
                           )}
                         </td>
                       )}
+                      <td className="px-4 py-2 text-right font-mono text-[10px] text-gray-400 max-w-[80px] truncate" title={p.id}>
+                        #{p.id.slice(0, 8)}
+                      </td>
                     </tr>
                   );
                 })

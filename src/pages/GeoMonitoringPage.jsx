@@ -4,8 +4,8 @@ import { useLocation } from 'react-router-dom';
 import { toggleGeoStatus } from '../services/dataService';
 import { showToast } from '../utils/toastEvents';
 import {
-    Globe, Power, PowerOff, Calendar as CalendarIcon, Search,
-    TrendingUp, X, Clock, Activity, History, Users, MessageSquare, Send, LayoutGrid, List, RefreshCw, DollarSign, Star,
+    Power, PowerOff, Calendar as CalendarIcon, Search,
+    TrendingUp, X, Clock, Activity, History, MessageSquare, Send, LayoutGrid, List, DollarSign,
     ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { fetchGeoNotes, addGeoNote, updateGeoShift } from '../services/dataService';
@@ -13,6 +13,14 @@ import { supabase } from '../services/supabaseClient';
 import { PAYMENT_METHODS } from '../components/payments/AddPaymentModal';
 import GeoCalendarView from '../components/GeoCalendarView';
 import ProjectBadge from '../components/geo/ProjectBadge';
+import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
+
+const GEO_MONITORING_LOADING_STEPS = [
+    'Загружаем ГЕО',
+    'Загружаем сотрудников',
+    'Считаем трафик',
+    'Загружаем заметки',
+];
 
 // --- HELPER ---
 const toYMD = (date) => {
@@ -500,7 +508,7 @@ const PaymentConfigModal = ({ country, onClose, onSave }) => {
     );
 };
 const GeoMonitoringPage = () => {
-    const { countries, trafficStats, channels, user, fetchAllData, managers, schedules, permissions, isLoading, updateGeoPayments, fetchTrafficStats, projects } = useAppStore();
+    const { countries, trafficStats, channels, user, fetchAllData, managers, schedules, permissions, isLoading, isInitialized, updateGeoPayments, projects } = useAppStore();
 
     // Permission check for geo toggle
     const canToggleGeo = useMemo(() => {
@@ -510,6 +518,12 @@ const GeoMonitoringPage = () => {
     }, [user, permissions]);
 
     const [activeTab, setActiveTab] = useState('monitoring'); // 'monitoring', 'calendar'
+
+    useEffect(() => {
+        if (!isInitialized && !isLoading && fetchAllData) {
+            fetchAllData();
+        }
+    }, [isInitialized, isLoading, fetchAllData]);
 
     // --- Active Staff per GEO (schedule-based for Sales, profile-based for SMM/Consultant) ---
     const activeStaffByGeo = useMemo(() => {
@@ -597,6 +611,12 @@ const GeoMonitoringPage = () => {
 
     const [dateRange, setDateRange] = useState([new Date(), new Date()]);
     const [startDate, endDate] = dateRange;
+    const [trafficLoading, setTrafficLoading] = useState(false);
+    const [trafficLoadedKey, setTrafficLoadedKey] = useState('');
+
+    const trafficRangeKey = useMemo(() => {
+        return `${startDate ? toYMD(startDate) : 'start'}:${endDate ? toYMD(endDate) : 'end'}`;
+    }, [startDate, endDate]);
 
     // Traffic fetcher — fully independent from store's fetchAllData
     // Builds channelsMap itself and fetches RPC with pagination
@@ -646,8 +666,26 @@ const GeoMonitoringPage = () => {
 
     useEffect(() => {
         if (!startDate || !endDate) return;
-        fetchTrafficDirect(toYMD(startDate), toYMD(endDate));
-    }, [location.pathname, startDate?.toDateString(), endDate?.toDateString()]);
+        let cancelled = false;
+
+        const loadTraffic = async () => {
+            setTrafficLoading(true);
+            try {
+                await fetchTrafficDirect(toYMD(startDate), toYMD(endDate));
+            } finally {
+                if (!cancelled) {
+                    setTrafficLoadedKey(trafficRangeKey);
+                    setTrafficLoading(false);
+                }
+            }
+        };
+
+        loadTraffic();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [location.pathname, startDate?.toDateString(), endDate?.toDateString(), trafficRangeKey]);
 
     const [search, setSearch] = useState('');
     const [activeProjectFilter, setActiveProjectFilter] = useState(null); // null = all
@@ -657,6 +695,7 @@ const GeoMonitoringPage = () => {
     const [paymentModal, setPaymentModal] = useState(null); // Modals for payment configuration
     const [toggling, setToggling] = useState(null);
     const [lastNotes, setLastNotes] = useState({}); // geoCode -> last note text
+    const [hasInitialLoadComplete, setHasInitialLoadComplete] = useState(false);
 
     const handleSavePayments = async (code, selectedPayments) => {
         try {
@@ -672,18 +711,51 @@ const GeoMonitoringPage = () => {
 
     // Load last notes for all countries on mount
     const [notesLoaded, setNotesLoaded] = useState(false);
-    useMemo(async () => {
-        if (!countries.length || notesLoaded) return;
-        const map = {};
-        // Ideally fetch all last notes in one query, but for now loop 
-        // (Optimization: replace with single RPC or view later if slow)
-        await Promise.all(countries.map(async c => {
-            const notes = await fetchGeoNotes(c.code);
-            if (notes.length > 0) map[c.code] = notes[0].note;
-        }));
-        setLastNotes(map);
-        setNotesLoaded(true);
-    }, [countries.length]);
+    const [notesLoading, setNotesLoading] = useState(false);
+    const countryCodesKey = useMemo(() => countries.map(c => c.code).sort().join('|'), [countries]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadLastNotes = async () => {
+            if (!countryCodesKey) {
+                setLastNotes({});
+                setNotesLoaded(true);
+                setNotesLoading(false);
+                return;
+            }
+
+            setNotesLoaded(false);
+            setNotesLoading(true);
+
+            try {
+                const map = {};
+                await Promise.all(countries.map(async c => {
+                    const notes = await fetchGeoNotes(c.code);
+                    if (notes.length > 0) map[c.code] = notes[0].note;
+                }));
+
+                if (!cancelled) {
+                    setLastNotes(map);
+                    setNotesLoaded(true);
+                }
+            } catch (error) {
+                console.error('Error loading geo notes:', error);
+                if (!cancelled) {
+                    setLastNotes({});
+                    setNotesLoaded(true);
+                }
+            } finally {
+                if (!cancelled) setNotesLoading(false);
+            }
+        };
+
+        loadLastNotes();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [countryCodesKey]);
 
     const refreshNote = async (geoCode) => {
         const notes = await fetchGeoNotes(geoCode);
@@ -835,31 +907,48 @@ const GeoMonitoringPage = () => {
     const activeCount = geoData.filter(g => g.isActive).length;
     const inactiveCount = geoData.filter(g => !g.isActive).length;
     const totalTraffic = geoData.reduce((s, g) => s + g.trafficCount, 0);
+    const baseLoading = !isInitialized || (isLoading && !countries.length);
+    const trafficReady = !startDate || !endDate || (trafficLoadedKey === trafficRangeKey && !trafficLoading);
+    const rawPageLoading = baseLoading || !trafficReady || notesLoading || !notesLoaded;
+    const pageLoading = rawPageLoading && !hasInitialLoadComplete;
+    const loadingStep = (() => {
+        if (baseLoading && !countries.length) return 0;
+        if (baseLoading && !managers.length) return 1;
+        if (!trafficReady) return 2;
+        if (notesLoading || !notesLoaded) return 3;
+        return 3;
+    })();
 
-    if (isLoading) {
+    useEffect(() => {
+        if (!rawPageLoading && !hasInitialLoadComplete) {
+            setHasInitialLoadComplete(true);
+        }
+    }, [rawPageLoading, hasInitialLoadComplete]);
+
+    if (pageLoading) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 m-4 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
-                <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
-                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка данных...</p>
-            </div>
+            <AstroLoadingStatus
+                variant="page"
+                title="Загружаем ГЕО / Проекты"
+                message="Получаем страны, сотрудников, трафик и заметки"
+                steps={GEO_MONITORING_LOADING_STEPS}
+                activeStep={loadingStep}
+                className="h-[calc(100vh-80px)] bg-[#F5F5F5] dark:bg-[#0A0A0A]"
+            />
         );
     }
 
     return (
         <div className="p-4 max-w-[1600px] mx-auto font-sans text-gray-900 dark:text-gray-100">
 
-            {/* Header */}
+            {/* Summary + filters */}
             <div className="flex items-center justify-between mb-4 border-b border-gray-200 dark:border-[#333] pb-4">
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                        <Globe size={16} className="text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                        <h1 className="text-lg font-bold leading-tight">ГЕО / Проекты</h1>
-                        <p className="text-xs text-gray-500">
-                            Активные: <span className="text-emerald-600 font-bold">{activeCount}</span> · Неактивные: <span className="text-red-500 font-bold">{inactiveCount}</span> · Трафик: <span className="font-bold">{totalTraffic.toLocaleString()}</span>
-                        </p>
-                    </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span>Активные: <span className="text-emerald-600 font-bold">{activeCount}</span></span>
+                    <span className="text-gray-300 dark:text-gray-700">·</span>
+                    <span>Неактивные: <span className="text-red-500 font-bold">{inactiveCount}</span></span>
+                    <span className="text-gray-300 dark:text-gray-700">·</span>
+                    <span>Трафик: <span className="font-bold text-gray-700 dark:text-gray-300">{totalTraffic.toLocaleString()}</span></span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -981,16 +1070,15 @@ const GeoMonitoringPage = () => {
                     <thead>
                         <tr className="bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333]">
                             <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap min-w-[200px]">ГЕО</th>
-                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">Статус</th>
-                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">Смена (UTC)</th>
-                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">Трафик</th>
-                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">Платежка</th>
+                            <th className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center whitespace-nowrap">Смена (UTC)</th>
+                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center whitespace-nowrap">Трафик</th>
+                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center whitespace-nowrap">Платежка</th>
                             <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">Sales</th>
                             <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">Consultant</th>
                             <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">SMM</th>
-                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">Отключено (дата)</th>
-                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">История заметок</th>
-                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right whitespace-nowrap">Действия</th>
+                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center whitespace-nowrap">Отключено (дата)</th>
+                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center whitespace-nowrap">История заметок</th>
+                            <th className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center whitespace-nowrap">Действия</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-[#111] divide-y divide-gray-100 dark:divide-[#222]">
@@ -1020,9 +1108,16 @@ const GeoMonitoringPage = () => {
                                         }`}
                                 >
                                     {/* GEO Name */}
-                                    <td className="px-4 py-2.5 align-top whitespace-nowrap">
-                                        <div className="relative flex min-h-[64px] items-center gap-3 overflow-hidden rounded-xl border border-gray-200 bg-gradient-to-br from-white via-white to-slate-50 px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#0b0b0b] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                    <td className="px-4 py-2.5 align-middle whitespace-nowrap">
+                                        <div className="relative flex min-h-[64px] items-center gap-3 overflow-visible rounded-xl border border-gray-200 bg-gradient-to-br from-white via-white to-slate-50 px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#0b0b0b] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                                             <div className="pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-sky-50/80 via-sky-50/20 to-transparent dark:hidden" />
+                                            <span
+                                                className={`absolute -right-1.5 -top-1.5 z-20 h-3 w-3 rounded-full border border-black/20 ring-2 ring-white/60 dark:border-white/10 dark:ring-[#111]/80 ${geo.isActive
+                                                    ? 'bg-emerald-400/70 shadow-[0_0_8px_rgba(52,211,153,0.28)]'
+                                                    : 'bg-red-500/60 shadow-[0_0_8px_rgba(239,68,68,0.22)]'
+                                                    }`}
+                                                title={geo.isActive ? 'Активно' : 'Не активно'}
+                                            />
                                             <div className="relative z-10 flex items-center gap-3">
                                                 <div className="flex h-[26px] w-[38px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-gray-200 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.12)] dark:border-white/15 dark:bg-black/30 dark:shadow-sm">
                                                     <CountryFlagIcon
@@ -1048,45 +1143,34 @@ const GeoMonitoringPage = () => {
                                             </div>
                                         </div>
                                     </td>
-
-                                    {/* Status */}
-                                    <td className="px-4 py-2.5 align-top whitespace-nowrap">
-                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold ${geo.isActive
-                                            ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-                                            : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
-                                            }`}>
-                                            {geo.isActive ? <Power size={9} /> : <PowerOff size={9} />}
-                                            {geo.isActive ? 'Активно' : 'Не активно'}
-                                        </span>
-                                    </td>
-
                                     {/* Shift Times */}
-                                    <td className="px-4 py-2.5 align-top whitespace-nowrap">
+                                    <td className="px-3 py-2.5 align-middle text-center whitespace-nowrap">
                                         {editingShift?.code === geo.code ? (
-                                            <div className="flex items-center gap-1">
+                                            <div className="inline-flex flex-col items-center gap-1">
                                                 <input
                                                     type="time"
                                                     value={editingShift.start}
                                                     onChange={e => setEditingShift(prev => ({ ...prev, start: e.target.value }))}
                                                     className="bg-white dark:bg-[#0A0A0A] border border-blue-400 rounded px-1 py-0.5 text-[10px] font-mono w-[62px] focus:outline-none"
                                                 />
-                                                <span className="text-gray-400 text-[9px]">—</span>
                                                 <input
                                                     type="time"
                                                     value={editingShift.end}
                                                     onChange={e => setEditingShift(prev => ({ ...prev, end: e.target.value }))}
                                                     className="bg-white dark:bg-[#0A0A0A] border border-blue-400 rounded px-1 py-0.5 text-[10px] font-mono w-[62px] focus:outline-none"
                                                 />
-                                                <button
-                                                    onClick={() => handleShiftSave(geo.code)}
-                                                    className="text-blue-500 hover:text-blue-700 text-[10px] font-bold ml-0.5"
-                                                    title="Сохранить"
-                                                >✓</button>
-                                                <button
-                                                    onClick={() => setEditingShift(null)}
-                                                    className="text-gray-400 hover:text-red-500 text-[10px] font-bold"
-                                                    title="Отмена"
-                                                >✕</button>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        onClick={() => handleShiftSave(geo.code)}
+                                                        className="text-blue-500 hover:text-blue-700 text-[10px] font-bold"
+                                                        title="Сохранить"
+                                                    >✓</button>
+                                                    <button
+                                                        onClick={() => setEditingShift(null)}
+                                                        className="text-gray-400 hover:text-red-500 text-[10px] font-bold"
+                                                        title="Отмена"
+                                                    >✕</button>
+                                                </div>
                                             </div>
                                         ) : (
                                             <button
@@ -1095,18 +1179,21 @@ const GeoMonitoringPage = () => {
                                                     start: geo.shift_start?.slice(0, 5) || '09:00',
                                                     end: geo.shift_end?.slice(0, 5) || '18:00'
                                                 })}
-                                                className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${canToggleGeo ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer' : 'cursor-default'} text-gray-600 dark:text-gray-400 transition-colors`}
+                                                className={`inline-grid min-w-[72px] grid-cols-[12px_16px_38px] items-center gap-x-1 gap-y-0.5 rounded px-1.5 py-1 text-[10px] font-mono tabular-nums ${canToggleGeo ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer' : 'cursor-default'} text-gray-600 dark:text-gray-400 transition-colors`}
                                                 title={canToggleGeo ? 'Нажмите чтобы изменить' : ''}
                                             >
-                                                <Clock size={9} className="inline mr-1 opacity-50" />
-                                                {geo.shift_start?.slice(0, 5) || '—'} – {geo.shift_end?.slice(0, 5) || '—'}
+                                                <Clock size={9} className="row-span-2 justify-self-center self-center opacity-50" />
+                                                <span className="text-right text-[8px] uppercase text-gray-400 dark:text-gray-600">от</span>
+                                                <span className="text-left">{geo.shift_start?.slice(0, 5) || '—'}</span>
+                                                <span className="text-right text-[8px] uppercase text-gray-400 dark:text-gray-600">до</span>
+                                                <span className="text-left">{geo.shift_end?.slice(0, 5) || '—'}</span>
                                             </button>
                                         )}
                                     </td>
 
                                     {/* Traffic */}
-                                    <td className="px-4 py-2.5 align-top whitespace-nowrap">
-                                        <div className="flex items-center gap-1.5">
+                                    <td className="px-4 py-2.5 align-middle text-center whitespace-nowrap">
+                                        <div className="flex items-center justify-center gap-1.5">
                                             {geo.trafficCount > 0 ? (
                                                 <>
                                                     <TrendingUp size={12} className="text-blue-500" />
@@ -1119,10 +1206,10 @@ const GeoMonitoringPage = () => {
                                     </td>
 
                                     {/* Payments Column */}
-                                    <td className="px-4 py-2.5 align-top">
+                                    <td className="px-4 py-2.5 align-middle text-center">
                                         <div
                                             onClick={() => canToggleGeo && setPaymentModal(geo)}
-                                            className={`flex flex-col gap-1 ${canToggleGeo ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1A1A1A] p-1.5 -m-1.5 rounded-lg transition-colors' : ''}`}
+                                            className={`flex flex-col items-center gap-1 ${canToggleGeo ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1A1A1A] p-1.5 -m-1.5 rounded-lg transition-colors' : ''}`}
                                             title={canToggleGeo ? 'Нажмите для настройки' : ''}
                                         >
                                             {geo.payment && Array.isArray(geo.payment) && geo.payment.length > 0 ? (
@@ -1140,8 +1227,7 @@ const GeoMonitoringPage = () => {
                                                         </div>
                                                     )}
                                                     {geo.payment.filter(p => p.type === 'additional').length > 0 && (
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] text-gray-500 dark:text-gray-500 font-medium whitespace-nowrap">Дополнительные -</span>
+                                                        <div className="flex items-center justify-center">
                                                             <div className="flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity">
                                                                 {geo.payment.filter(p => p.type === 'additional').map((p, idx) => (
                                                                     <span key={`${geo.code}-add-${idx}`} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${getPaymentColorClass(p.method)}`}>
@@ -1153,7 +1239,7 @@ const GeoMonitoringPage = () => {
                                                     )}
                                                 </div>
                                             ) : (
-                                                <span className="text-xs text-gray-400 font-medium whitespace-nowrap flex items-center gap-1">
+                                                <span className="text-xs text-gray-400 font-medium whitespace-nowrap flex items-center justify-center gap-1">
                                                     <DollarSign size={12} className="opacity-50" />
                                                     Не задано
                                                 </span>
@@ -1162,8 +1248,8 @@ const GeoMonitoringPage = () => {
                                     </td>
 
                                     {/* Sales */}
-                                    <td className="px-4 py-2.5 align-top">
-                                        <div className="flex flex-wrap gap-1">
+                                    <td className="px-4 py-2.5 align-middle text-left">
+                                        <div className="flex flex-wrap justify-start gap-1">
                                             {geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(s.role)).length > 0 ? (
                                                 geo.staff.filter(s => ['Sales', 'SeniorSales', 'SalesTaro', 'SalesTaroNew'].includes(s.role)).map(s => {
                                                     const roleColors = {
@@ -1189,8 +1275,8 @@ const GeoMonitoringPage = () => {
                                     </td>
 
                                     {/* Consultant */}
-                                    <td className="px-4 py-2.5 align-top">
-                                        <div className="flex flex-wrap gap-1">
+                                    <td className="px-4 py-2.5 align-middle text-left">
+                                        <div className="flex flex-wrap justify-start gap-1">
                                             {geo.staff.filter(s => s.role === 'Consultant').length > 0 ? (
                                                 geo.staff.filter(s => s.role === 'Consultant').map(s => (
                                                     <span key={s.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400" title={s.name}>
@@ -1205,8 +1291,8 @@ const GeoMonitoringPage = () => {
                                     </td>
 
                                     {/* SMM */}
-                                    <td className="px-4 py-2.5 align-top">
-                                        <div className="flex flex-wrap gap-1">
+                                    <td className="px-4 py-2.5 align-middle text-left">
+                                        <div className="flex flex-wrap justify-start gap-1">
                                             {geo.staff.filter(s => s.role === 'SMM').length > 0 ? (
                                                 geo.staff.filter(s => s.role === 'SMM').map(s => (
                                                     <span key={s.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap bg-rose-100 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400" title={`${s.name} (${s.role})`}>
@@ -1221,8 +1307,8 @@ const GeoMonitoringPage = () => {
                                     </td>
 
                                     {/* Last Deactivation Date */}
-                                    <td className="px-4 py-2.5 align-top whitespace-nowrap">
-                                        <div className="flex items-center gap-1.5 text-gray-500">
+                                    <td className="px-4 py-2.5 align-middle text-center whitespace-nowrap">
+                                        <div className="flex items-center justify-center gap-1.5 text-gray-500">
                                             {geo.lastDeactivated ? (
                                                 <>
                                                     <PowerOff size={10} className="text-red-400" />
@@ -1235,7 +1321,7 @@ const GeoMonitoringPage = () => {
                                     </td>
 
                                     {/* Notes Summary */}
-                                    <td className="px-4 py-2.5 align-top max-w-[200px]">
+                                    <td className="px-4 py-2.5 align-middle max-w-[200px]">
                                         <button
                                             onClick={() => setNotesModal(geo)}
                                             className="text-left w-full group"
@@ -1248,7 +1334,7 @@ const GeoMonitoringPage = () => {
                                                     </span>
                                                 </div>
                                             ) : (
-                                                <div className="flex items-center gap-1 text-gray-300 dark:text-gray-700 group-hover:text-gray-400 transition-colors">
+                                                <div className="flex items-center justify-center gap-1 text-gray-300 dark:text-gray-700 group-hover:text-gray-400 transition-colors">
                                                     <MessageSquare size={10} />
                                                     <span className="text-xs whitespace-nowrap">Нет заметок</span>
                                                 </div>
@@ -1257,8 +1343,8 @@ const GeoMonitoringPage = () => {
                                     </td>
 
                                     {/* Actions */}
-                                    <td className="px-4 py-2.5 align-top">
-                                        <div className="flex items-center gap-1 justify-end">
+                                    <td className="px-4 py-2.5 align-middle">
+                                        <div className="flex items-center gap-1 justify-center">
                                             <button
                                                 onClick={() => setHistoryModal(geo)}
                                                 className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#333] rounded-md transition-colors"
@@ -1286,7 +1372,7 @@ const GeoMonitoringPage = () => {
                         })}
 
                         {sortedGeos.length === 0 && (
-                            <tr><td colSpan={11} className="p-6 text-center text-xs text-gray-400">Нет ГЕО локаций</td></tr>
+                            <tr><td colSpan={10} className="p-6 text-center text-xs text-gray-400">Нет ГЕО локаций</td></tr>
                         )}
                     </tbody>
                   </table>

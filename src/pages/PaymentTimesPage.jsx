@@ -2,10 +2,11 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/appStore';
 import {
     Filter, RotateCcw, X,
-    Users, Calendar as CalendarIcon,
-    Clock, ChevronDown, ChevronUp, MessageCircle, MessageSquare, Phone, Percent, List, AlignJustify, RefreshCw
+    Calendar as CalendarIcon,
+    Clock, ChevronDown, ChevronUp, MessageCircle, MessageSquare, Phone, Percent, List
 } from 'lucide-react';
 import { extractUTCDate, formatUTCDate, formatUTCTime, getKyivDateString } from '../utils/kyivTime';
+import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
 
 // --- CONFIGURATION ---
 const FLAGS = {
@@ -16,6 +17,36 @@ const FLAGS = {
     KZ: '🇰🇿', UZ: '🇺🇿', MD: '🇲🇩'
 };
 const getFlag = (code) => FLAGS[code] || '🏳️';
+
+const GEO_NAMES = {
+    UA: 'Украина',
+    PL: 'Польша',
+    IT: 'Италия',
+    HR: 'Хорватия',
+    BG: 'Болгария',
+    CZ: 'Чехия',
+    RO: 'Румыния',
+    LT: 'Литва',
+    TR: 'Турция',
+    FR: 'Франция',
+    PT: 'Португалия',
+    DE: 'Германия',
+    US: 'США',
+    ES: 'Испания',
+    SK: 'Словакия',
+    HU: 'Венгрия',
+    KZ: 'Казахстан',
+    UZ: 'Узбекистан',
+    MD: 'Молдова',
+    Unknown: 'Неизвестно',
+};
+
+const PAYMENT_TIMES_LOADING_STEPS = [
+    'Загружаем справочники',
+    'Загружаем оплаты',
+    'Собираем таймлайны',
+    'Готовим пики',
+];
 
 const getLastWeekRange = () => {
     const end = new Date();
@@ -352,7 +383,7 @@ const AllPaymentsList = ({ payments }) => {
 
 // --- MAIN PAGE ---
 const PaymentTimesPage = () => {
-    const { payments, user: currentUser, paymentsLoaded, fetchAllData } = useAppStore();
+    const { payments, user: currentUser, paymentsLoaded, fetchAllData, countries } = useAppStore();
     const [dateRange, setDateRange] = useState(getLastWeekRange());
     const [startDate, endDate] = dateRange;
     const [filters, setFilters] = useState(() => ({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all', showMobileFilters: false }));
@@ -360,6 +391,7 @@ const PaymentTimesPage = () => {
     const [pageLoading, setPageLoading] = useState(true);
     const hasStartedRefreshRef = useRef(false);
     const hasSeenPendingPaymentsRef = useRef(false);
+    const pageLoadTimeoutRef = useRef(null);
 
     const hasActiveFilters = useMemo(() => !!(filters.manager.length > 0 || filters.country.length > 0 || filters.product.length > 0 || filters.type.length > 0 || filters.source !== 'all'), [filters]);
     useEffect(() => {
@@ -367,7 +399,15 @@ const PaymentTimesPage = () => {
         hasStartedRefreshRef.current = true;
         hasSeenPendingPaymentsRef.current = false;
         setPageLoading(true);
+        clearTimeout(pageLoadTimeoutRef.current);
+        pageLoadTimeoutRef.current = setTimeout(() => {
+            setPageLoading(false);
+        }, 15000);
         fetchAllData(true);
+
+        return () => {
+            clearTimeout(pageLoadTimeoutRef.current);
+        };
     }, [fetchAllData]);
     useEffect(() => {
         if (!hasStartedRefreshRef.current) return;
@@ -376,6 +416,7 @@ const PaymentTimesPage = () => {
             return;
         }
         if (hasSeenPendingPaymentsRef.current) {
+            clearTimeout(pageLoadTimeoutRef.current);
             setPageLoading(false);
         }
     }, [paymentsLoaded]);
@@ -385,6 +426,16 @@ const PaymentTimesPage = () => {
         const getUnique = (key) => [...new Set(payments.map(p => p[key]).filter(Boolean))].sort();
         return { managers: getUnique('manager'), countries: getUnique('country'), products: getUnique('product'), types: getUnique('type') };
     }, [payments]);
+
+    const countryNameByCode = useMemo(() => {
+        const map = new Map();
+        (countries || []).forEach(country => {
+            if (country?.code) map.set(country.code, country.name || country.code);
+        });
+        return map;
+    }, [countries]);
+
+    const getCountryName = (code) => countryNameByCode.get(code) || GEO_NAMES[code] || code;
 
     const filteredData = useMemo(() => {
         const startStr = startDate ? toYMD(startDate) : '0000-00-00';
@@ -432,24 +483,24 @@ const PaymentTimesPage = () => {
     const resetDateRange = () => setDateRange(getLastWeekRange());
     const resetFilters = () => { setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: 'all' }); setDateRange(getLastWeekRange()); };
 
+    const loadingStep = !countries?.length ? 0 : !paymentsLoaded ? 1 : filteredData.length > 0 ? 2 : 3;
+
     if (pageLoading) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
-                <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
-                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка данных...</p>
-            </div>
+            <AstroLoadingStatus
+                variant="page"
+                title="Загружаем время оплат"
+                message="Собираем оплаты, ГЕО и временные пики"
+                steps={PAYMENT_TIMES_LOADING_STEPS}
+                activeStep={loadingStep}
+                className="h-[calc(100vh-80px)] bg-[#F5F5F5] dark:bg-[#0A0A0A]"
+            />
         );
     }
 
     return (
         <div className="pb-10 transition-colors duration-200 w-full max-w-full">
-            <div className="sticky top-0 z-30 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 md:py-3 border-b border-transparent transition-colors duration-200">
-                <div className="flex items-center justify-center md:justify-start gap-2 mb-3">
-                    <h2 className="text-base md:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 text-center md:text-left min-w-0">
-                        <Clock size={16} className="text-blue-600 dark:text-blue-500 shrink-0 md:w-5 md:h-5" />
-                        <span>Время оплат (Timeline)</span>
-                    </h2>
-                </div>
+            <div className="sticky top-0 z-30 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 lg:py-0 border-b border-transparent transition-colors duration-200">
                 <div className="w-full md:w-auto mx-auto max-w-[90%] md:max-w-none">
                     <div className="flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2 md:justify-between">
                         <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
@@ -531,8 +582,8 @@ const PaymentTimesPage = () => {
                                             <div className="text-2xl">{getFlag(group.geo)}</div>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <div className="text-lg font-bold text-gray-900 dark:text-white">{group.geo}</div>
-                                                    <div className="text-xs text-gray-400">({group.managerCount})</div>
+                                                    <div className="text-lg font-bold text-gray-900 dark:text-white">{getCountryName(group.geo)}</div>
+                                                    <div className="text-xs font-mono text-gray-400">{group.geo}</div>
                                                 </div>
                                             </div>
                                         </div>

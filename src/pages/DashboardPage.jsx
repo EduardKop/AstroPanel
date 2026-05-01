@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
 import {
@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
+import { ActivityRail } from '../components/activity/ActivityUI';
+import { buildTimelineFromPayload, formatCoverageLabel, formatTimelineDuration } from '../utils/activityTimeline';
 
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -16,6 +18,7 @@ import { extractUTCDate, formatUTCDate, formatUTCTime, getKyivDateString } from 
 
 // --- КОНФИГУРАЦИЯ ---
 const TIMEZONE = 'Europe/Kyiv';
+const NOVALUMEN_API_OFFSET = 2;
 
 const FLAGS = {
   UA: '🇺🇦', PL: '🇵🇱', IT: '🇮🇹', HR: '🇭🇷',
@@ -49,6 +52,8 @@ const getPaymentBadgeStyle = (type) => {
   if (t.includes('jet') || t.includes('fex')) return 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20';
   if (t.includes('iban')) return 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20';
   if (t.includes('req') || t.includes('рек') || t.includes('прям')) return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+  if (t.includes('stripe')) return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20';
+  if (t.includes('paypal')) return 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20';
   return 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20';
 };
 
@@ -72,6 +77,103 @@ const getRoleTag = (role) => {
   };
   const r = map[role] || { label: role, cls: 'bg-gray-500/10 text-gray-500 border-gray-500/20' };
   return <span className={`px-1 py-px rounded text-[8px] font-bold border whitespace-nowrap ${r.cls}`}>{r.label}</span>;
+};
+
+const getInitials = (name = '') => {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return parts.slice(0, 2).map(part => part[0]).join('').toUpperCase();
+};
+
+const ManagerAvatar = ({ manager, name, className = '' }) => {
+  const displayName = manager?.name || name || 'Менеджер';
+  const avatarUrl = manager?.avatar_url;
+
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={displayName}
+        className={`h-6 w-6 shrink-0 rounded-full object-cover ring-1 ring-gray-200 dark:ring-white/10 ${className}`}
+        loading="lazy"
+        decoding="async"
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[9px] font-black text-gray-500 ring-1 ring-gray-200 dark:bg-[#202228] dark:text-gray-300 dark:ring-white/10 ${className}`}
+      title={displayName}
+    >
+      {getInitials(displayName)}
+    </span>
+  );
+};
+
+const ManagerNameButton = ({ manager, name, role, onClick, compact = false }) => {
+  const displayName = manager?.name || name || 'Не назначен';
+  const parts = String(displayName).trim().split(/\s+/).filter(Boolean);
+  const firstName = parts[0] || displayName;
+  const restName = parts.slice(1).join(' ');
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.();
+      }}
+      className={`group inline-flex max-w-full items-center gap-1.5 rounded-md border border-transparent text-left leading-none transition-all hover:border-sky-400/30 hover:bg-sky-500/10 focus:outline-none focus:ring-2 focus:ring-sky-400/40 ${compact ? 'px-1 py-0' : 'px-1 py-0'}`}
+      title="Открыть карточку менеджера"
+    >
+      <ManagerAvatar
+        manager={manager}
+        name={displayName}
+        className={`${compact ? 'h-5 w-5 text-[8px]' : 'h-5 w-5 text-[8px]'} transition-all group-hover:ring-sky-300/70 group-hover:shadow-[0_0_14px_rgba(56,189,248,0.25)]`}
+      />
+      <span className="min-w-0 font-medium">
+        <span className="text-gray-700 transition-colors group-hover:text-sky-600 dark:text-gray-300 dark:group-hover:text-sky-200">
+          {firstName}
+        </span>
+        {restName && (
+          <span className="ml-1 text-gray-700 transition-colors group-hover:text-emerald-600 dark:text-gray-300 dark:group-hover:text-emerald-200">
+            {restName}
+          </span>
+        )}
+      </span>
+      {role ? <span className="shrink-0">{getRoleTag(role)}</span> : null}
+    </button>
+  );
+};
+
+const buildApiBoundary = (dateValue, endOfDay = false) => `${dateValue}T${endOfDay ? '23:59:59' : '00:00:00'}-00:00`;
+const buildLocalBoundary = (dateValue, endOfDay = false) => `${dateValue}T${endOfDay ? '23:59:59' : '00:00:00'}`;
+
+const formatMoney = (value) => Number(value || 0).toLocaleString('ru-RU', {
+  maximumFractionDigits: 2,
+});
+
+const normalizeGeoList = (geo) => {
+  if (!geo) return [];
+  if (Array.isArray(geo)) return geo.filter(Boolean);
+  return String(geo).split(',').map(item => item.trim()).filter(Boolean);
+};
+
+const getDateRangeDays = (startDate, endDate) => {
+  if (!startDate || !endDate) return [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  const days = [];
+  const cursor = new Date(start);
+  while (cursor <= end && days.length < 62) {
+    days.push(toYMD(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
 };
 
 const getRankEmoji = (index) => {
@@ -414,6 +516,411 @@ const CustomDateRangePicker = ({ startDate, endDate, onChange, onReset }) => {
   );
 };
 
+const ManagerInsightModal = ({ target, onClose, payments, startDate, endDate, countries, getCountryName }) => {
+  const manager = target?.manager || null;
+  const managerName = manager?.name || target?.name || 'Менеджер';
+  const managerRole = manager?.role || target?.role || null;
+  const managerId = manager?.id || target?.managerId || null;
+  const activityDate = target?.payment?.transactionDate
+    ? extractUTCDate(target.payment.transactionDate)
+    : toYMD(endDate || new Date());
+  const [activityState, setActivityState] = useState({
+    loading: true,
+    error: null,
+    data: null,
+  });
+
+  const assignedGeos = useMemo(() => {
+    return normalizeGeoList(manager?.geo).map(code => {
+      const normalizedCode = String(code).toUpperCase();
+      const country = countries?.find?.(item => item.code === normalizedCode);
+      return {
+        code: normalizedCode,
+        label: country ? `${country.emoji || getFlag(normalizedCode)} ${country.name}` : `${getFlag(normalizedCode)} ${normalizedCode}`,
+      };
+    });
+  }, [countries, manager?.geo]);
+
+  const managerPayments = useMemo(() => {
+    const startStr = startDate ? toYMD(startDate) : '0000-00-00';
+    const endStr = endDate ? toYMD(endDate) : '9999-99-99';
+
+    return (payments || [])
+      .filter(payment => {
+        const sameManager = managerId
+          ? String(payment.managerId || payment.manager_id || '') === String(managerId)
+          : payment.manager === managerName;
+        if (!sameManager || !payment.transactionDate) return false;
+
+        const paymentDate = extractUTCDate(payment.transactionDate);
+        return paymentDate >= startStr && paymentDate <= endStr;
+      })
+      .sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
+  }, [endDate, managerId, managerName, payments, startDate]);
+
+  const insight = useMemo(() => {
+    const dailyMap = {};
+    const methodMap = {};
+    const geoMap = {};
+    let totalEur = 0;
+
+    managerPayments.forEach(payment => {
+      const dateKey = extractUTCDate(payment.transactionDate);
+      const eur = Number(payment.amountEUR || payment.amount_eur || 0);
+      const method = payment.type || payment.payment_type || 'Other';
+      const countryCode = payment.country || '—';
+
+      totalEur += eur;
+
+      if (!dailyMap[dateKey]) {
+        dailyMap[dateKey] = {
+          date: dateKey,
+          label: dateKey.slice(5).replace('-', '.'),
+          count: 0,
+          eur: 0,
+        };
+      }
+      dailyMap[dateKey].count += 1;
+      dailyMap[dateKey].eur += eur;
+
+      if (!methodMap[method]) methodMap[method] = { method, count: 0, eur: 0 };
+      methodMap[method].count += 1;
+      methodMap[method].eur += eur;
+
+      if (!geoMap[countryCode]) geoMap[countryCode] = { country: countryCode, count: 0, eur: 0 };
+      geoMap[countryCode].count += 1;
+      geoMap[countryCode].eur += eur;
+    });
+
+    const days = getDateRangeDays(startDate, endDate);
+    const dailySales = days.length > 0
+      ? days.map(dateKey => dailyMap[dateKey] || {
+          date: dateKey,
+          label: dateKey.slice(5).replace('-', '.'),
+          count: 0,
+          eur: 0,
+        })
+      : Object.values(dailyMap);
+
+    const methods = Object.values(methodMap)
+      .sort((a, b) => b.count - a.count || b.eur - a.eur)
+      .slice(0, 5);
+
+    const geos = Object.values(geoMap)
+      .sort((a, b) => b.eur - a.eur || b.count - a.count)
+      .slice(0, 6);
+
+    return {
+      dailySales,
+      methods,
+      geos,
+      totalEur,
+      count: managerPayments.length,
+      avgCheck: managerPayments.length > 0 ? totalEur / managerPayments.length : 0,
+      topDay: dailySales.reduce((best, item) => item.eur > (best?.eur || 0) ? item : best, null),
+      maxMethodCount: Math.max(1, ...methods.map(item => item.count)),
+      maxGeoEur: Math.max(1, ...geos.map(item => item.eur)),
+    };
+  }, [endDate, managerPayments, startDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadActivity = async () => {
+      const telegramId = manager?.telegram_id || target?.telegram_id;
+      setActivityState({ loading: true, error: null, data: null });
+
+      if (!telegramId) {
+        setActivityState({
+          loading: false,
+          error: 'У менеджера не указан Telegram ID для Novalumen',
+          data: null,
+        });
+        return;
+      }
+
+      try {
+        const fromDt = buildApiBoundary(activityDate, false);
+        const toDt = buildApiBoundary(activityDate, true);
+        const localStart = buildLocalBoundary(activityDate, false);
+        const localEnd = buildLocalBoundary(activityDate, true);
+
+        const statsResult = await supabase.functions.invoke('novalumen-statistics', {
+          body: { fromDt, toDt, offset: NOVALUMEN_API_OFFSET },
+        });
+
+        if (statsResult.error || statsResult.data?.error) {
+          throw new Error(statsResult.error?.message || statsResult.data?.error || 'Статистика Novalumen недоступна');
+        }
+
+        const rawStats = Array.isArray(statsResult.data?.data)
+          ? statsResult.data.data
+          : Array.isArray(statsResult.data?.data?.data)
+            ? statsResult.data.data.data
+            : [];
+        const managerStat = rawStats.find(item => String(item.telegram_id) === String(telegramId));
+
+        if (!managerStat?.user_id) {
+          throw new Error('Менеджер не найден в статистике Novalumen');
+        }
+
+        const timelineResult = await supabase.functions.invoke('novalumen-sent-messages', {
+          body: {
+            fromDt,
+            toDt,
+            offset: NOVALUMEN_API_OFFSET,
+            userIds: [managerStat.user_id],
+          },
+        });
+
+        if (timelineResult.error || timelineResult.data?.error) {
+          throw new Error(timelineResult.error?.message || timelineResult.data?.error || 'Таймлайн Novalumen недоступен');
+        }
+
+        const results = timelineResult.data?.results || {};
+        const userKey = String(managerStat.user_id);
+        const hasTimelinePayload = Object.prototype.hasOwnProperty.call(results, userKey);
+        const timelineData = hasTimelinePayload
+          ? buildTimelineFromPayload(results[userKey] || [], localStart, localEnd, 2)
+          : null;
+
+        if (!cancelled) {
+          setActivityState({
+            loading: false,
+            error: null,
+            data: {
+              status: hasTimelinePayload ? 'ready' : 'unavailable',
+              totalMessages: Number(managerStat.total_messages_count) || timelineData?.messageCount || 0,
+              activeDurationMs: timelineData?.activeDurationMs || 0,
+              coveragePct: timelineData?.coveragePct || 0,
+              segments: timelineData?.segments || [],
+            },
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setActivityState({
+            loading: false,
+            error: error instanceof Error ? error.message : 'Не удалось загрузить активность',
+            data: null,
+          });
+        }
+      }
+    };
+
+    loadActivity();
+    return () => {
+      cancelled = true;
+    };
+  }, [activityDate, manager?.telegram_id, target?.telegram_id]);
+
+  if (!target) return null;
+
+  const rangeLabel = startDate && endDate
+    ? `${startDate.toLocaleDateString('ru-RU')} - ${endDate.toLocaleDateString('ru-RU')}`
+    : 'выбранный период';
+
+  return (
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
+      <div
+        className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-white/10 bg-white shadow-2xl dark:bg-[#0B0D12] custom-scrollbar"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white/95 px-5 py-4 backdrop-blur dark:border-white/10 dark:bg-[#0B0D12]/95">
+          <div className="flex min-w-0 items-center gap-3">
+            <ManagerAvatar manager={manager} name={managerName} className="h-12 w-12 text-sm" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-lg font-black text-gray-950 dark:text-white">{managerName}</h3>
+                {getRoleTag(managerRole)}
+              </div>
+              <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                Карточка менеджера за {rangeLabel}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-white/10 dark:hover:text-white"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="grid gap-4 p-4 lg:grid-cols-[1.25fr_0.75fr]">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Продажи</div>
+                <div className="mt-1 text-2xl font-black text-gray-950 dark:text-white">{insight.count}</div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Оборот</div>
+                <div className="mt-1 text-2xl font-black text-emerald-600 dark:text-emerald-300">€{formatMoney(insight.totalEur)}</div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Средний чек</div>
+                <div className="mt-1 text-2xl font-black text-gray-950 dark:text-white">€{formatMoney(insight.avgCheck)}</div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Лучший день</div>
+                <div className="mt-1 text-lg font-black text-sky-600 dark:text-sky-300">
+                  {insight.topDay?.count ? `${insight.topDay.label} · ${insight.topDay.count}` : '—'}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.03]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h4 className="flex items-center gap-2 text-sm font-black text-gray-900 dark:text-white">
+                  <Activity size={15} className="text-blue-500" />
+                  Дейли продажи
+                </h4>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">EUR</span>
+              </div>
+              <div className="h-44 min-w-0">
+                {insight.dailySales.some(item => item.count > 0) ? (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                    <AreaChart data={insight.dailySales}>
+                      <defs>
+                        <linearGradient id="managerSalesGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.45} />
+                          <stop offset="95%" stopColor="#38BDF8" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} />
+                      <RechartsTooltip
+                        contentStyle={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#fff', fontSize: 11 }}
+                        formatter={(value, name) => name === 'eur' ? [`€${formatMoney(value)}`, 'Оборот'] : [value, 'Продажи']}
+                      />
+                      <Area type="monotone" dataKey="eur" stroke="#38BDF8" strokeWidth={2} fill="url(#managerSalesGradient)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs font-bold text-gray-400">Нет продаж за период</div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.03]">
+              <h4 className="mb-3 flex items-center gap-2 text-sm font-black text-gray-900 dark:text-white">
+                <CreditCard size={15} className="text-violet-500" />
+                Частые платежки
+              </h4>
+              <div className="space-y-2">
+                {insight.methods.length > 0 ? insight.methods.map(method => (
+                  <div key={method.method} className="space-y-1">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className={`max-w-[220px] truncate rounded border px-2 py-0.5 text-[10px] font-bold ${getPaymentBadgeStyle(method.method)}`}>
+                        {formatPaymentType(method.method)}
+                      </span>
+                      <span className="font-bold text-gray-700 dark:text-gray-200">{method.count} · €{formatMoney(method.eur)}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+                      <div className="h-full rounded-full bg-violet-400" style={{ width: `${(method.count / insight.maxMethodCount) * 100}%` }} />
+                    </div>
+                  </div>
+                )) : (
+                  <div className="py-4 text-center text-xs font-bold text-gray-400">Нет данных по платежкам</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.03]">
+              <h4 className="mb-3 flex items-center gap-2 text-sm font-black text-gray-900 dark:text-white">
+                <Globe size={15} className="text-emerald-500" />
+                ГЕО менеджера
+              </h4>
+              <div className="mb-4 flex flex-wrap gap-1.5">
+                {assignedGeos.length > 0 ? assignedGeos.map(geo => (
+                  <span key={geo.code} className="rounded-md border border-emerald-400/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-200">
+                    {geo.label}
+                  </span>
+                )) : (
+                  <span className="text-xs font-bold text-gray-400">ГЕО не указано</span>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {insight.geos.length > 0 ? insight.geos.map(geo => (
+                  <div key={geo.country} className="space-y-1">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="font-bold text-gray-700 dark:text-gray-200">
+                        {getFlag(geo.country)} {getCountryName(geo.country)}
+                      </span>
+                      <span className="font-bold text-gray-500 dark:text-gray-400">{geo.count} · €{formatMoney(geo.eur)}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-white/10">
+                      <div className="h-full rounded-full bg-emerald-400" style={{ width: `${(geo.eur / insight.maxGeoEur) * 100}%` }} />
+                    </div>
+                  </div>
+                )) : (
+                  <div className="py-4 text-center text-xs font-bold text-gray-400">Нет продаж по ГЕО</div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.03]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h4 className="flex items-center gap-2 text-sm font-black text-gray-900 dark:text-white">
+                  <MessageSquare size={15} className="text-rose-500" />
+                  Активность
+                </h4>
+                <span className="text-[10px] font-bold text-gray-400">{activityDate}</span>
+              </div>
+
+              {activityState.loading ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-black/20">
+                  <AstroLoadingStatus
+                    variant="inline"
+                    title="Загружаем активность"
+                    steps={['Сверяем менеджера', 'Получаем SMS', 'Строим таймлайн']}
+                    activeStep={1}
+                  />
+                </div>
+              ) : activityState.error ? (
+                <div className="rounded-lg border border-amber-400/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-700 dark:text-amber-200">
+                  {activityState.error}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-gray-50 p-3 dark:bg-black/20">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">SMS</div>
+                      <div className="mt-1 text-xl font-black text-gray-950 dark:text-white">{activityState.data?.totalMessages || 0}</div>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3 dark:bg-black/20">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Время</div>
+                      <div className="mt-1 text-sm font-black text-emerald-600 dark:text-emerald-300">
+                        {formatTimelineDuration(activityState.data?.activeDurationMs || 0)}
+                      </div>
+                    </div>
+                  </div>
+                  <ActivityRail
+                    segments={activityState.data?.segments || []}
+                    status={activityState.data?.status || 'unavailable'}
+                    startLabel="00:00"
+                    endLabel="23:59"
+                  />
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    {formatCoverageLabel(activityState.data?.coveragePct || 0)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DashboardPage = () => {
   const { payments, user: currentUser, isLoading, paymentsLoaded, trafficStats, fetchTrafficStats, fetchAllData, countries, managers, channelsMap, isInitialized } = useAppStore();
   const getCountryName = (code) => countries?.find?.(c => c.code === code)?.name || code;
@@ -436,6 +943,35 @@ const DashboardPage = () => {
   });
   const [expandedId, setExpandedId] = useState(null);
   const [activeFilling, setActiveFilling] = useState([]); // [{manager_name, manager_role, started_at}]
+  const [managerModalTarget, setManagerModalTarget] = useState(null);
+  const [summaryColumnHeight, setSummaryColumnHeight] = useState(null);
+  const summaryColumnRef = useRef(null);
+  const dashboardFetchRequestedRef = useRef(false);
+
+  useEffect(() => {
+    const node = summaryColumnRef.current;
+    if (!node) return undefined;
+
+    const updateHeight = () => {
+      setSummaryColumnHeight(Math.ceil(node.getBoundingClientRect().height));
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateHeight);
+      return () => window.removeEventListener('resize', updateHeight);
+    }
+
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(node);
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, []);
 
   // Subscribe to payment-form-presence channel
   useEffect(() => {
@@ -496,10 +1032,18 @@ const DashboardPage = () => {
 
   // 🔄 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ ДАННЫХ ПРИ МОНТИРОВАНИИ
   useEffect(() => {
-    if (fetchAllData && !isInitialized) {
-      fetchAllData();
+    if (!fetchAllData) return;
+
+    if (paymentsLoaded && isInitialized) {
+      dashboardFetchRequestedRef.current = false;
+      return;
     }
-  }, [fetchAllData, isInitialized]);
+
+    if (isLoading || dashboardFetchRequestedRef.current) return;
+
+    dashboardFetchRequestedRef.current = true;
+    fetchAllData();
+  }, [fetchAllData, isInitialized, isLoading, paymentsLoaded]);
 
   useEffect(() => {
     if (fetchTrafficStats && channelsMap && Object.keys(channelsMap).length > 0) {
@@ -528,6 +1072,36 @@ const DashboardPage = () => {
       types: getUnique('type')
     };
   }, [payments]);
+
+  const managerLookup = useMemo(() => {
+    const byId = new Map();
+    const byName = new Map();
+
+    (managers || []).forEach((manager) => {
+      if (manager.id) byId.set(String(manager.id), manager);
+      if (manager.name) byName.set(manager.name, manager);
+    });
+
+    return { byId, byName };
+  }, [managers]);
+
+  const getManagerProfile = (managerId, managerName) => {
+    if (managerId && managerLookup.byId.has(String(managerId))) {
+      return managerLookup.byId.get(String(managerId));
+    }
+    return managerLookup.byName.get(managerName) || null;
+  };
+
+  const openManagerModal = (managerProfile, fallback = {}) => {
+    setManagerModalTarget({
+      manager: managerProfile,
+      name: managerProfile?.name || fallback.name,
+      role: managerProfile?.role || fallback.role,
+      managerId: managerProfile?.id || fallback.managerId,
+      telegram_id: managerProfile?.telegram_id || fallback.telegram_id,
+      payment: fallback.payment || null,
+    });
+  };
 
   // 1. GLOBAL RANKING LOGIC (from global payments)
   const paymentRanks = useMemo(() => {
@@ -809,6 +1383,39 @@ const DashboardPage = () => {
     }).sort((a, b) => b.salesSum - a.salesSum).slice(0, 50);
   }, [filteredData, trafficStats, startDate, endDate, filters.source]);
 
+  const paymentMethodStats = useMemo(() => {
+    const statsByType = {};
+    let totalSum = 0;
+
+    filteredData.forEach((payment) => {
+      const type = payment.type || 'Other';
+      const amountEUR = Number(payment.amountEUR || 0);
+
+      if (!statsByType[type]) {
+        statsByType[type] = { type, count: 0, sum: 0 };
+      }
+
+      statsByType[type].count += 1;
+      statsByType[type].sum += amountEUR;
+      totalSum += amountEUR;
+    });
+
+    const items = Object.values(statsByType)
+      .map((item) => ({
+        ...item,
+        avgCheck: item.count > 0 ? item.sum / item.count : 0,
+        share: filteredData.length > 0 ? (item.count / filteredData.length) * 100 : 0,
+      }))
+      .sort((a, b) => b.sum - a.sum || b.count - a.count);
+
+    return {
+      items,
+      totalCount: filteredData.length,
+      totalSum,
+      maxSum: Math.max(1, ...items.map((item) => item.sum)),
+    };
+  }, [filteredData]);
+
   const resetDateRange = () => setDateRange(getTodayRange());
   const resetFilters = () => {
     setFilters({ manager: [], country: [], product: [], type: [], source: 'all', department: [] });
@@ -839,10 +1446,10 @@ const DashboardPage = () => {
     <div className="pb-10 transition-colors duration-200 w-full max-w-full overflow-x-hidden">
 
       {/* HEADER + FILTERS */}
-      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 md:py-3 border-b border-transparent transition-colors duration-200">
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 lg:py-0 border-b border-transparent transition-colors duration-200">
 
         {/* Заголовок */}
-        <div className="flex items-center justify-center md:justify-start gap-2 mb-3">
+        <div className="flex items-center justify-center md:justify-start gap-2 mb-3 lg:hidden">
           <h2 className="text-base md:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 text-center md:text-left min-w-0">
             <LayoutDashboard size={16} className="text-blue-600 dark:text-blue-500 shrink-0 md:w-5 md:h-5" />
             <span>Обзор</span>
@@ -996,11 +1603,16 @@ const DashboardPage = () => {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-3 md:gap-4 mb-6 mt-4 w-full min-w-0">
+      <div className="flex flex-col lg:flex-row items-start gap-3 md:gap-4 mb-6 mt-4 w-full min-w-0">
 
         {/* --- LEFT COLUMN: LIVE FEED (Последние операции) --- */}
-        <div className="flex-1 lg:w-[55%] w-full flex flex-col min-w-0 order-2 lg:order-2">
-          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden shadow-sm flex flex-col h-[900px] lg:h-[calc(100vh-140px)] transition-colors duration-200">
+        <div
+          className="flex-1 lg:w-[55%] w-full flex flex-col min-w-0 order-2 lg:order-2"
+          style={{
+            '--dashboard-summary-height': summaryColumnHeight ? `${summaryColumnHeight}px` : 'calc(100vh - 140px)',
+          }}
+        >
+          <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden shadow-sm flex flex-col h-[900px] lg:h-[var(--dashboard-summary-height)] transition-colors duration-200">
             <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex items-center gap-3 bg-gray-50/50 dark:bg-[#161616] shrink-0">
               <span className="relative flex h-2 w-2 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span>
@@ -1029,74 +1641,93 @@ const DashboardPage = () => {
                   ) : (
                     <>
                       {/* 🟡 FILLING ROWS — managers currently opening AddPaymentModal */}
-                      {activeFilling.map((f) => (
-                        <tr key={`filling-${f.manager_id}`} className="bg-amber-50 dark:bg-amber-900/10 border-l-2 border-amber-400 animate-pulse-subtle">
-                          <td className="px-4 py-2 font-mono">
-                            <div className="flex items-center gap-2">
-                              <span className="text-gray-400 text-[10px]">
-                                {new Date(f.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      {activeFilling.map((f) => {
+                        const managerProfile = getManagerProfile(f.manager_id, f.manager_name);
+                        return (
+                          <tr key={`filling-${f.manager_id}`} className="bg-amber-50 dark:bg-amber-900/10 border-l-2 border-amber-400 animate-pulse-subtle">
+                            <td className="px-4 py-2 font-mono">
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-400 text-[10px]">
+                                  {new Date(f.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <ManagerNameButton
+                                manager={managerProfile}
+                                name={f.manager_name}
+                                role={f.manager_role}
+                                onClick={() => openManagerModal(managerProfile, {
+                                  name: f.manager_name,
+                                  role: f.manager_role,
+                                  managerId: f.manager_id,
+                                })}
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className="text-gray-300 dark:text-gray-600 text-[10px]">—</span>
+                            </td>
+                            <td className="px-4 py-2" colSpan="3">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-400/20 border border-amber-400/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-widest">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block"></span>
+                                Заполнение...
                               </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-gray-700 dark:text-gray-300">{f.manager_name}</span>
-                              {getRoleTag(f.manager_role)}
-                            </div>
-                          </td>
-                          <td className="px-4 py-2">
-                            <span className="text-gray-300 dark:text-gray-600 text-[10px]">—</span>
-                          </td>
-                          <td className="px-4 py-2" colSpan="3">
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-400/20 border border-amber-400/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-widest">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block"></span>
-                              Заполнение...
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {/* Normal rows */}
-                      {filteredData.slice(0, 100).map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
-                      <td className="px-4 py-2 font-mono flex items-center gap-2 h-[41px]">
-                        <span className="text-gray-500">
-                          {formatUTCDate(p.transactionDate).slice(0, 5)}
-                        </span>
-                        <span className="bg-gray-100 dark:bg-[#222] text-gray-800 dark:text-gray-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-gray-200 dark:border-[#333]">
-                          {formatUTCTime(p.transactionDate)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-gray-700 dark:text-gray-300">{p.manager}</span>
-                          {getRoleTag(p.managerRole)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-600 dark:text-gray-300">
-                          {getFlag(p.country)} {getCountryName(p.country)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 w-[90px]">
-                        <span 
-                          className={`inline-block w-full max-w-[90px] px-2 py-0.5 rounded text-[10px] font-bold border truncate align-bottom text-center ${getPaymentBadgeStyle(p.type)}`}
-                          title={formatPaymentType(p.type)}
-                        >
-                          {formatPaymentType(p.type)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 font-bold text-gray-700 dark:text-gray-300">
-                        {p.amountLocal ? p.amountLocal.toLocaleString() : '-'}
-                        {p.amountLocal && p.country && (
-                          <span className="ml-1 text-[10px] font-normal text-gray-400">{getCurrencyCode(p.country)}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 font-mono font-bold text-gray-900 dark:text-white">
-                        {p.amountEUR}
-                        <span className="ml-1 text-[10px] font-normal text-gray-400">EUR</span>
-                      </td>
-                    </tr>
-                      ))}
+                      {filteredData.slice(0, 100).map((p) => {
+                        const managerProfile = getManagerProfile(p.managerId, p.manager);
+                        return (
+                          <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-colors">
+                            <td className="px-4 py-2 font-mono flex items-center gap-2 h-[41px]">
+                              <span className="text-gray-500">
+                                {formatUTCDate(p.transactionDate).slice(0, 5)}
+                              </span>
+                              <span className="bg-gray-100 dark:bg-[#222] text-gray-800 dark:text-gray-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-gray-200 dark:border-[#333]">
+                                {formatUTCTime(p.transactionDate)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2">
+                              <ManagerNameButton
+                                manager={managerProfile}
+                                name={p.manager}
+                                role={p.managerRole}
+                                onClick={() => openManagerModal(managerProfile, {
+                                  name: p.manager,
+                                  role: p.managerRole,
+                                  managerId: p.managerId,
+                                  payment: p,
+                                })}
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#222] border border-gray-200 dark:border-[#333] text-[10px] font-bold text-gray-600 dark:text-gray-300">
+                                {getFlag(p.country)} {getCountryName(p.country)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 w-[90px]">
+                              <span
+                                className={`inline-block w-full max-w-[90px] px-2 py-0.5 rounded text-[10px] font-bold border truncate align-bottom text-center ${getPaymentBadgeStyle(p.type)}`}
+                                title={formatPaymentType(p.type)}
+                              >
+                                {formatPaymentType(p.type)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 font-bold text-gray-700 dark:text-gray-300">
+                              {p.amountLocal ? p.amountLocal.toLocaleString() : '-'}
+                              {p.amountLocal && p.country && (
+                                <span className="ml-1 text-[10px] font-normal text-gray-400">{getCurrencyCode(p.country)}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 font-mono font-bold text-gray-900 dark:text-white">
+                              {p.amountEUR}
+                              <span className="ml-1 text-[10px] font-normal text-gray-400">EUR</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {!isLoading && filteredData.length === 0 && (
                         <tr><td colSpan="6" className="px-4 py-6 text-center text-xs">Нет данных</td></tr>
                       )}
@@ -1115,6 +1746,7 @@ const DashboardPage = () => {
               ) : (
                 filteredData.slice(0, 50).map((p) => {
                   const isExpanded = expandedId === p.id;
+                  const managerProfile = getManagerProfile(p.managerId, p.manager);
                   return (
                     <div key={p.id} className="border border-gray-200 dark:border-[#333] rounded-lg p-3 bg-white dark:bg-[#111] transition-all">
                       <div className="flex justify-between items-center">
@@ -1145,9 +1777,20 @@ const DashboardPage = () => {
                             <span className="text-gray-500">Дата:</span>
                             <span className="text-xs">{formatUTCDate(p.transactionDate)}</span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between items-center gap-3">
                             <span className="text-gray-500">Менеджер:</span>
-                            <span className="font-medium">{p.manager}</span>
+                            <ManagerNameButton
+                              manager={managerProfile}
+                              name={p.manager}
+                              role={p.managerRole}
+                              compact
+                              onClick={() => openManagerModal(managerProfile, {
+                                name: p.manager,
+                                role: p.managerRole,
+                                managerId: p.managerId,
+                                payment: p,
+                              })}
+                            />
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-gray-500">ГЕО:</span>
@@ -1180,7 +1823,7 @@ const DashboardPage = () => {
         </div>
 
         {/* --- RIGHT COLUMN: METRICS & LEADERBOARDS --- */}
-        <div className="w-full lg:w-[45%] lg:min-w-[420px] shrink-0 flex flex-col gap-3 md:gap-4 order-1 lg:order-1 min-w-0">
+        <div ref={summaryColumnRef} className="w-full lg:w-[45%] lg:min-w-[420px] shrink-0 flex flex-col gap-3 md:gap-4 order-1 lg:order-1 min-w-0">
 
           {/* 1. КЛЮЧЕВЫЕ МЕТРИКИ */}
           <div className="flex flex-col relative group rounded-xl overflow-hidden border border-gray-200 dark:border-[#333] shadow-sm bg-white dark:bg-[#0F0F11] transition-colors duration-200 min-w-0 w-full shrink-0">
@@ -1281,10 +1924,62 @@ const DashboardPage = () => {
                 {topCountries.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
               </div>
             </div>
+
+            {/* Payment Methods */}
+            <div className="bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-xl overflow-hidden flex-1 shadow-sm transition-colors duration-200 min-w-0">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-[#333] flex justify-between items-center bg-gray-50/50 dark:bg-[#161616]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CreditCard size={14} className="text-violet-500 shrink-0" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 truncate">Платежки за период</span>
+                </div>
+                <div className="hidden sm:flex items-center gap-2 text-[10px] font-bold text-gray-400">
+                  <span>{paymentMethodStats.totalCount} оплат</span>
+                  <span className="text-gray-300 dark:text-[#333]">·</span>
+                  <span>€{paymentMethodStats.totalSum.toFixed(0)}</span>
+                </div>
+              </div>
+              <div className="p-2 space-y-1 max-h-[190px] overflow-y-auto custom-scrollbar">
+                {paymentMethodStats.items.map((method) => (
+                  <div key={method.type} className="rounded-[6px] bg-gray-50 dark:bg-[#1A1A1A] border border-gray-100 dark:border-[#222] px-3 py-2 hover:border-gray-300 dark:hover:border-[#444] transition-all">
+                    <div className="flex items-center justify-between gap-3">
+                      <span
+                        className={`min-w-0 max-w-[210px] truncate rounded border px-2 py-0.5 text-[10px] font-bold ${getPaymentBadgeStyle(method.type)}`}
+                        title={method.type}
+                      >
+                        {formatPaymentType(method.type)}
+                      </span>
+                      <div className="flex items-center gap-3 text-right">
+                        <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">{method.count} оплат</span>
+                        <span className="text-xs font-mono font-bold text-gray-900 dark:text-white whitespace-nowrap w-[58px]">€{method.sum.toFixed(0)}</span>
+                        <span className="text-[10px] font-bold text-violet-500 dark:text-violet-300 w-[38px] text-right">{method.share.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-[#2A2A2A]">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-violet-500 to-sky-400"
+                        style={{ width: `${Math.max(4, (method.sum / paymentMethodStats.maxSum) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {paymentMethodStats.items.length === 0 && <div className="text-center py-4 text-xs text-gray-500">Нет данных</div>}
+              </div>
+            </div>
           </div>
 
         </div>
       </div>
+      {managerModalTarget && (
+        <ManagerInsightModal
+          target={managerModalTarget}
+          onClose={() => setManagerModalTarget(null)}
+          payments={payments}
+          startDate={startDate}
+          endDate={endDate}
+          countries={countries}
+          getCountryName={getCountryName}
+        />
+      )}
     </div >
   );
 };

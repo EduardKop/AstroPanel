@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
 import {
   Filter,
-  Users, TrendingUp, Globe,
+  Users, TrendingUp,
   Calendar as CalendarIcon,
   Copy, Search, X, Download,
   RotateCcw, List
@@ -1783,21 +1783,7 @@ const GeoPage = () => {
     <div className="pb-10 w-full max-w-full overflow-x-hidden">
 
       {/* HEADER + FILTERS */}
-      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 md:py-3 border-b border-transparent transition-colors duration-200">
-
-        {/* Заголовок */}
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 mb-4">
-          <h2 className="text-base 2xl:text-lg font-bold dark:text-white tracking-tight flex items-center gap-2 pr-4 shrink-0">
-            <Globe size={17} className="text-blue-500 shrink-0 2xl:w-[18px] 2xl:h-[18px]" />
-            <span className="truncate">Конверсии</span>
-          </h2>
-
-          <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[8px] h-[30px] 2xl:h-[32px] items-center shrink-0 w-full md:w-auto">
-            <button onClick={() => setGeoSortMode('traffic_desc')} className={`flex-1 px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'traffic_desc' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>По объему лидов</button>
-            <button onClick={() => setGeoSortMode('cr_desc')} className={`flex-1 px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'cr_desc' ? 'bg-white dark:bg-[#333] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Лучший CR</button>
-            <button onClick={() => setGeoSortMode('cr_asc')} className={`flex-1 px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'cr_asc' ? 'bg-white dark:bg-[#333] text-rose-600 dark:text-rose-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Худший CR</button>
-          </div>
-        </div>
+      <div className="sticky top-0 z-20 bg-[#F5F5F5] dark:bg-[#0A0A0A] -mx-3 px-2 md:px-6 py-2 border-b border-transparent transition-colors duration-200">
 
         {/* Все фильтры - wrapper только для мобильных */}
         <div className="mx-auto max-w-[90%] md:max-w-none">
@@ -1945,31 +1931,39 @@ const GeoPage = () => {
       </div>
       
       {/* VIEW TOGGLES */}
-      <div className="mt-4 flex bg-white dark:bg-[#111] p-1 rounded-lg border border-gray-200 dark:border-[#333] w-fit shadow-sm overflow-hidden mb-2">
-         <button 
-           onClick={() => setViewMode('list')}
-           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'list' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
-         >
-           <List size={14} /> По ГЕО
-         </button>
-         <button 
-           onClick={() => setViewMode('matrix')}
-           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'matrix' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
-         >
-           <CalendarIcon size={14} /> Сетка конверсий
-         </button>
-         <button 
-           onClick={() => setViewMode('products')}
-           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'products' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
-         >
-           По Продуктам
-         </button>
-         <button 
-           onClick={() => setViewMode('crm')}
-           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'crm' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
-         >
-           По Этапах CRM
-         </button>
+      <div className="mt-4 mb-2 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex bg-white dark:bg-[#111] p-1 rounded-lg border border-gray-200 dark:border-[#333] w-full lg:w-fit shadow-sm overflow-x-auto">
+          <button 
+            onClick={() => setViewMode('list')}
+            className={`shrink-0 px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'list' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
+          >
+            <List size={14} /> По ГЕО
+          </button>
+          <button 
+            onClick={() => setViewMode('matrix')}
+            className={`shrink-0 px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'matrix' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
+          >
+            <CalendarIcon size={14} /> Сетка конверсий
+          </button>
+          <button 
+            onClick={() => setViewMode('products')}
+            className={`shrink-0 px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'products' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
+          >
+            По Продуктам
+          </button>
+          <button 
+            onClick={() => setViewMode('crm')}
+            className={`shrink-0 px-4 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-2 ${viewMode === 'crm' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-[#222]'}`}
+          >
+            По Этапах CRM
+          </button>
+        </div>
+
+        <div className="flex bg-gray-200 dark:bg-[#1A1A1A] p-0.5 rounded-[8px] h-[32px] items-center shrink-0 w-full lg:w-auto overflow-x-auto">
+          <button onClick={() => setGeoSortMode('traffic_desc')} className={`shrink-0 flex-1 lg:flex-none px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'traffic_desc' ? 'bg-white dark:bg-[#333] text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>По объему лидов</button>
+          <button onClick={() => setGeoSortMode('cr_desc')} className={`shrink-0 flex-1 lg:flex-none px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'cr_desc' ? 'bg-white dark:bg-[#333] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Лучший CR</button>
+          <button onClick={() => setGeoSortMode('cr_asc')} className={`shrink-0 flex-1 lg:flex-none px-2.5 2xl:px-3 h-full rounded-[6px] text-[10px] 2xl:text-[11px] font-bold transition-all whitespace-nowrap ${geoSortMode === 'cr_asc' ? 'bg-white dark:bg-[#333] text-rose-600 dark:text-rose-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>Худший CR</button>
+        </div>
       </div>
 
       {viewMode === 'list' || viewMode === 'matrix' ? (
