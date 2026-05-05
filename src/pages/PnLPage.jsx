@@ -1,19 +1,29 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     TrendingUp, ClipboardList, ChevronDown, ChevronRight,
-    Plus, Save, X, Clipboard, Edit3, Trash2, Check, RefreshCw,
+    Plus, Save, X, Clipboard, Edit3, Trash2, Check,
     Calendar as CalendarIcon, RotateCcw, ArrowUpAZ, ArrowDownUp, Download,
     MessageCircle, MessageSquare
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabaseClient';
 import { showToast } from '../utils/toastEvents';
+import AstroLoadingStatus from '../components/ui/AstroLoadingStatus';
 
 // ─── TABS CONFIG ──────────────────────────────────────────────────────────────
 const TABS = [
     { key: 'report', label: 'P&L', icon: TrendingUp, resource: 'pnl_report' },
     { key: 'data', label: 'Заполнение данных', icon: ClipboardList, resource: 'pnl_data' },
 ];
+
+const PNL_LOADING_STEPS = [
+    'Загружаем ГЕО',
+    'Загружаем оплаты',
+    'Загружаем расходы',
+    'Готовим P&L',
+];
+
+const PNL_PAYMENT_SELECT = 'id, transaction_date, created_at, status, product, payment_type, manager_id, country, amount_eur, amount_local, crm_link, screenshot_url';
 
 // ─── EUR → USD via cache ──────────────────────────────────────────────────────
 const RATE_CACHE_KEY = 'exchange_rates_cache';
@@ -26,6 +36,26 @@ const getEurToUsd = () => {
         }
     } catch (_) { }
     return 1.08;
+};
+
+const resolvePaymentSource = (item) => {
+    const explicit = String(item?.derived_source || item?.source || '').trim().toLowerCase();
+    if (explicit === 'whatsapp') return 'whatsapp';
+    if (explicit === 'comments' || explicit === 'comment') return 'comments';
+    if (explicit === 'direct' || explicit === 'instagram') return 'direct';
+
+    const rawLink = String(item?.crm_link || item?.crmLink || '').trim().toLowerCase();
+    if (!rawLink) return 'direct';
+    if (rawLink.includes('wa.me') || rawLink.includes('whatsapp') || /^\+?\d[\d\s().-]{5,}$/.test(rawLink)) {
+        return 'whatsapp';
+    }
+    return 'direct';
+};
+
+const getExclusiveEndIso = (dateTo) => {
+    const end = new Date(`${dateTo}T00:00:00.000Z`);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return end.toISOString();
 };
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -406,10 +436,12 @@ const METRICS = [
 ];
 
 const PnLReportTab = ({ startDate, endDate }) => {
-    const { countries, payments: storePayments, isLoading: storeLoading } = useAppStore();
+    const { countries, managers: storeManagers = [], isLoading: storeLoading } = useAppStore();
     const [entries, setEntries] = useState([]);
+    const [periodPayments, setPeriodPayments] = useState([]);
     const [localLoading, setLocalLoading] = useState(true);
-    const loading = localLoading || storeLoading;
+    const [loadError, setLoadError] = useState('');
+    const loading = localLoading || (!countries?.length && storeLoading);
     const eurToUsd = getEurToUsd();
     const [metric, setMetric] = useState('profit');
     const [trafficSource, setTrafficSource] = useState('all'); // 'all', 'direct', 'comments'
@@ -423,22 +455,111 @@ const PnLReportTab = ({ startDate, endDate }) => {
     const dateFrom = toYMD(startDate);
     const dateTo = toYMD(endDate);
 
-    // Load pnl_entries only
+    const managersKey = useMemo(
+        () => (storeManagers || []).map(manager => manager.id).join('|'),
+        [storeManagers]
+    );
+
+    // Load P&L source data for the selected period, not the global async payments cache.
     useEffect(() => {
         if (!dateFrom || !dateTo) return;
+        let cancelled = false;
+
         const load = async () => {
             setLocalLoading(true);
-            const { data: ents } = await supabase.from('pnl_entries').select('*').gte('date', dateFrom).lte('date', dateTo);
-            setEntries(ents || []);
-            setLocalLoading(false);
-        };
-        load();
-    }, [dateFrom, dateTo]);
+            setLoadError('');
 
-    // Filter store payments by date range, trafficSource, and department
+            try {
+                const rangeStart = `${dateFrom}T00:00:00.000Z`;
+                const rangeEnd = getExclusiveEndIso(dateTo);
+                const managersPromise = storeManagers.length
+                    ? Promise.resolve({ data: storeManagers, error: null })
+                    : supabase.from('managers').select('id, name, role, telegram_username');
+
+                const [{ data: ents, error: entriesError }, { data: managersData, error: managersError }] = await Promise.all([
+                    supabase.from('pnl_entries').select('*').gte('date', dateFrom).lte('date', dateTo),
+                    managersPromise,
+                ]);
+
+                if (entriesError) throw entriesError;
+                if (managersError) throw managersError;
+                if (cancelled) return;
+
+                const managersMap = {};
+                (managersData || []).forEach(manager => {
+                    managersMap[manager.id] = {
+                        name: manager.name,
+                        role: manager.role,
+                        telegram_username: manager.telegram_username,
+                    };
+                });
+
+                let allPayments = [];
+                let offset = 0;
+                const PAGE = 1000;
+
+                while (true) {
+                    const { data: page, error } = await supabase
+                        .from('payments')
+                        .select(PNL_PAYMENT_SELECT)
+                        .gte('transaction_date', rangeStart)
+                        .lt('transaction_date', rangeEnd)
+                        .eq('status', 'completed')
+                        .order('transaction_date', { ascending: false })
+                        .range(offset, offset + PAGE - 1);
+
+                    if (error) throw error;
+                    if (!page || page.length === 0) break;
+
+                    allPayments = allPayments.concat(page);
+                    if (page.length < PAGE) break;
+                    offset += PAGE;
+                }
+
+                if (cancelled) return;
+
+                const normalizedPayments = allPayments.map(item => ({
+                    ...item,
+                    id: item.id,
+                    transactionDate: item.transaction_date || item.created_at,
+                    amountEUR: Number(item.amount_eur) || 0,
+                    amountLocal: Number(item.amount_local) || 0,
+                    amount: Number(item.amount_local) || Number(item.amount_eur) || 0,
+                    manager: managersMap[item.manager_id]?.name || 'Не назначен',
+                    managerId: item.manager_id,
+                    managerRole: managersMap[item.manager_id]?.role || null,
+                    manager_tg: managersMap[item.manager_id]?.telegram_username || null,
+                    type: item.payment_type || 'Other',
+                    status: item.status || 'pending',
+                    source: resolvePaymentSource(item),
+                    crmLink: item.crm_link || '',
+                    screenshotUrl: item.screenshot_url || '',
+                }));
+
+                setEntries(ents || []);
+                setPeriodPayments(normalizedPayments);
+            } catch (error) {
+                console.error('Error fetching P&L data:', error);
+                if (!cancelled) {
+                    setEntries([]);
+                    setPeriodPayments([]);
+                    setLoadError(error?.message || 'Не удалось загрузить P&L');
+                }
+            } finally {
+                if (!cancelled) setLocalLoading(false);
+            }
+        };
+
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, [dateFrom, dateTo, managersKey, storeManagers]);
+
+    // Filter fully loaded period payments by date range, trafficSource, and department.
     const payments = useMemo(() => {
         if (!dateFrom || !dateTo) return [];
-        return (storePayments || []).filter(p => {
+        return (periodPayments || []).filter(p => {
             if (!p.transactionDate) return false;
             const d = p.transactionDate.slice(0, 10);
             if (d < dateFrom || d > dateTo) return false;
@@ -458,7 +579,7 @@ const PnLReportTab = ({ startDate, endDate }) => {
             }
             return true;
         });
-    }, [storePayments, dateFrom, dateTo, trafficSource, deptFilter]);
+    }, [periodPayments, dateFrom, dateTo, trafficSource, deptFilter]);
 
     // Build cell data: map[countryCode][date] = metrics object
     const { cellMap, sortedGeos, sortedDates, geoTotals, dateTotals, grandTotal } = useMemo(() => {
@@ -618,11 +739,25 @@ const PnLReportTab = ({ startDate, endDate }) => {
         return `${fmt(val)}${unit}`;
     };
 
+    const loadingStep = !countries?.length ? 0 : localLoading ? 1 : 3;
+
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] border border-gray-200 dark:border-[#333] rounded-lg shadow-sm">
-                <RefreshCw size={28} className="text-blue-500 animate-spin mb-3" />
-                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Загрузка данных P&L...</p>
+            <AstroLoadingStatus
+                variant="page"
+                title="Загружаем P&L"
+                message="Собираем расходы, оплаты и финансовый отчет"
+                steps={PNL_LOADING_STEPS}
+                activeStep={loadingStep}
+                className="min-h-[520px] bg-[#F5F5F5] dark:bg-[#0A0A0A]"
+            />
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-400">
+                Не удалось загрузить P&L: {loadError}
             </div>
         );
     }
@@ -823,7 +958,7 @@ const PnLReportTab = ({ startDate, endDate }) => {
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 const PnLPage = () => {
-    const { user, permissions } = useAppStore();
+    const { user, permissions, countries, fetchAllData, isLoading } = useAppStore();
 
     const hasAccess = (resource) => {
         if (user?.role === 'C-level') return true;
@@ -832,6 +967,20 @@ const PnLPage = () => {
 
     const visibleTabs = TABS.filter(t => hasAccess(t.resource));
     const [activeTab, setActiveTab] = useState(() => visibleTabs[0]?.key || 'report');
+    const visibleTabsKey = visibleTabs.map(tab => tab.key).join('|');
+
+    useEffect(() => {
+        if (!countries?.length && fetchAllData) {
+            fetchAllData();
+        }
+    }, [countries?.length, fetchAllData]);
+
+    useEffect(() => {
+        if (!visibleTabs.length) return;
+        if (!visibleTabs.some(tab => tab.key === activeTab)) {
+            setActiveTab(visibleTabs[0].key);
+        }
+    }, [activeTab, visibleTabsKey]);
 
     // Date range lives here so the calendar can be in the tab header
     const [dateRange, setDateRange] = useState(() => {
@@ -850,20 +999,23 @@ const PnLPage = () => {
         return <div className="flex items-center justify-center min-h-[400px] text-gray-400 text-sm">⛔ Нет доступа</div>;
     }
 
-    const currentTab = TABS.find(t => t.key === activeTab) || visibleTabs[0];
+    const currentTab = visibleTabs.find(t => t.key === activeTab) || visibleTabs[0];
+
+    if (isLoading && !countries?.length) {
+        return (
+            <AstroLoadingStatus
+                variant="page"
+                title="Загружаем P&L"
+                message="Получаем ГЕО и справочники"
+                steps={PNL_LOADING_STEPS}
+                activeStep={0}
+                className="h-[calc(100vh-80px)] bg-[#F5F5F5] dark:bg-[#0A0A0A]"
+            />
+        );
+    }
 
     return (
         <div className="animate-in fade-in zoom-in duration-300 pb-10 font-sans">
-            <div className="flex items-center gap-3 mb-6">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                    <TrendingUp size={18} className="text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">P&amp;L</h2>
-                    <p className="text-xs text-gray-400 font-medium mt-0.5">Profit &amp; Loss — финансовый отчёт</p>
-                </div>
-            </div>
-
             {/* Tab bar + calendar on the right */}
             <div className="flex items-center justify-between mb-6 bg-gray-100 dark:bg-[#1A1A1A] p-0.5 rounded-lg">
                 <div className="flex gap-1">

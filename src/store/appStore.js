@@ -90,6 +90,141 @@ const resolvePaymentSource = (item) => {
   return 'direct';
 };
 
+const normalizeCountryCode = (value, fallback = 'Other') => {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  if (raw.toLowerCase() === 'other' || raw.toLowerCase() === 'unknown') return fallback;
+  return raw.toUpperCase();
+};
+
+const normalizeStatSource = (source) => {
+  const value = String(source || '').trim().toLowerCase();
+  if (value === 'whatsapp') return 'whatsapp';
+  if (value === 'comments' || value === 'comment') return 'comments';
+  if (value === 'direct' || value === 'instagram') return 'direct';
+  return 'unknown';
+};
+
+const buildChannelsCountryMap = (channelsData = []) => {
+  const map = {};
+  (channelsData || []).forEach(ch => {
+    const countryCode = normalizeCountryCode(ch.country_code);
+    if (ch.wazzup_id !== undefined && ch.wazzup_id !== null) map[String(ch.wazzup_id)] = countryCode;
+    if (ch.id !== undefined && ch.id !== null) map[String(ch.id)] = countryCode;
+  });
+  return map;
+};
+
+const getManagerDepartment = (role) => {
+  if (role === 'Sales' || role === 'SeniorSales') return 'sales';
+  if (role === 'Consultant') return 'consultant';
+  if (role === 'SalesTaro' || role === 'SalesTaroNew') return 'taro';
+  return null;
+};
+
+const matchesDepartmentFilter = (role, departments = []) => {
+  if (!Array.isArray(departments) || departments.length === 0) return true;
+  return departments.includes(getManagerDepartment(role));
+};
+
+const buildManagersMap = (managersData = []) => {
+  const map = {};
+  (managersData || []).forEach(manager => {
+    map[manager.id] = {
+      name: manager.name,
+      role: manager.role,
+      telegram_username: manager.telegram_username,
+    };
+  });
+  return map;
+};
+
+const fetchSalesStatsFromPayments = async (dateFrom, dateTo, departments = []) => {
+  const managersData = getManagersForStatsCache.data || await fetchAll('managers', 'id, name, role, telegram_username', 'created_at', false);
+  getManagersForStatsCache.data = managersData || [];
+  const managersMap = buildManagersMap(managersData);
+
+  const loadRows = async (table, select, orderBy = 'transaction_date') => {
+    let all = [];
+    let from = 0;
+    const PAGE = 1000;
+
+    while (true) {
+      const { data, error } = await supabase
+        .from(table)
+        .select(select)
+        .gte('transaction_date', dateFrom)
+        .lte('transaction_date', dateTo)
+        .order(orderBy, { ascending: false })
+        .range(from, from + PAGE - 1);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+
+    return all;
+  };
+
+  const paymentRows = await loadRows(
+    'payments',
+    'id, transaction_date, status, manager_id, country, crm_link'
+  );
+
+  const sourceMap = {};
+  try {
+    const sourceRows = await loadRows(
+      'enriched_payments_view',
+      'id, transaction_date, derived_source'
+    );
+    const seenIds = new Set();
+    sourceRows.forEach(row => {
+      if (!row.id || seenIds.has(row.id)) return;
+      seenIds.add(row.id);
+      const source = normalizeStatSource(row.derived_source);
+      sourceMap[row.id] = source === 'unknown' ? 'direct' : source;
+    });
+  } catch (error) {
+    console.warn('enriched_payments_view unavailable for quick stats source map, using crm_link fallback:', error);
+  }
+
+  const formattedStats = {};
+  const seenPaymentIds = new Set();
+  paymentRows.forEach(item => {
+    if (item.id && seenPaymentIds.has(item.id)) return;
+    if (item.id) seenPaymentIds.add(item.id);
+
+    const status = String(item.status || '').toLowerCase();
+    if (status !== 'completed') return;
+
+    const managerRole = managersMap[item.manager_id]?.role || null;
+    if (!matchesDepartmentFilter(managerRole, departments)) return;
+
+    const countryCode = normalizeCountryCode(item.country);
+    const dateStr = extractUTCDate(item.transaction_date);
+    if (!dateStr) return;
+
+    if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
+    if (!formattedStats[countryCode][dateStr]) {
+      formattedStats[countryCode][dateStr] = { direct: 0, comments: 0, whatsapp: 0, all: 0, unknown: 0 };
+    }
+
+    const source = sourceMap[item.id] || normalizeStatSource(resolvePaymentSource(item));
+    if (formattedStats[countryCode][dateStr][source] !== undefined) {
+      formattedStats[countryCode][dateStr][source] += 1;
+    } else {
+      formattedStats[countryCode][dateStr].unknown += 1;
+    }
+    formattedStats[countryCode][dateStr].all += 1;
+  });
+
+  return formattedStats;
+};
+
+const getManagersForStatsCache = { data: null };
+
 const formatPayments = (paymentsData, managersMap = {}) => {
   const uniquePaymentsMap = new Map();
   (paymentsData || []).forEach(item => {
@@ -385,11 +520,7 @@ export const useAppStore = create((set, get) => ({
       let map = get().channelsMap;
       if (!map || Object.keys(map).length === 0) {
         const channelsData = await fetchAll('channels', '*', 'id', true);
-        const newChannelsMap = {};
-        (channelsData || []).forEach(ch => {
-          newChannelsMap[ch.wazzup_id] = ch.country_code;
-          newChannelsMap[ch.id] = ch.country_code;
-        });
+        const newChannelsMap = buildChannelsCountryMap(channelsData);
         map = newChannelsMap;
         set({ channels: channelsData || [], channelsMap: newChannelsMap });
       }
@@ -411,7 +542,7 @@ export const useAppStore = create((set, get) => ({
 
       const formattedStats = {};
       all.forEach(stat => {
-        const countryCode = map[stat.channel_id] || 'Other';
+        const countryCode = map[String(stat.channel_id)] || 'Other';
         const dateStr = stat.created_date;
 
         if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
@@ -435,25 +566,44 @@ export const useAppStore = create((set, get) => ({
   },
 
   // NEW: Time Comparison Actions (Fetch P1 and P2 separately and merge)
-  fetchSalesStatsTimeComparison: async (p1Start, p1End, p2Start, p2End) => {
+  fetchSalesStatsTimeComparison: async (p1Start, p1End, p2Start, p2End, departments = null) => {
     try {
+      if (Array.isArray(departments)) {
+        const [stats1, stats2] = await Promise.all([
+          fetchSalesStatsFromPayments(p1Start, p1End, departments),
+          fetchSalesStatsFromPayments(p2Start, p2End, departments)
+        ]);
+
+        const mergedStats = { ...stats1 };
+        Object.keys(stats2).forEach(country => {
+          if (!mergedStats[country]) mergedStats[country] = {};
+          Object.assign(mergedStats[country], stats2[country]);
+        });
+
+        set({ salesStats: mergedStats });
+        return;
+      }
+
       const [p1Data, p2Data] = await Promise.all([
         supabase.rpc('get_sales_stats_v2', { start_date: p1Start, end_date: p1End }),
         supabase.rpc('get_sales_stats_v2', { start_date: p2Start, end_date: p2End })
       ]);
 
+      if (p1Data.error) throw p1Data.error;
+      if (p2Data.error) throw p2Data.error;
+
       const processStats = (data) => {
         const stats = {};
         (data.data || []).forEach(item => {
-          if (!stats[item.country]) stats[item.country] = {};
-          if (!stats[item.country][item.created_date]) {
-            stats[item.country][item.created_date] = { all: 0, whatsapp: 0, direct: 0, comments: 0, unknown: 0 };
+          const countryCode = normalizeCountryCode(item.country);
+          if (!stats[countryCode]) stats[countryCode] = {};
+          if (!stats[countryCode][item.created_date]) {
+            stats[countryCode][item.created_date] = { all: 0, whatsapp: 0, direct: 0, comments: 0, unknown: 0 };
           }
-          const counts = stats[item.country][item.created_date];
+          const counts = stats[countryCode][item.created_date];
+          const source = normalizeStatSource(item.source);
           counts.all += Number(item.count);
-          if (item.source === 'whatsapp') counts.whatsapp += Number(item.count);
-          else if (item.source === 'direct') counts.direct += Number(item.count);
-          else if (item.source === 'comments') counts.comments += Number(item.count);
+          if (counts[source] !== undefined) counts[source] += Number(item.count);
           else counts.unknown += Number(item.count);
         });
         return stats;
@@ -481,16 +631,41 @@ export const useAppStore = create((set, get) => ({
 
   fetchTrafficStatsTimeComparison: async (p1Start, p1End, p2Start, p2End) => {
     try {
+      let map = get().channelsMap;
+      if (!map || Object.keys(map).length === 0) {
+        const channelsData = await fetchAll('channels', '*', 'id', true);
+        const newChannelsMap = buildChannelsCountryMap(channelsData);
+        map = newChannelsMap;
+        set({ channels: channelsData || [], channelsMap: newChannelsMap });
+      }
+
+      const fetchLeadStatsRange = async (startDate, endDate) => {
+        let all = [];
+        let from = 0;
+        const PAGE = 1000;
+        while (true) {
+          const { data, error } = await supabase
+            .rpc('get_lead_stats_v2', { start_date: startDate, end_date: endDate })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          all = all.concat(data);
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
+        return all;
+      };
+
       const [p1Data, p2Data] = await Promise.all([
-        supabase.rpc('get_lead_stats_v2', { start_date: p1Start, end_date: p1End }),
-        supabase.rpc('get_lead_stats_v2', { start_date: p2Start, end_date: p2End })
+        fetchLeadStatsRange(p1Start, p1End),
+        fetchLeadStatsRange(p2Start, p2End)
       ]);
 
-      const processStats = (data) => {
+      const processStats = (data = []) => {
         const stats = {};
-        (data.data || []).forEach(item => {
+        (data || []).forEach(item => {
           // created_date is YYYY-MM-DD
-          const country = get().channelsMap[item.channel_id] || 'Unknown';
+          const country = map[String(item.channel_id)] || 'Other';
           if (!stats[country]) stats[country] = {};
           if (!stats[country][item.created_date]) {
             stats[country][item.created_date] = { all: 0, whatsapp: 0, comments: 0, direct: 0 };
@@ -520,8 +695,14 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  fetchSalesStats: async (dateFrom, dateTo) => {
+  fetchSalesStats: async (dateFrom, dateTo, departments = null) => {
     try {
+      if (Array.isArray(departments)) {
+        const formattedStats = await fetchSalesStatsFromPayments(dateFrom, dateTo, departments);
+        set({ salesStats: formattedStats });
+        return;
+      }
+
       const { data, error } = await supabase.rpc('get_sales_stats', {
         start_date: dateFrom,
         end_date: dateTo
@@ -532,7 +713,7 @@ export const useAppStore = create((set, get) => ({
       const formattedStats = {};
       if (data) {
         data.forEach(stat => {
-          const countryCode = stat.country || 'Other';
+          const countryCode = normalizeCountryCode(stat.country);
           const dateStr = stat.created_date; // YYYY-MM-DD from RPC
 
           if (!formattedStats[countryCode]) formattedStats[countryCode] = {};
@@ -541,7 +722,7 @@ export const useAppStore = create((set, get) => ({
           }
 
           const count = Number(stat.count || 0);
-          const source = stat.source || 'unknown';
+          const source = normalizeStatSource(stat.source);
 
           if (formattedStats[countryCode][dateStr][source] !== undefined) {
             formattedStats[countryCode][dateStr][source] += count;
@@ -610,7 +791,7 @@ export const useAppStore = create((set, get) => ({
 
   fetchReferenceData: async () => {
     // If we already have managers and schedules, we assume reference data is loaded
-    if (get().managers.length > 0 && get().schedules.length > 0) return;
+    if (get().managers.length > 0 && get().schedules.length > 0 && get().countries.length > 0 && get().projects.length > 0) return;
 
     set({ isLoading: true });
     try {
@@ -621,6 +802,7 @@ export const useAppStore = create((set, get) => ({
         productsData,
         rulesData,
         learningData,
+        projectsData,
         countriesData,
         schedulesData,
         appSettingsData
@@ -630,17 +812,14 @@ export const useAppStore = create((set, get) => ({
         fetchAll('knowledge_products', '*', 'created_at', false),
         fetchAll('knowledge_rules', '*', 'created_at', false),
         fetchAll('knowledge_learning', '*', 'created_at', false),
+        fetchAll('projects', '*', 'name', true).catch(() => []),
         fetchAll('countries', '*', 'code', true),
         fetchAll('schedules', '*', 'date', false),
         fetchAll('app_settings', '*', 'key', true),
       ]);
 
       // Process Channels
-      const newChannelsMap = {};
-      (channelsData || []).forEach(ch => {
-        newChannelsMap[ch.wazzup_id] = ch.country_code;
-        newChannelsMap[ch.id] = ch.country_code;
-      });
+      const newChannelsMap = buildChannelsCountryMap(channelsData);
 
       // Process App Settings
       const permissionsMap = (appSettingsData || []).find(s => s.key === 'role_permissions')?.value || {};
@@ -653,6 +832,7 @@ export const useAppStore = create((set, get) => ({
         products: productsData || [],
         rules: rulesData || [],
         learningArticles: learningData || [],
+        projects: projectsData || [],
         countries: countriesData || [],
         schedules: schedulesData || [],
         permissions: permissionsMap,
@@ -684,11 +864,7 @@ export const useAppStore = create((set, get) => ({
         fetchAll('app_settings', '*', 'key', true),
       ]);
 
-      const newChannelsMap = {};
-      (channelsData || []).forEach(ch => {
-        newChannelsMap[ch.wazzup_id] = ch.country_code;
-        newChannelsMap[ch.id] = ch.country_code;
-      });
+      const newChannelsMap = buildChannelsCountryMap(channelsData);
 
       const permissionsMap = (appSettingsData || []).find(s => s.key === 'role_permissions')?.value || {};
       const roleDocsMap = (appSettingsData || []).find(s => s.key === 'role_documentation')?.value || {};
@@ -801,11 +977,7 @@ export const useAppStore = create((set, get) => ({
 
 
       // Process Channels
-      const newChannelsMap = {};
-      (channelsData || []).forEach(ch => {
-        newChannelsMap[ch.wazzup_id] = ch.country_code;
-        newChannelsMap[ch.id] = ch.country_code;
-      });
+      const newChannelsMap = buildChannelsCountryMap(channelsData);
       set({ channelsMap: newChannelsMap, channels: channelsData || [] });
 
       // Process Managers
@@ -826,7 +998,7 @@ export const useAppStore = create((set, get) => ({
       let trafficResult = {};
       if (leadsStatsData) {
         leadsStatsData.forEach(stat => {
-          const countryCode = newChannelsMap[stat.channel_id] || 'Other';
+          const countryCode = newChannelsMap[String(stat.channel_id)] || 'Other';
           const dateStr = stat.created_date; // YYYY-MM-DD from RPC
 
           if (!trafficResult[countryCode]) trafficResult[countryCode] = {};
