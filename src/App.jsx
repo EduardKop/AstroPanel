@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Globe, CreditCard,
   BarChart3, Moon, Sun, RefreshCcw, LineChart, Briefcase,
   Headphones, Contact, LogOut, ChevronDown, ChevronRight, Gift, LayoutGrid,
-  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp, Monitor, Wallet, Edit2
+  BookOpen, Shield, Menu, X, Coins, Calendar, Clock, Settings, Activity, ShieldAlert, FileText, PieChart, EyeOff, TrendingUp, Monitor, Wallet, Edit2, MessageSquareText
 } from 'lucide-react'
 
 import ThemeToggle from './components/ThemeToggle';
@@ -31,6 +31,7 @@ import GeoMatrixPage from './pages/GeoMatrixPage';
 import ProductsPage from './pages/knowledge/ProductsPage';
 import RulesPage from './pages/knowledge/RulesPage';
 import LearningCenterPage from './pages/knowledge/LearningCenterPage';
+import PromptsPage from './pages/knowledge/PromptsPage';
 import SalariesPage from './pages/SalariesPage';
 import SchedulePage from './pages/SchedulePage';
 // TimerWidget removed - feature in development
@@ -131,6 +132,7 @@ const HEADER_PAGE_TITLES = [
   { path: '/cons/geo', label: 'География консультаций', icon: Globe, exact: true },
   { path: '/cons/stats', label: 'Аналитика консультаций', icon: LineChart, exact: true },
   { path: '/cons/conversions', label: 'Конверсии консультаций', icon: PieChart, exact: true },
+  { path: '/prompts', label: 'Промпты', icon: MessageSquareText, exact: true },
 ];
 
 const HeaderPageTitle = ({ transactionsHeaderMeta }) => {
@@ -632,6 +634,7 @@ function App() {
                   <SidebarItem icon={BookOpen} label="Продукты" path="/products" />
                   <SidebarItem icon={Shield} label="Правила" path="/rules" />
                   <SidebarItem icon={FileText} label="Центр обучения" path="/learning" />
+                  <SidebarItem icon={MessageSquareText} label="Промпты" path="/prompts" />
                   {hasAccess('kpi') && <SidebarItem icon={BarChart3} label="KPI" path="/kpi" />}
                 </div>
               </>
@@ -780,6 +783,7 @@ function App() {
               <Route path="/products" element={<ProtectedRoute resource="knowledge_base"><ProductsPage /></ProtectedRoute>} />
               <Route path="/rules" element={<ProtectedRoute resource="knowledge_base"><RulesPage /></ProtectedRoute>} />
               <Route path="/learning" element={<ProtectedRoute resource="knowledge_base"><LearningCenterPage /></ProtectedRoute>} />
+              <Route path="/prompts" element={<ProtectedRoute resource="knowledge_base"><PromptsPage /></ProtectedRoute>} />
 
               {/* ✅ ADMIN ROUTES */}
               <Route path="/geo-monitoring" element={<ProtectedRoute resource="geo_monitoring"><GeoMonitoringPage /></ProtectedRoute>} />
