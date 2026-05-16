@@ -67,6 +67,7 @@ import ManagerActivityPage from './pages/ManagerActivityPage';
 import ManagerActivityEfficiencyPage from './pages/ManagerActivityEfficiencyPage';
 import ManagerDevicesPage from './pages/ManagerDevicesPage';
 import AddPaymentButton from './components/payments/AddPaymentButton';
+import AddLeadPaymentButton from './components/payments/AddLeadPaymentButton';
 import PublicSharedPage from './pages/public/PublicSharedPage';
 import AstroLoadingPreviewPage from './pages/AstroLoadingPreviewPage';
 
@@ -834,6 +835,7 @@ function App() {
           </div>
         )}
 
+        <AddLeadPaymentButton />
         <AddPaymentButton />
       </div >
     </BrowserRouter >
